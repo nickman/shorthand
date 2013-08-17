@@ -1,0 +1,68 @@
+/**
+* Helios Development Group LLC, 2013. 
+ *
+ */
+package com.heliosapm.shorthand.datamapper;
+
+import gnu.trove.map.hash.TIntLongHashMap;
+import gnu.trove.map.hash.TObjectLongHashMap;
+
+import java.util.Map;
+
+import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.store.IStore;
+
+
+
+
+/**
+ * <p>Title: IDataMapper</p>
+ * <p>Description: Defines a class that knows how to write and read an {@link com.heliosapm.shorthand.collectors.ICollector} to and from a memory address</p> 
+ * <p>Company: Helios Development Group LLC</p>
+ * @author Whitehead (nwhitehead AT heliosdev DOT org)
+ * <p><code>com.heliosapm.shorthand.accumulator.IDataMapper</code></p>
+ * @param <T> The collector type
+ */
+
+public interface IDataMapper<T extends Enum<T> & ICollector<T>> {
+	/**
+	 * Resets the memory space pointed to by the passed address
+	 * @param address The address of the memory space
+	 * @param offsets A map of offsets keyed by the collector for which the memory space is allocated
+	 */
+	public void reset(long address, TObjectLongHashMap<T> offsets);
+	/**
+	 * Calculates/Aggregates and applies the final value to the memory space allocated for each collector
+	 * @param address The address of the memory space
+	 * @param offsets A map of offsets keyed by the collector for which the memory space is allocated
+	 * @param data The collected values to apply from
+	 */
+	public void put(long address, TObjectLongHashMap<T> offsets, long[] data);
+	
+
+	/**
+	 * Returns a map of sub metric names and values keyed by the parent enum collector member
+	 * @param metricName The metric name to retrieve
+	 * @return a map of sub metric indexes and values keyed by the parent enum collector member
+	 */
+	public Map<T, TIntLongHashMap> get(String metricName);
+	
+	/**
+	 * Calculates/Aggregates and applies the final value to the memory space allocated for each preApply collector
+	 * @param bitMask The bitmask of the enabled metrics
+	 * @param address The address of the memory space
+	 * @param offsets A map of offsets keyed by the collector for which the memory space is allocated
+	 * @param data The collected values to apply from
+	 */
+	public void prePut(int bitMask, long address, TObjectLongHashMap<T> offsets, long[] data);
+	
+	/**
+	 * Flushes the accumulated metric at the passed address to the live tier store
+	 * @param address The address of the metric copy
+	 * @param store The store to flush to
+	 * @param periodStart The start time of the period being flushed in ms.
+	 * @param periodEnd The end time of the period being flushed in ms.
+	 * @return The name indexes of the enabled metrics in the live tier
+	 */
+	public long[] flush(long address, IStore<T> store, long periodStart, long periodEnd);
+}
