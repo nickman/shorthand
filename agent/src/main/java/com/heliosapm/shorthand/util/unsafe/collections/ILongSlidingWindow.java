@@ -127,6 +127,18 @@ public interface ILongSlidingWindow {
 	 * @return the sum of all the longs in the array
 	 */
 	public abstract long sum();
+	
+	/**
+	 * Returns the minumum value in the array
+	 * @return the minumum value in the array
+	 */
+	public abstract long min();
+
+	/**
+	 * Returns the maxumum value in the array
+	 * @return the maxumum value in the array
+	 */
+	public abstract long max();
 
 	/**
 	 * Returns the average of all the longs in the array within the passed ending index range

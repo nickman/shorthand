@@ -2,6 +2,7 @@
 package com.heliosapm.shorthand.util.unsafe.collections;
 
 import java.nio.LongBuffer;
+import java.util.Arrays;
 
 /**
  * <p>Title: LongSlidingWindow</p>
@@ -231,6 +232,30 @@ public class LongSlidingWindow  implements ILongSlidingWindow {
 	@Override
 	public long sum() {
 		return sum(array.size);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.util.unsafe.collections.ILongSlidingWindow#min()
+	 */
+	@Override
+	public long min() {
+		if(array.size==0) throw new RuntimeException("Cannot get min for empty array");
+		long[] arr = asLongArray();
+		Arrays.sort(arr);
+		return arr[0];
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.util.unsafe.collections.ILongSlidingWindow#max()
+	 */
+	@Override
+	public long max() {
+		if(array.size==0) throw new RuntimeException("Cannot get max for empty array");
+		long[] arr = asLongArray();
+		Arrays.sort(arr);
+		return arr[arr.length-1];		
 	}
 	
 	/**

@@ -7,6 +7,8 @@ import gnu.trove.map.hash.TIntLongHashMap;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+import java.util.Date;
+import java.util.EnumMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Random;
@@ -426,63 +428,67 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 */
 	@Override
 	public void onNewPeriod(final long newStartTime, final long newEndTime, final long priorStartTime, final long priorEndTime) {
-		int loopCount = 2000;
 		long start = System.nanoTime();
 		long tier1Updates = 0;
-		for(int i = 0; i < loopCount; i++) {
-			globalLockNoYield();
-			try {
-				long address = -1L;
-				String name = null;			
+		globalLockNoYield();
+		try {
+			long address = -1L;
+			String name = null;			
+			log("Processing Period Update for [%s] Store Name Index Values", store.getMetricCacheSize());
+			for(Map.Entry<String, Long> entry: store.indexKeyValues()) {
+				address = entry.getValue();
+				if(address<0) continue;
+				name = entry.getKey();
+				lock(address);
+				long addressCopy = -1L;
+				long addressSize = HeaderOffsets.MemSize.accessor.get(address);
+				addressCopy = UnsafeAdapter.allocateMemory(addressSize);
+				UnsafeAdapter.copyMemory(address, addressCopy, addressSize);
+				unlock(address);	
+				long nameIndex = HeaderOffsets.NameIndex.get(addressCopy);
+				int enumIndex = (int)HeaderOffsets.EnumIndex.get(addressCopy);
 				
-				for(Map.Entry<String, Long> entry: store.indexKeyValues()) {
-					address = entry.getValue();
-					if(address<0) continue;
-					name = entry.getKey();
-					lock(address);
-					long addressCopy = -1L;
-					long addressSize = HeaderOffsets.MemSize.accessor.get(address);
-					addressCopy = UnsafeAdapter.allocateMemory(addressSize);
-					UnsafeAdapter.copyMemory(address, addressCopy, addressSize);
-					unlock(address);	
-					long nameIndex = HeaderOffsets.NameIndex.get(addressCopy);
-					int enumIndex = (int)HeaderOffsets.EnumIndex.get(addressCopy);
-					//int bitMask = (int)HeaderOffsets.BitMask.get(addressCopy);
-					T[] collectors = (T[]) EnumCollectors.getInstance().type(enumIndex).getEnumConstants();
-					
-					long[] tier1Indexes = store.updatePeriod(nameIndex, newStartTime, newEndTime);
-					long[][] tier1Values = new long[tier1Indexes.length][]; 
-					//updateSlots(long[] indexes, long[][] values);
-					int enabled = 0;
-					long offset = addressCopy + HEADER_SIZE;
-					for(int x = 0; x < tier1Indexes.length; x++) {
-						long tIndex = tier1Indexes[x];
-						if(tIndex<1) {
-							tier1Values[x] = EMPTY_LONG;
-							continue;
-						}
-						T collector = collectors[x];
-						long[] values = new long[collector.getDataStruct().size];
-						for(int c = 0; c < values.length; c++) {
-							values[c] = UnsafeAdapter.getLong(offset);
-							offset += UnsafeAdapter.LONG_SIZE;
-						}				
-						tier1Values[x] = values;
+				int bitMask = (int)HeaderOffsets.BitMask.get(addressCopy);
+				T[] collectors = (T[]) EnumCollectors.getInstance().type(enumIndex).getEnumConstants();
+				
+				long[] tier1Indexes = store.updatePeriod(nameIndex, priorStartTime, priorEndTime);
+				long offset = addressCopy + HEADER_SIZE;
+				long[][] tier1Values = new long[tier1Indexes.length][];
+				
+				
+				
+				
+				//updateSlots(long[] indexes, long[][] values);
+				int enabled = 0;
+				
+				for(int x = 0; x < tier1Indexes.length; x++) {
+					long tIndex = tier1Indexes[x];
+					if(tIndex<1) {
+						tier1Values[x] = EMPTY_LONG;
+						continue;
 					}
-					store.updateSlots(tier1Indexes, tier1Values);
-					tier1Updates += enabled;
-					UnsafeAdapter.freeMemory(addressCopy);
+					T collector = collectors[x];
+					long[] values = new long[collector.getDataStruct().size];
+					for(int c = 0; c < values.length; c++) {
+						values[c] = UnsafeAdapter.getLong(offset);
+						offset += UnsafeAdapter.LONG_SIZE;
+					}				
+					tier1Values[x] = values;
 				}
-			} catch (Exception ex) {
-				ex.printStackTrace(System.err);
-			} finally {
-				globalUnlock();
+				collectors[0].preFlush(tier1Values);
+				store.updateSlots(tier1Indexes, tier1Values);
+				tier1Updates += enabled;
+				UnsafeAdapter.freeMemory(addressCopy);
 			}
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+		} finally {
+			globalUnlock();
 		}
 		long elapsed = System.nanoTime()-start; 
 		store.lastFlushTime(elapsed);
 //		log("Period Flush Completed. Elapsed: [%s] ns. ThreadStats:%s", elapsed, AccumulatorThreadStats.report());
-//		log(reportSummary("PeriodFlush", elapsed, loopCount));
+		log(reportSummary("PeriodFlush", elapsed, tier1Updates));
 		AccumulatorThreadStats.reset();
 	}	
 	

@@ -1,6 +1,8 @@
 
 package com.heliosapm.shorthand.accumulator;
 
+import java.util.concurrent.Future;
+
 /**
  * <p>Title: PeriodEventListener</p>
  * <p>Description: Defines a listener that will be notified of period switch events</p> 

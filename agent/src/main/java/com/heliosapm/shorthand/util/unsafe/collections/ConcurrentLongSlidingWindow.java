@@ -2,6 +2,7 @@
 package com.heliosapm.shorthand.util.unsafe.collections;
 
 import java.nio.LongBuffer;
+import java.util.Arrays;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
@@ -356,6 +357,42 @@ public class ConcurrentLongSlidingWindow extends LongSlidingWindow implements IL
 		} finally {
 			readLock.unlock();
 		}
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.util.unsafe.collections.LongSlidingWindow#min()
+	 */
+	@Override
+	public long min() {
+		if(array.size==0) throw new RuntimeException("Cannot get min for empty array");
+		long[] arr = null;
+		readLock.lock();
+		try {
+			arr = asLongArray();
+		} finally {
+			readLock.unlock();
+		}
+		Arrays.sort(arr);
+		return arr[0];
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.util.unsafe.collections.ILongSlidingWindow#max()
+	 */
+	@Override
+	public long max() {
+		if(array.size==0) throw new RuntimeException("Cannot get max for empty array");
+		long[] arr = null;
+		readLock.lock();
+		try {
+			arr = asLongArray();
+		} finally {
+			readLock.unlock();
+		}
+		Arrays.sort(arr);
+		return arr[arr.length-1];		
 	}
 	
 	/**

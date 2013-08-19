@@ -58,21 +58,16 @@ public class SimpleMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 	/**
 	 * Creates a new SimpleMetric
 	 * @param name The metric name
+	 * @param collectorType The collector type
 	 * @param startTime The period start time
 	 * @param endTime The period end time
-	 * @param collector The source collector
-	 * @param subNames The sub metric names
-	 * @param values The sub metric values
+	 * @param dataPoints The metric data points
 	 */
-	SimpleMetric(String name, long startTime, long endTime, Map<T, IMetricDataPoint<T>> dataPoints) {
-//		Map<String, Long> dp = new LinkedHashMap<String, Long>(subNames.length);
-//		for(int i = 0; i < subNames.length; i++) {
-//			dp.put(subNames[i], values[i]);
-//		}
+	SimpleMetric(String name, Class<T> collectorType, long startTime, long endTime, Map<T, IMetricDataPoint<T>> dataPoints) {
 		this.dataPoints =  dataPoints;
 		this.startTime = startTime; this.endTime = endTime;
 		this.name = name;
-		collectorName = dataPoints.keySet().iterator().next().getDeclaringClass().getSimpleName();
+		collectorName = collectorType.getSimpleName();
 	}
 
 	/**
@@ -135,7 +130,7 @@ public class SimpleMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 	 */
 	@Override
 	public Map<T, IMetricDataPoint<T>> getMetricDataPoints() {
-		return null;
+		return dataPoints;
 	}
 
 	/**

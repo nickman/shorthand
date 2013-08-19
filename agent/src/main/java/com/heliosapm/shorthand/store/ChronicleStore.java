@@ -92,6 +92,18 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	/** A decode of enum class names to a set of all enum entries */
 	protected final TObjectIntHashMap<Class<T>> ENUM_CACHE = new TObjectIntHashMap<Class<T>>(32, 0.2f, -1); 
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#clear()
+	 */
+	@Override
+	public void clear() {
+		SNAPSHOT_INDEX.clear();
+		nameIndex.clear();
+		tier1Data.clear();
+		writeZeroRec(nameIndex);
+		writeZeroRec(tier1Data);
+	}
 	
 	@SuppressWarnings("javadoc")
 	public static void log(String fmt, Object...msgs) {
@@ -110,13 +122,18 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	public static void main(String[] args) {
 		log("Dumping Shorthand DB");
 		ChronicleStore store = new ChronicleStore();
+		long count = 0;
 		long start = System.currentTimeMillis();
-		//store.dump();
-		for(String name: store.SNAPSHOT_INDEX) {
-			
+//		store.dump();
+		for(Object o: store.SNAPSHOT_INDEX.keySet()) {
+			String name = o.toString();
+			IMetric metric = store.getMetric(name);
+			if(metric==null) continue;
+			count++;
+			log(metric.toString());
 		}
 		long elapsed = System.currentTimeMillis()-start;
-		log("Dump completed in [%s] ms.", elapsed);		
+		log("Dump of [%s] metrics complete in [%s] ms.", count, elapsed);		
 	}
 	
 	/**
@@ -142,11 +159,12 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		int bitMask = nex.readInt();
 		nex.readByteString(); nex.readLong();
 		long start = nex.readLong(), end = nex.readLong();
+		log("CHRONICLE READ PERIOD WITH: [%s]  to  [%s]", new Date(start), new Date(end));
 		int dpIndexSize = nex.readInt();
 		
 		Map<T, IMetricDataPoint<T>> dataPoints = new LinkedHashMap<T, IMetricDataPoint<T>>(dpIndexSize);
 		//SimpleMetric(String name, long startTime, long endTime, Map<T, IMetricDataPoint<T>> dataPoints) ;
-		SimpleMetric<T> simpleMetric = new SimpleMetric<T>(name, start, end, dataPoints); 
+		SimpleMetric<T> simpleMetric = new SimpleMetric<T>(name, type, start, end, dataPoints); 
 		for(int i = 0; i < dpIndexSize; i++) {
 			long dIndex = nex.readLong();
 			if(dIndex < 1L) continue;
@@ -175,6 +193,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		final boolean hasEx = ex!=null;
 		try {
 			if(!hasEx) ex = this.tier1Data.createExcerpt();
+			ex.index(index);
 			ex.position(TIER_1_SIZE);
 			String[] subNames = collector.getSubMetricNames();
 			TObjectLongHashMap<String> map = new TObjectLongHashMap<String>(subNames.length, 0.1f);		
@@ -410,7 +429,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				if(SNAPSHOT_INDEX.put(name, (index * -1L)) != null) {
 					log("WARNING:  Duplicate name [" + name + "] at index [" + index + "]");
 				} else {
-					log("Loaded [" + name + "]");
+					//log("Loaded [" + name + "]");
 				}
 			}
 			index++;
@@ -513,6 +532,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		}
 		// done
 		nameIndexEx.finish();
+		log("CHRONICLE UPDATED PERIOD WITH: [%s]  to  [%s]", new Date(periodStart), new Date(periodEnd));
 		return tierAddresses;		
 	}
 	

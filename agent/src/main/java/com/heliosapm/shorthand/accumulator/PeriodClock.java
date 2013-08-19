@@ -6,6 +6,7 @@ import java.lang.management.ThreadMXBean;
 import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionHandler;
@@ -18,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.heliosapm.shorthand.util.ConfigurationHelper;
 import com.heliosapm.shorthand.util.OrderedShutdownService;
 
 /**
@@ -32,6 +34,9 @@ import com.heliosapm.shorthand.util.OrderedShutdownService;
 public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandler, RejectedExecutionHandler, PeriodEventListener {
 	/** The system property that defines the shorthand period in ms. */
 	public static final String PERIOD_PROP = "shorthand.period";
+	/** The system property that defines if the period clock should be disabled, usually for testing purposes */
+	public static final String DISABLE_PERIOD_CLOCK_PROP = "shorthand.period.disabled";
+	
 	/** The default shorthand period in ms, which is 15000 */
 	public static final long DEFAULT_PERIOD = 15000;
 	
@@ -52,8 +57,13 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	public final long periodMs;
 	/** The shutdown hook */
 	private final Thread shutdownHook;
+	/** Indicates if the period clock is disabled */
+	private final boolean clockDisabled;
 	/** A map of Runnable wrapped period listeners keyed by the registered listener */
-	private final Map<PeriodEventListener, PeriodEventListenerWraper> periodListeners = new ConcurrentHashMap<PeriodEventListener, PeriodEventListenerWraper>();
+	private final Map<PeriodEventListener, PeriodEventListenerWrapper> periodListeners = new ConcurrentHashMap<PeriodEventListener, PeriodEventListenerWrapper>();
+	/** A map of Runnable wrapped period completion listeners keyed by the registered listener */
+	private final Map<PeriodEventCompletionListener, PeriodEventCompletionListenerWrapper> periodCompletionListeners = new ConcurrentHashMap<PeriodEventCompletionListener, PeriodEventCompletionListenerWrapper>();
+	
 	/** Synch queue to hold the worker thread executing the flushes so the scheduler only has to calc the period and drop the barrier */
 	private final SynchronousQueue<long[]> periodHandOff = new SynchronousQueue<long[]>(true);  
 	
@@ -80,7 +90,11 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	 */
 	public void registerListener(final PeriodEventListener listener) {
 		if(listener!=null) {
-			periodListeners.put(listener, new PeriodEventListenerWraper(listener));
+			periodListeners.put(listener, new PeriodEventListenerWrapper(listener));
+			if(listener instanceof PeriodEventCompletionListener) {
+				PeriodEventCompletionListener completionListener = (PeriodEventCompletionListener)listener;
+				periodCompletionListeners.put(completionListener, new PeriodEventCompletionListenerWrapper(completionListener));
+			}
 		}
 	}
 	
@@ -91,15 +105,25 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	public void removeListener(final PeriodEventListener listener) {
 		if(listener!=null) {
 			periodListeners.remove(listener);
+			periodCompletionListeners.remove(listener);
 		}
 	}
 	
 	/**
-	 * Returns the current period
+	 * Returns the current period 
 	 * @return a long array with <b><code>{newStartTime, newEndTime, priorStartTime, priorEndTime}</code></b>
 	 */
 	public long[] getCurrentPeriod() {
-		long now = System.currentTimeMillis();		
+		return getCurrentPeriod(System.currentTimeMillis());
+	}
+	
+	
+	/**
+	 * Returns the current period
+	 * @param now The current timestamp in millis
+	 * @return a long array with <b><code>{newStartTime, newEndTime, priorStartTime, priorEndTime}</code></b>
+	 */
+	public long[] getCurrentPeriod(long now) {			
 		long newStartTime = now - (now%periodMs)+1000;
 		long newEndTime = newStartTime+periodMs-1000;
 		long priorStartTime = newStartTime-periodMs;
@@ -131,7 +155,10 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 				} catch (Exception ex) {/* No Op */}
 			}
 		};
-		
+		clockDisabled = ConfigurationHelper.getBooleanSystemThenEnvProperty(DISABLE_PERIOD_CLOCK_PROP, false);
+		if(clockDisabled) {
+			log("\n\t================================================\n\tPERIOD CLOCK DISABLED\n\t================================================\n");
+		}
 		periodMs = getPeriod();
 		int cores = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
 		threadPool = new ThreadPoolExecutor(2,cores,(periodMs*2), TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(10, true), this, this);
@@ -142,37 +169,57 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 		
 		long[] periodData = getCurrentPeriod();
 		final AtomicReference<ScheduledFuture> scheduleHandle = new AtomicReference<ScheduledFuture>(null);
-		scheduleHandle.set(scheduler.scheduleAtFixedRate(new Runnable(){public void run() {
-			int nonDaemons = tmx.getThreadCount()-tmx.getDaemonThreadCount();
-			//log("NON DAEMONS: [%s / %s]", nonDaemons, nonDaemonThreadCount);
-			if(nonDaemons==nonDaemonThreadCount-1) {
-				Thread t = new Thread("PeriodHandOffSniper") {
-					public void run() {
-						log("PeriodClock is last non-daemon thread. Killing it.");
-						
-						scheduleHandle.get().cancel(true);						
-					}
-				};
-				t.setDaemon(true);
-				t.start();
-			}
-			periodHandOff.offer(getCurrentPeriod());
-		}}, Math.abs(System.currentTimeMillis()-periodData[NEW_END]), periodMs, TimeUnit.MILLISECONDS));
+		if(!clockDisabled) {
+			scheduleHandle.set(scheduler.scheduleAtFixedRate(new Runnable(){public void run() {
+				int nonDaemons = tmx.getThreadCount()-tmx.getDaemonThreadCount();
+				//log("NON DAEMONS: [%s / %s]", nonDaemons, nonDaemonThreadCount);
+				if(nonDaemons==nonDaemonThreadCount-1) {
+					Thread t = new Thread("PeriodHandOffSniper") {
+						public void run() {
+							log("PeriodClock is last non-daemon thread. Killing it.");
+							
+							scheduleHandle.get().cancel(true);						
+						}
+					};
+					t.setDaemon(true);
+					t.start();
+				}
+				periodHandOff.offer(getCurrentPeriod());
+			}}, Math.abs(System.currentTimeMillis()-periodData[NEW_END]), periodMs, TimeUnit.MILLISECONDS));
+		}
 		threadPool.prestartAllCoreThreads();
 		threadPool.execute(new Runnable(){
 			public void run() {
 				while(true) {
 					try {
 						long[] periods = periodHandOff.take();
+						log("Firing Period Event agains [%s] registered listeners", periodListeners.size());
+						long startTime = System.nanoTime();
 						for(PeriodEventListener listener: periodListeners.values()) {
 							listener.onNewPeriod(periods[0], periods[1], periods[2], periods[3]);
+						}						
+						threadPool.invokeAll(periodListeners.values());
+						long elapsedTime = System.nanoTime()-startTime;
+						for(PeriodEventCompletionListener listener: periodCompletionListeners.values()) { 
+							listener.periodEventComplete(periods, elapsedTime);
 						}
 					} catch (Exception ex) {/* No Op */}
 				}
 			}
 		});
-		log("Period Clock Created. \n\tPeriod is [%s] ms. \n\tCurrent Time: [%s] \n\tCurrent Period Start: [%s] \n\tCurrent Period End: [%s]", periodMs, new Date(periodData[TS]), new Date(periodData[NEW_START]), new Date(periodData[NEW_END]));
+		if(!clockDisabled) log("Period Clock Created. \n\tPeriod is [%s] ms. \n\tCurrent Time: [%s] \n\tCurrent Period Start: [%s] \n\tCurrent Period End: [%s]", periodMs, new Date(periodData[TS]), new Date(periodData[NEW_START]), new Date(periodData[NEW_END]));
 		
+	}
+	
+	/**
+	 * Triggers a flush to the store
+	 * @param period The current period (see {@link #getCurrentPeriod()})
+	 */
+	public void triggerFlush(long[] period) {
+		if(!clockDisabled) {
+			throw new RuntimeException("The period clock is enabled so manual flushes are not allowed");
+		}
+		periodHandOff.offer(period);
 	}
 	
 	public static void main(String[] args) {
@@ -190,6 +237,14 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 		System.out.println(String.format("[PeriodClock]" + fmt, args));
 	}
 
+	/**
+	 * Indicates if the period clock is disabled
+	 * @return true if the period clock is disabled, false otherwise
+	 */
+	public boolean isPeriodClockDisabled() {
+		return clockDisabled;
+	}
+	
 	/**
 	 * {@inheritDoc}
 	 * @see java.lang.Thread.UncaughtExceptionHandler#uncaughtException(java.lang.Thread, java.lang.Throwable)
@@ -232,32 +287,33 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	}
 
 	/**
-	 * <p>Title: PeriodEventListenerWraper</p>
+	 * <p>Title: PeriodEventListenerWrapper</p>
 	 * <p>Description: A runnable wrapper for registered {@link PeriodEventListener}</p> 
 	 * <p>Company: Helios Development Group LLC</p>
 	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
-	 * <p><code>com.heliosapm.shorthand.accumulator.PeriodClock.PeriodEventListenerWraper</code></p>
+	 * <p><code>com.heliosapm.shorthand.accumulator.PeriodClock.PeriodEventListenerWrapper</code></p>
 	 */
-	private class PeriodEventListenerWraper implements PeriodEventListener, Runnable {
+	private class PeriodEventListenerWrapper implements PeriodEventListener, Callable<Void> {
 		/** The delegate listener */
-		private final PeriodEventListener delegate;
+		protected final PeriodEventListener delegate;
 		/** the invocation values */
-		private long[] values = null;
+		protected long[] values = null;
 		/**
 		 * Creates a new PeriodEventListenerWraper
 		 * @param delegate the delegate listener
 		 */
-		public PeriodEventListenerWraper(PeriodEventListener delegate) {
+		public PeriodEventListenerWrapper(PeriodEventListener delegate) {
 			this.delegate = delegate;
 		}
+
 		/**
 		 * {@inheritDoc}
-		 * @see java.lang.Runnable#run()
+		 * @see java.util.concurrent.Callable#call()
 		 */
 		@Override
-		public void run() {
+		public Void call() {
 			delegate.onNewPeriod(values[0], values[1], values[2], values[3]);
-			
+			return null;			
 		}
 
 		/**
@@ -266,9 +322,44 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 		 */
 		@Override
 		public void onNewPeriod(long newStartTime, long newEndTime, long priorStartTime, long priorEndTime) {
-			values = new long[]{newStartTime, newEndTime, priorStartTime, priorEndTime};
-			threadPool.execute(this);
+			values = new long[]{newStartTime, newEndTime, priorStartTime, priorEndTime};			
 		}
+	}
+	
+	private class PeriodEventCompletionListenerWrapper extends PeriodEventListenerWrapper implements PeriodEventCompletionListener {
+		/**
+		 * Creates a new PeriodEventCompletionListenerWrapper
+		 * @param delegate
+		 */
+		public PeriodEventCompletionListenerWrapper(PeriodEventCompletionListener delegate) {
+			super(delegate);
+		}
+		
+		
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.accumulator.PeriodClock.PeriodEventListenerWrapper#onNewPeriod(long, long, long, long)
+		 */
+		@Override
+		public void onNewPeriod(long newStartTime, long newEndTime, long priorStartTime, long priorEndTime) {
+			super.onNewPeriod(newStartTime, newEndTime, priorStartTime, priorEndTime);
+			
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.accumulator.PeriodEventCompletionListener#periodEventComplete(long[], long)
+		 */
+		@Override
+		public void periodEventComplete(final long[] period, final long elapsedNanos) {
+			log("[" + getClass().getSimpleName() + "] Period Event Complete in [%s] nanos", elapsedNanos);
+			threadPool.execute(new Runnable() {
+				public void run() {
+					((PeriodEventCompletionListener)delegate).periodEventComplete(period, elapsedNanos);
+				}
+			});
+		}
+		
 	}
 
 	/**

@@ -34,6 +34,13 @@ public interface ICollector<T extends Enum<? extends ICollector<T>>> {
 	public ICollector<?>[] collectors();
 	
 	/**
+	 * Callback to "massage" the values before writing to the tier 1 data store
+	 * @param tier1Values An array of long arrays representing the values keyed by the ordinal of the enum collector
+	 */
+	public void preFlush(long[][] tier1Values);
+
+	
+	/**
 	 * Returns the enum ordinal of this collector
 	 * @return the enum ordinal of this collector
 	 */

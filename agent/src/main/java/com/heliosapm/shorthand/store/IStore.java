@@ -5,7 +5,6 @@ package com.heliosapm.shorthand.store;
 
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 import com.heliosapm.shorthand.collectors.ICollector;
 
@@ -23,6 +22,12 @@ public interface IStore<T extends Enum<T> & ICollector<T>> {
 	 * Loads the snapshot index at startup
 	 */
 	public void loadSnapshotNameIndex();
+	
+	/**
+	 * Clears the name index and tier1 values.
+	 * <b>USE WITH CAUTION.</b>
+	 */
+	public void clear();
 	
 	/**
 	 * Returns a metric pojo for the passed name

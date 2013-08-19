@@ -4,6 +4,7 @@
  */
 package com.heliosapm.shorthand.collectors;
 
+import gnu.trove.map.hash.TIntObjectHashMap;
 import gnu.trove.map.hash.TObjectLongHashMap;
 import gnu.trove.set.hash.TIntHashSet;
 
@@ -59,6 +60,10 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	RETURN_COUNT(seed.next(), false, false, "Method Returns", "retcount", "Method Return Count", new DelegatingMeasurer(new DefaultMeasurer(10)), DataStruct.getInstance(Primitive.LONG, 1, 0), "Count"),
 	/** The total number of invocations of the instrumented method that terminated on an exception */
 	EXCEPTION_COUNT(seed.next(), false, false, "Method Invocation Exceptions ", "exccount", "Method Invocation Exception Count", new DelegatingMeasurer(new DefaultMeasurer(11)), DataStruct.getInstance(Primitive.LONG, 1, 0), "Count");
+	
+	
+	private static final TIntObjectHashMap<MethodInterceptor> ORD2ENUM;
+	
 	
 	/**
 	 * The private enum ctor
@@ -166,7 +171,9 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 		openCloseIndex = bitMaskIndex +1; 
 		TIntHashSet tirs = new TIntHashSet(values.length);
 		int _allMaskIndex = 0, _defaultMaskIndex = 0;
+		ORD2ENUM = new TIntObjectHashMap<MethodInterceptor>(values.length, 0.1f); 
 		for(MethodInterceptor mi: values) {
+			ORD2ENUM.put(mi.ordinal(), mi);
 			_allMaskIndex = mi.enable(_allMaskIndex);
 			if(mi.isDefaultOn()) _defaultMaskIndex = mi.enable(_defaultMaskIndex);
 			if(mi.isRequiresTI) tirs.add(mi.ordinal());
@@ -230,6 +237,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	@Override
 	public Set<MethodInterceptor> getEnabledCollectors(int bitMask) {
 		Set<MethodInterceptor> enabled = EnumSet.noneOf(MethodInterceptor.class);
+		
 		for(MethodInterceptor mi: MethodInterceptor.values()) {
 			if(mi.isEnabled(bitMask)) {
 				enabled.add(mi);
@@ -426,15 +434,31 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 			offset += 8;
 			if(v > UnsafeAdapter.getLong(offset)) UnsafeAdapter.putLong(offset, v);
 			offset += 8;
-			UnsafeAdapter.putLong(offset, rollingAvg(v, UnsafeAdapter.getLong(offset), collectedValues[INVOCATION_COUNT.ordinal()]));
+			// ===============
+			// Changing to capture total and deferring Avg calc to flush 
+			// ===============
+			UnsafeAdapter.putLong(offset, UnsafeAdapter.getLong(offset) + v); 
+			//UnsafeAdapter.putLong(offset, rollingAvg(v, UnsafeAdapter.getLong(offset), collectedValues[INVOCATION_COUNT.ordinal()]));
 		}
 	}
 	
-	private static long rollingAvg(double newVal, double existingVal, long invCount) {
-		double avgInClose = newVal/invCount;
-		if(existingVal==-1L) return (long)avgInClose;		
-		return (long)((avgInClose+existingVal)/2);
+	/**
+	 * Callback to "massage" the values before writing to the tier 1 data store
+	 * @param tier1Values An array of long arrays representing the values keyed by the ordinal of the enum collector
+	 */
+	public void preFlush(long[][] tier1Values) {
+		if(tier1Values[INVOCATION_COUNT.ordinal()].length==0) return;
+		long invCount = tier1Values[INVOCATION_COUNT.ordinal()][0];
+		for(int i = 0; i < tier1Values.length; i++) {
+			if(tier1Values[i].length<1) continue;
+			MethodInterceptor mi = ORD2ENUM.get(i);
+			if(mi.ds.size==3) {
+				tier1Values[i][2] = tier1Values[i][2]/ invCount;
+			}
+		}
 	}
+	
+
 
 	
 	/**

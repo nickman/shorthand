@@ -757,14 +757,15 @@ public class UnsafeLongArray extends UnsafeArray {
     /**
      * Sorts the passed UnsafeLongArray.
      * @param ula The UnsafeLongArray to sort
+     * @return the sorted array
      */
-    public static void sort(UnsafeLongArray ula) {
+    public static UnsafeLongArray sort(UnsafeLongArray ula) {
     	int left = 0;
     	int right = ula.size-1;
         // Use Quicksort on small arrays
         if (right - left < QUICKSORT_THRESHOLD) {
             ula.sort(left, right, true);
-            return;
+            return ula;
         }
 
         /*
@@ -787,7 +788,7 @@ public class UnsafeLongArray extends UnsafeArray {
                 for (int m = MAX_RUN_LENGTH; ++k <= right && ula.a(k - 1) == ula.a(k); ) {
                     if (--m == 0) {
                         ula.sort(left, right, true);
-                        return;
+                        return ula;
                     }
                 }
             }
@@ -798,7 +799,7 @@ public class UnsafeLongArray extends UnsafeArray {
              */
             if (++count == MAX_RUN_COUNT) {
                 ula.sort(left, right, true);
-                return;
+                return ula;
             }
         }
 
@@ -806,7 +807,7 @@ public class UnsafeLongArray extends UnsafeArray {
         if (run[count] == right++) { // The last run contains one element
             run[++count] = right;
         } else if (count == 1) { // The array is already sorted
-            return;
+        	return ula;
         }
 
         
@@ -848,6 +849,7 @@ public class UnsafeLongArray extends UnsafeArray {
             UnsafeLongArray t = ula; ula = b; b = t;
         }
         
+        return ula;
     }
     
 
