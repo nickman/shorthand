@@ -3,6 +3,8 @@
  */
 package com.heliosapm.shorthand.store;
 
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.heliosapm.shorthand.collectors.ICollector;
@@ -19,9 +21,48 @@ import com.heliosapm.shorthand.collectors.ICollector;
 public interface IStore<T extends Enum<T> & ICollector<T>> {
 	/**
 	 * Loads the snapshot index at startup
-	 * @param snapshotIndex the map to load
 	 */
-	public void loadSnapshotNameIndex(ConcurrentHashMap<String, Long> snapshotIndex);
+	public void loadSnapshotNameIndex();
+	
+	/**
+	 * Returns a metric pojo for the passed name
+	 * @param name The name of the metric
+	 * @return the metric or null if the metric for the passed name does not exist or is not loaded
+	 */
+	public IMetric<T> getMetric(String name);
+	
+	/**
+	 * Returns an entry set of all the keys and addresses from the name index
+	 * @return an entry set of all the keys and addresses
+	 */
+	public Set<Map.Entry<String, Long>> indexKeyValues();
+	
+	/**
+	 * Returns the address of a metric's address space
+	 * @param metricName The metric name
+	 * @return The address of the metric space. Will be negative if the metric name
+	 * exists but has not been allocated, or null if the metric name is not found.
+	 */
+	public Long getMetricAddress(String metricName);
+	
+	/**
+	 * Caches a meric memory space address
+	 * @param metricName The metric name
+	 * @param address The address
+	 */
+	public void cacheMetricAddress(String metricName, long address);
+	
+	/**
+	 * Returns the number of entries in the metric name cache
+	 * @return the number of entries in the metric name cache
+	 */
+	public int getMetricCacheSize();
+	
+	/**
+	 * Returns an unmodifiable set of the metric cache keys
+	 * @return an unmodifiable set of the metric cache keys
+	 */
+	public Set<String> getMetricCacheKeys();
 	
 	/**
 	 * Adds a new metric name and returns the new metric name index

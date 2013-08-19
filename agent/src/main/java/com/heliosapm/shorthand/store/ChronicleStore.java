@@ -4,14 +4,17 @@
 package com.heliosapm.shorthand.store;
 
 import gnu.trove.map.hash.TObjectIntHashMap;
+import gnu.trove.map.hash.TObjectLongHashMap;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteOrder;
 import java.util.Date;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
@@ -32,7 +35,7 @@ import com.higherfrequencytrading.chronicle.impl.IntIndexedChronicle;
  * @param <T> The collector set type
  */
 
-public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore<T>, ChronicleStoreMBean {
+public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractStore<T> implements ChronicleStoreMBean {
 	/** The default directory */
 	public static final String DEFAULT_DIRECTORY = String.format("%s%sshorthand", System.getProperty("java.io.tmpdir"), File.separator);
 	/** System property name to override the default directory */
@@ -108,9 +111,80 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		log("Dumping Shorthand DB");
 		ChronicleStore store = new ChronicleStore();
 		long start = System.currentTimeMillis();
-		store.dump();
+		//store.dump();
+		for(String name: store.SNAPSHOT_INDEX) {
+			
+		}
 		long elapsed = System.currentTimeMillis()-start;
 		log("Dump completed in [%s] ms.", elapsed);		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#getMetric(java.lang.String)
+	 */
+	@Override
+	public IMetric<T> getMetric(String name) {
+		Long address = SNAPSHOT_INDEX.get(name);
+		if(address==null) return null;
+		long index = -1;
+		if(address>0) {
+			index = MetricSnapshotAccumulator.HeaderOffsets.NameIndex.get(address);
+		} else {
+			index = Math.abs(address);
+		}
+		Excerpt nex = nameIndex.createExcerpt();
+		Excerpt dex = this.tier1Data.createExcerpt();
+		nex.index(index);
+		nex.skipBytes(2);
+		Class<T> type = (Class<T>) EnumCollectors.getInstance().type(nex.readInt());
+		T[] collectors = type.getEnumConstants();
+		int bitMask = nex.readInt();
+		nex.readByteString(); nex.readLong();
+		long start = nex.readLong(), end = nex.readLong();
+		int dpIndexSize = nex.readInt();
+		
+		Map<T, IMetricDataPoint<T>> dataPoints = new LinkedHashMap<T, IMetricDataPoint<T>>(dpIndexSize);
+		//SimpleMetric(String name, long startTime, long endTime, Map<T, IMetricDataPoint<T>> dataPoints) ;
+		SimpleMetric<T> simpleMetric = new SimpleMetric<T>(name, start, end, dataPoints); 
+		for(int i = 0; i < dpIndexSize; i++) {
+			long dIndex = nex.readLong();
+			if(dIndex < 1L) continue;
+			dataPoints.put(collectors[i], getTier1DataEntry(dex, collectors[i] , dIndex));
+			dex.index(dIndex);
+			dex.skipBytes(10);
+			int ord = dex.readInt();
+			int subCount = dex.readInt();
+			String[] subNames = type.getEnumConstants()[ord].getSubMetricNames();			
+			long[] subValues = new long[subCount];
+			for(int x = 0; x < subCount; x++) {
+				subValues[x] = dex.readLong();
+			}
+		}
+		return simpleMetric;
+	}
+	
+	/**
+	 * Returns a map of the data point values keyed by the submetric name
+	 * @param ex The excerpt to read with. Optional. If null, will create a new tier1 exceprpt and close it on completion.
+	 * @param collector The collector for which datapoints are being retrieved
+	 * @param index The index of the tier1 entry
+	 * @return a map of the data point values keyed by the submetric name
+	 */
+	public IMetricDataPoint<T> getTier1DataEntry(Excerpt ex, T collector, long index) {
+		final boolean hasEx = ex!=null;
+		try {
+			if(!hasEx) ex = this.tier1Data.createExcerpt();
+			ex.position(TIER_1_SIZE);
+			String[] subNames = collector.getSubMetricNames();
+			TObjectLongHashMap<String> map = new TObjectLongHashMap<String>(subNames.length, 0.1f);		
+			for(int i = 0; i < subNames.length; i++) {
+				map.put(subNames[i], ex.readLong());
+			}
+			return new SimpleMetricDataPoint<T>(collector, map);
+		} finally {
+			if(!hasEx) ex.close(); 
+		}
 	}
 	
 	public void dump() {
@@ -222,6 +296,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			tier1Data.useUnsafe(true);
 			writeZeroRec(tier1Data);
 			log(printChronicleDetails(tier1Data));
+			loadSnapshotNameIndex();
 			
 			JMXHelper.registerMBean(this, JMXHelper.objectName("com.heliosapm.shorthand.store:service=Store,type=Chronicle"));
 
@@ -317,7 +392,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * @see com.heliosapm.shorthand.store.IStore#loadSnapshotNameIndex(java.util.concurrent.ConcurrentHashMap)
 	 */
 	@Override
-	public void loadSnapshotNameIndex(final ConcurrentHashMap<String, Long> snapshotIndex) {
+	public void loadSnapshotNameIndex() {
 		log("Loading NameIndex....");
 		long index = 1;
 		while(nameIndexEx.index(index)) {
@@ -332,7 +407,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					loge("Warning: MetricName [%s] had unrecognized enum index [%s]", name, enumIndex);
 					markNameIndexDeleted(nameIndexEx.index());
 				}
-				if(snapshotIndex.put(name, (index * -1L)) != null) {
+				if(SNAPSHOT_INDEX.put(name, (index * -1L)) != null) {
 					log("WARNING:  Duplicate name [" + name + "] at index [" + index + "]");
 				} else {
 					log("Loaded [" + name + "]");

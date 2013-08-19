@@ -42,10 +42,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
 
-	/** The base allocator size and increment */
-	public static final int BASE_SIZE = 16;
-	/** The index of metric name to slab id to find the snapshot */
-	protected final ConcurrentHashMap<String, Long> SNAPSHOT_INDEX;
 	
 	/** Indicates if the mem-spaces should be padded */
 	protected boolean padCache = true;
@@ -149,8 +145,8 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	
 	private MetricSnapshotAccumulator() {	
 		ShorthandJMXConnectorServer.getInstance();
-		SNAPSHOT_INDEX = new ConcurrentHashMap<String, Long>(1024, 0.75f, ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors());
-		store.loadSnapshotNameIndex(SNAPSHOT_INDEX);
+		
+		
 		globalLockAddress = UnsafeAdapter.allocateMemory(SIZE_OF_LONG);		
 		UnsafeAdapter.putLong(globalLockAddress, UNLOCKED);
 		padCache = System.getProperty(USE_POW2_ALLOC_PROP, "true").toLowerCase().trim().equals("true");
@@ -439,7 +435,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 				long address = -1L;
 				String name = null;			
 				
-				for(Map.Entry<String, Long> entry: SNAPSHOT_INDEX.entrySet()) {
+				for(Map.Entry<String, Long> entry: store.indexKeyValues()) {
 					address = entry.getValue();
 					if(address<0) continue;
 					name = entry.getKey();
@@ -521,11 +517,11 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 */
 	public void snap(String metricName, CollectorSet<?> collectorSet, long...collectedValues) {
 		final int bitMask = collectorSet.getBitMask();
-		Long address = SNAPSHOT_INDEX.get(metricName);
+		Long address = store.getMetricAddress(metricName);
 		boolean inited = true;
 		if(address==null || address<1) {
-			synchronized(SNAPSHOT_INDEX) {
-				address = SNAPSHOT_INDEX.get(metricName);				
+			synchronized(store) {
+				address = store.getMetricAddress(metricName);				
 				if(address==null || address<0) {					
 					final long start = System.nanoTime();
 					globalLock();			
@@ -548,7 +544,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 						collectorSet.reset(address);
 						int enumIndex = getEnumIndex((T) collectorSet.getReferenceCollector());
 						initializeHeader(address, (int)memSize, nameIndex, bitMask, enumIndex); 					
-						SNAPSHOT_INDEX.put(metricName, address);	
+						store.cacheMetricAddress(metricName, address);	
 					} catch (Throwable ex) {
 						ex.printStackTrace(System.err);
 					} finally {
@@ -585,7 +581,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		try {
 			try {
 				globalLock();
-				Long address = SNAPSHOT_INDEX.get(metricName);
+				Long address = store.getMetricAddress(metricName);
 				if(address!=null && address>0) {
 					int memSize = UnsafeAdapter.getInt(address + HeaderOffsets.MemSize.offset);
 					copyAddress = allocateMemory(memSize);
@@ -724,8 +720,8 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		Set<String> keys = null;
 		try {
 			globalLock();
-			log("SnapshotIndex Size:" + SNAPSHOT_INDEX.size());
-			keys = SNAPSHOT_INDEX.keySet();
+			log("SnapshotIndex Size:" + store.getMetricCacheSize());
+			keys = store.getMetricCacheKeys();
 			
 			//for(String s: keys) {
 				//log("\t[%s] : %s", s, SNAPSHOT_INDEX.get(s));
@@ -781,9 +777,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	
 	
 	
-	public static void log(Object msg) {
-		System.out.println(msg);
-	}
+
 	public static void log(String fmt, Object...args) {
 		System.out.println(String.format(fmt, args));
 	}
