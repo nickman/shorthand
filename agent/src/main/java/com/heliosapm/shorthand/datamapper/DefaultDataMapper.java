@@ -8,6 +8,7 @@ import gnu.trove.map.hash.TIntLongHashMap;
 import gnu.trove.map.hash.TObjectLongHashMap;
 import gnu.trove.procedure.TObjectLongProcedure;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.Map;
@@ -126,16 +127,26 @@ public class DefaultDataMapper<T extends Enum<T> & ICollector<T>> implements IDa
 	 */
 	@Override
 	public void preFlush(long address) {
-		Map<T, TIntLongHashMap> dataMap = get(address);
-		final long[][] datapoints = new long[dataMap.size()][];
-		int cnt = 0;
-		for(Map.Entry<T, TIntLongHashMap> entry: dataMap.entrySet()) {
-			datapoints[cnt] = entry.getValue().values();
-		}
 		int enumIndex = UnsafeAdapter.getInt(address + MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.offset); 
 		int bitmask = UnsafeAdapter.getInt(address + MetricSnapshotAccumulator.HeaderOffsets.BitMask.offset);
-		EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitmask).iterator().next().preFlush(datapoints);
+		EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitmask).iterator().next().preFlush(address, bitmask);
 	}
+	
+	/**
+	 * Returns the long values of the passed map in ascewnding order of the keys
+	 * @param map The map to get the values from
+	 * @return an array of the map's values
+	 */
+	public static long[] keyOrderedArray(TIntLongHashMap map) {
+		long[] values = new long[map.size()];
+		int[] keys = map.keys();
+		Arrays.sort(keys);
+		for(int i = 0; i < keys.length; i++) {
+			values[i] = map.get(keys[i]);
+		}
+		return values;
+	}
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -160,7 +171,7 @@ public class DefaultDataMapper<T extends Enum<T> & ICollector<T>> implements IDa
 	 */
 	@Override
 	public long[] flush(long address, IStore<T> store, long periodStart, long periodEnd) {
-		return store.updatePeriod(MetricSnapshotAccumulator.HeaderOffsets.NameIndex.get(address), periodStart, periodEnd);
+		return null; //store.updatePeriod(MetricSnapshotAccumulator.HeaderOffsets.NameIndex.get(address), periodStart, periodEnd);
 	}
 
 	

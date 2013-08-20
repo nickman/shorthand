@@ -51,10 +51,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	
 	/** The store impl we're using  FIXME: Needs to be configurable */
 	protected final IStore<T> store = new ChronicleStore<T>();
-	/** The address of the global lock for this instance */
-	protected final long globalLockAddress;
-//	/** The global lock for this instance */
-//	protected final AtomicLong globalLockAddress = new AtomicLong(0L);
 	
 	/** The current total unsafely allocated memory  */
 	protected final AtomicLong unsafeMemoryAllocated = new AtomicLong();
@@ -145,10 +141,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	
 	private MetricSnapshotAccumulator() {	
 		ShorthandJMXConnectorServer.getInstance();
-		
-		
-		globalLockAddress = UnsafeAdapter.allocateMemory(SIZE_OF_LONG);		
-		UnsafeAdapter.putLong(globalLockAddress, UNLOCKED);
 		padCache = System.getProperty(USE_POW2_ALLOC_PROP, "true").toLowerCase().trim().equals("true");
 		ExtendedThreadManager.install();
 		PeriodClock.getInstance().registerListener(this);
@@ -164,118 +156,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		return (Class<T>) EnumCollectors.getInstance().type(index);
 	}
 	
-	/**
-	 * Locks the passed address. Yield spins while waiting for the lock.
-	 * @param address The address of the lock
-	 */
-	protected void lock(long address) {
-
-		long id = Thread.currentThread().getId();
-		int loops = 0;
-//		ReentrantLock lock = SNAPSHOT_LOCKS.get(address);
-//		lock.lock();
-//		while(!lock.compareAndSet(UNLOCKED, id)) {
-		while(!UnsafeAdapter.compareAndSwapLong(null, address, UNLOCKED, id)) {
-			Thread.yield();
-			loops++;
-		}
-////		if(address==globalLockAddress) AccumulatorThreadStats.incrementGlobalLockSpins(loops);
-////		else AccumulatorThreadStats.incrementNameLockSpins(loops);
-		AccumulatorThreadStats.incrementNameLockSpins(loops);		
-	}
-	
-//	/**
-//	 * Read locks the passed address. This only verifies that the lock is not held by anyone else.
-//	 * Yield spins while waiting for the lock.
-//	 * @param address The address of the lock
-//	 * @return true if the lock was acquired without yielding
-//	 */
-//	private boolean readLock(long address) {
-//		boolean unheld = true;
-//		while(!UnsafeAdapter.compareAndSwapLong(null, address, UNLOCKED, UNLOCKED)) {
-//			unheld = false;
-//			Thread.yield();
-//		}
-//		return unheld;
-//	}
-	
-	
-	/**
-	 * Unlocks the passed address
-	 * @param address The address of the lock
-	 */
-	protected void unlock(long address) {		
-//		ReentrantLock lock = SNAPSHOT_LOCKS.get(address);
-//		lock.lock();
-
-//		if(!lock.compareAndSet(Thread.currentThread().getId(), UNLOCKED)) {
-//		
-		if(!UnsafeAdapter.compareAndSwapLong(null, address, Thread.currentThread().getId(), UNLOCKED)) {			
-			System.err.println("[" + Thread.currentThread().toString() + "] Yikes! Tried to unlock, but was not locked.Expected " +  Thread.currentThread().getId());
-		}
-	}
-	
-	/**
-	 * Acquires the read/write global lock address for this accumulator
-	 * This will lock out all other threads while it is held, so it should be used sparingly and released quickly.
-	 * Intended for period flushes or data exports.
-	 */
-	private void globalLockNoYield() {
-		long id = Thread.currentThread().getId();
-		int loops = 0;
-//		while(!globalLockAddress.compareAndSet(UNLOCKED, id)) {
-		while(!UnsafeAdapter.compareAndSwapLong(null, globalLockAddress, UNLOCKED, id)) {			
-			loops++;
-		}
-		AccumulatorThreadStats.incrementGlobalLockSpins(loops);		
-	}
-	
-	/**
-	 * Acquires the read/write global lock address for this accumulator
-	 * This will lock out all other threads while it is held, so it should be used sparingly and released quickly.
-	 * Intended for period flushes or data exports.
-	 */
-	protected void globalLock() {
-		long id = Thread.currentThread().getId();
-		int loops = 0;
-//		while(!globalLockAddress.compareAndSet(UNLOCKED, id)) {
-		while(!UnsafeAdapter.compareAndSwapLong(null, globalLockAddress, UNLOCKED, id)) {			
-			Thread.yield();
-			loops++;
-		}
-		AccumulatorThreadStats.incrementGlobalLockSpins(loops);
-	}
-	
-//	/**
-//	 * Indicates if the global lock is taken
-//	 * @return true if the global lock is taken, false otherwise
-//	 */
-//	protected boolean isGlobalLock() {
-//		return 0!=UnsafeAdapter.getLong(null, globalLockAddress);
-//	}
-	
-//	/**
-//	 * Acquires the read only global lock address for this accumulator.
-//	 * It's not really a read-only since individual metrics can be updated once this lock is acquired,
-//	 * but it is a validation that no one holds the global read/write lock.
-//	 */
-//	protected void globalLockForRead() {
-//		readLock(globalLockAddress);
-//	}
-	
-	/**
-	 * Releases the read/write global lock address for this accumulator
-	 */
-	protected void globalUnlock() {
-		//log(String.format("[%s] Unlocking GlobalLock at [%s]", Thread.currentThread().getName(), globalLockAddress));
-//		unlock(globalLockAddress);
-		long id = Thread.currentThread().getId();
-		if(!UnsafeAdapter.compareAndSwapLong(null, globalLockAddress, id, UNLOCKED)) {
-//		if(!globalLockAddress.compareAndSet(id, UNLOCKED)) {			
-			System.err.println("[" + Thread.currentThread().toString() + "] Yikes! Tried to unlock GLOBAL , but was not locked.");
-			new Throwable().printStackTrace(System.err);
-		}
-	}
 	
 	
 	
@@ -344,21 +224,29 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 */
 	public static enum HeaderOffsets {
 		/** The memory space lock */
-		Lock(0, SIZE_OF_LONG, new HeaderAccessor() { public long get(long address){return UnsafeAdapter.getLong(address);}}),
+		Lock(0, SIZE_OF_LONG),									// At offset 0 
 		/** The metric bitmask */
-		BitMask(Lock.size + Lock.offset, SIZE_OF_INT, new HeaderAccessor() { public long get(long address){return UnsafeAdapter.getInt(address + Lock.size + Lock.offset);}}),
+		BitMask(Lock.size + Lock.offset, SIZE_OF_INT),			// At offset 8
 		/** The enum index */
-		EnumIndex(BitMask.size + BitMask.offset, SIZE_OF_INT, new HeaderAccessor() { public long get(long address){return UnsafeAdapter.getInt(address + BitMask.size + BitMask.offset);}}),
+		EnumIndex(BitMask.size + BitMask.offset, SIZE_OF_INT),	// At offset 12
 		/** The total memory size of this allocation */
-		MemSize(EnumIndex.size + EnumIndex.offset, SIZE_OF_INT, new HeaderAccessor() { public long get(long address){return UnsafeAdapter.getInt(address + EnumIndex.size + EnumIndex.offset);}}),
+		MemSize(EnumIndex.size + EnumIndex.offset, SIZE_OF_INT),// At offset 16
 		/** The name index */
-		NameIndex(MemSize.size + MemSize.offset, SIZE_OF_LONG, new HeaderAccessor() { public long get(long address){return UnsafeAdapter.getLong(address + MemSize.size + MemSize.offset);}});
+		NameIndex(MemSize.size + MemSize.offset, SIZE_OF_LONG); // At offset 20
 		
-		private HeaderOffsets(int offset, int size, HeaderAccessor accessor) {
+		private HeaderOffsets(int offset, int size) {
 			this.offset = offset;
-			this.size = size;
-			this.accessor = accessor;
+			this.size = size;			
 		}
+		
+		public static void main(String[] args) {
+			log("Header Offsets");
+			for(HeaderOffsets off: HeaderOffsets.values()) {
+				log(String.format("[%s] Offset:%s  Size:%s", off.name(), off.offset, off.size));
+			}
+			log("Total Header Size:" + HEADER_SIZE);
+		}
+				
 		
 		/** The length of the header in bytes */
 		public static final long HEADER_SIZE;
@@ -375,16 +263,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		public final int offset;
 		/** The size of this header element */
 		public final int size;
-		/** The accessor for this field */
-		public final HeaderAccessor accessor;
 		
-		public static void main(String[] args) {
-			log("Header Offsets");
-			for(HeaderOffsets off: HeaderOffsets.values()) {
-				log(String.format("[%s] Offset:%s  Size:%s", off.name(), off.offset, off.size));
-			}
-			log("Total Header Size:" + HEADER_SIZE);
-		}
 		
 		/**
 		 * Return the header value at the passed address
@@ -392,25 +271,24 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		 * @return the value as a long (it may be an int)
 		 */
 		public long get(long address) {
-			return accessor.get(address);
+			if(size==4) {
+				return UnsafeAdapter.getInt(address + offset);
+			}
+			return UnsafeAdapter.getLong(address + offset);
 		}
 		
 		/**
-		 * <p>Title: HeaderAccessor</p>
-		 * <p>Description: Header field accessor</p> 
-		 * <p>Company: Helios Development Group LLC</p>
-		 * @author Whitehead (nwhitehead AT heliosdev DOT org)
-		 * <p><code>com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderAccessor</code></p>
+		 * Sets the value of this header at the passed address
+		 * @param address The starting address for these headers
+		 * @param value The value to set the header to
 		 */
-		protected interface HeaderAccessor {
-			/**
-			 * Return the header value at the passed address
-			 * @param address The address
-			 * @return the value as a long (it may be an int)
-			 */
-			public long get(long address);
+		public void set(long address, long value) {
+			if(size==4) {
+				UnsafeAdapter.putInt(address + offset, (int)value);
+			} else {
+				UnsafeAdapter.putLong(address + offset, value);
+			}
 		}
-		
 	}
 	
 	/**
@@ -438,78 +316,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 */
 	@Override
 	public void onNewPeriod(final long newStartTime, final long newEndTime, final long priorStartTime, final long priorEndTime) {
-		long start = System.nanoTime();
-		long tier1Updates = 0;
-		globalLockNoYield();
-		MemSpaceAccessor msa = new MemSpaceAccessor();
-		try {
-			long address = -1L;
-			String name = null;			
-			log("Processing Period Update for [%s] Store Name Index Values", store.getMetricCacheSize());
-			for(Map.Entry<String, Long> entry: store.indexKeyValues()) {
-				address = entry.getValue();
-				if(address<0) continue;
-				name = entry.getKey();
-				lock(address);
-				long addressCopy = -1L;
-				long addressSize = HeaderOffsets.MemSize.accessor.get(address);
-				addressCopy = UnsafeAdapter.allocateMemory(addressSize);
-				UnsafeAdapter.copyMemory(address, addressCopy, addressSize);
-				
-				unlock(address);	
-				msa.setAddress(addressCopy);
-				
-				
-				long nameIndex = HeaderOffsets.NameIndex.get(addressCopy);
-				int enumIndex = (int)HeaderOffsets.EnumIndex.get(addressCopy);
-				int bitMask = (int)HeaderOffsets.BitMask.get(addressCopy);
-				Class<T> collectorType = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
-				
-				IDataMapper<T> dataMapper = DataMapperBuilder.getInstance(collectorType).getIDataMapper(collectorType, bitMask);
-				dataMapper.preFlush(addressCopy);
-				log("Flushing Metric:\n" + new MemSpaceAccessor(addressCopy));
-				
-				
-				T[] collectors = (T[]) EnumCollectors.getInstance().type(enumIndex).getEnumConstants();
-				
-				long[] tier1Indexes = store.updatePeriod(nameIndex, priorStartTime, priorEndTime);
-				long offset = addressCopy + HEADER_SIZE;
-				long[][] tier1Values = new long[tier1Indexes.length][];
-				
-				
-				
-				
-				//updateSlots(long[] indexes, long[][] values);
-				int enabled = 0;
-				
-				for(int x = 0; x < tier1Indexes.length; x++) {
-					long tIndex = tier1Indexes[x];
-					if(tIndex<1) {
-						tier1Values[x] = EMPTY_LONG;
-						continue;
-					}
-					T collector = collectors[x];
-					long[] values = new long[collector.getDataStruct().size];
-					for(int c = 0; c < values.length; c++) {
-						values[c] = UnsafeAdapter.getLong(offset);
-						offset += UnsafeAdapter.LONG_SIZE;
-					}				
-					tier1Values[x] = values;
-				}
-				//collectors[0].preFlush(tier1Values);
-				store.updateSlots(tier1Indexes, tier1Values);
-				tier1Updates += enabled;
-				UnsafeAdapter.freeMemory(addressCopy);
-			}
-		} catch (Exception ex) {
-			ex.printStackTrace(System.err);
-		} finally {
-			globalUnlock();
-		}
-		long elapsed = System.nanoTime()-start; 
-		store.lastFlushTime(elapsed);
-//		log("Period Flush Completed. Elapsed: [%s] ns. ThreadStats:%s", elapsed, AccumulatorThreadStats.report());
-		log(reportSummary("PeriodFlush", elapsed, tier1Updates));
+		store.flush(priorStartTime, priorEndTime);
 		AccumulatorThreadStats.reset();
 	}	
 	
@@ -547,11 +354,11 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		Long address = store.getMetricAddress(metricName);
 		boolean inited = true;
 		if(address==null || address<1) {
-			synchronized(store) {
+			try {
+				store.globalLock();
 				address = store.getMetricAddress(metricName);				
 				if(address==null || address<0) {					
 					final long start = System.nanoTime();
-					globalLock();			
 					try {
 						int requestedMem = (int)(collectorSet.getTotalAllocation() + HEADER_SIZE);
 						long memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
@@ -559,36 +366,36 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 						if(address==null) {
 							nameIndex = store.newMetricName(metricName, (T) collectorSet.getReferenceCollector(), bitMask);
 							inited = false;
-							//log("Creating new metric [%s] with index [%s]", metricName, nameIndex);
 						} else {
 							nameIndex = Math.abs(address);
-							//log("Initializing metric [%s] with index [%s]", metricName, nameIndex);
 						}
 						address = this.allocateMemory(memSize);
 						collectorSet.reset(address);
 						int enumIndex = getEnumIndex((T) collectorSet.getReferenceCollector());
 						initializeHeader(address, (int)memSize, nameIndex, bitMask, enumIndex); 					
-						store.cacheMetricAddress(metricName, address);	
+						store.cacheMetricAddress(metricName, address);
+						long elapsed = System.nanoTime()-start;
+						if(inited) AccumulatorThreadStats.incrementInitMetricTime(elapsed);
+						else AccumulatorThreadStats.incrementNewMetricTime(elapsed);						
 					} catch (Throwable ex) {
 						ex.printStackTrace(System.err);
-					} finally {
-						globalUnlock();
-						long elapsed = System.nanoTime()-start;
-						//log("Prepared metric [" + metricName + "] in [" + elapsed + "] ns.");
-						if(inited) AccumulatorThreadStats.incrementInitMetricTime(elapsed);
-						else AccumulatorThreadStats.incrementNewMetricTime(elapsed);
-						//log(AccumulatorThreadStats.report());
+						return;
 					}					
 				}
+			} finally {
+				store.globalUnlock();
 			}
 		}
+		
 		try {
-			lock(address);			
-			collectorSet.put(address, collectedValues);
-			//log("Processing [%s] with [%s]", metricName, Arrays.toString(collectedValues));
-			
+			if(store.lock(address)) {
+				collectorSet.put(address, collectedValues);				
+			} else {
+				// address has been reset.
+				address = Math.abs(HeaderOffsets.NameIndex.get(address));				
+			}
 		} finally {
-			unlock(address);
+			store.unlock(address);
 		}
 	}
 	
@@ -604,7 +411,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		long copyAddress = -1;
 		try {
 			try {
-				globalLock();
+				store.globalLock();
 				Long address = store.getMetricAddress(metricName);
 				if(address!=null && address>0) {
 					int memSize = UnsafeAdapter.getInt(address + HeaderOffsets.MemSize.offset);
@@ -612,7 +419,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 					UnsafeAdapter.copyMemory(address, copyAddress, memSize);
 				}
 			} finally {
-				globalUnlock();
+				store.globalUnlock();
 			}
 			return procedure.addressSpace(metricName, copyAddress, refs);
 		} finally {
@@ -743,7 +550,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	public String summary() {
 		Set<String> keys = null;
 		try {
-			globalLock();
+			store.globalLock();
 			log("SnapshotIndex Size:" + store.getMetricCacheSize());
 			keys = store.getMetricCacheKeys();
 			
@@ -751,7 +558,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 				//log("\t[%s] : %s", s, SNAPSHOT_INDEX.get(s));
 			//}
 		} finally {
-			globalUnlock();
+			store.globalUnlock();
 		}
 		StringBuilder b = new StringBuilder();
 		for(String metricName: keys) {			

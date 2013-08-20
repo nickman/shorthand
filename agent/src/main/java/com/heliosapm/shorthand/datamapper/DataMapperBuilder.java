@@ -71,7 +71,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	 * @param clazz The class to cast to
 	 * @return the compiler
 	 */
-	public static final <T extends Enum<T> & ICollector<T>> DataMapperBuilder<T> getInstance(Class<T> clazz) {
+	public static final <T extends Enum<T> & ICollector<T>> DataMapperBuilder<T> getInstance() {
 		if(instance==null) {
 			synchronized(lock) {
 				if(instance==null) {
@@ -142,19 +142,23 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	
 	//public void reset(long address, TObjectLongHashMap<ICcomollector<?>> offsets);
 	
-	
-	
-	/**
-	 * Creates a compiled data mapper for the passed collector set
-	 * @param collectorSet The collector set
-	 * @return a compiled data mapper 
-	 */
 	/**
 	 * @param enumCollectorType The enum collector [class] to generate a data mapper for
 	 * @param bitMask The bit mask
 	 * @return a data mapper
 	 */
-	public IDataMapper<T> getIDataMapper(Class<T> enumCollectorType, int bitMask) {
+	public IDataMapper getIDataMapper(String enumCollectorTypeName, int bitMask) {
+		Class<T> clazz = (Class<T>) EnumCollectors.getInstance().typeForName(enumCollectorTypeName);
+		return getIDataMapper(clazz, bitMask);
+	}
+	
+	
+	/**
+	 * @param enumCollectorType The enum collector [class] to generate a data mapper for
+	 * @param bitMask The bit mask
+	 * @return a data mapper
+	 */
+	public IDataMapper getIDataMapper(Class<T> enumCollectorType, int bitMask) {
 		if(!System.getProperty(USE_COMPILED_DATAMAPPERS, "true").toLowerCase().trim().equals("true")) {
 			return DefaultDataMapper.INSTANCE;
 		}
@@ -196,19 +200,19 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 							// can automatically pre-apply
 							// ===============================
 							
-							T[] preApplies = offsets.keySet().iterator().next().getPreApplies(bitMask);
-							
-							if(preApplies.length>0) {
-								for(T _collector: preApplies) {
-									long offset = offsets.get(_collector);
-									//address = $1, offsets = $2, data = $3
-									String cname = _collector.getDeclaringClass().getName() + "." + _collector.name(); 
-									toStringSrc.append(_collector.name()).append("(").append(offset).append("),");
-									putSrc.append("\n\t").append(cname)
-										.append(".apply(").append(offset).append("+$1, $3);");
-									offsets.remove(_collector);
-								}
-							}
+//							T[] preApplies = offsets.keySet().iterator().next().getPreApplies(bitMask);
+//							
+//							if(preApplies.length>0) {
+//								for(T _collector: preApplies) {
+//									long offset = offsets.get(_collector);
+//									//address = $1, offsets = $2, data = $3
+//									String cname = _collector.getDeclaringClass().getName() + "." + _collector.name(); 
+//									toStringSrc.append(_collector.name()).append("(").append(offset).append("),");
+//									putSrc.append("\n\t").append(cname)
+//										.append(".apply(").append(offset).append("+$1, $3);");
+//									offsets.remove(_collector);
+//								}
+//							}
 							
 							// ======================
 							// address space pre loop
@@ -291,6 +295,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						putSrc.append("\n}");
 						toStringSrc.deleteCharAt(toStringSrc.length()-1).append("]\";}");
 						//log("Get Source:\n" + getByAddressSrc.toString());
+						//log("Put Source:\n" + putSrc.toString());
 						putMethod.setBody(putSrc.toString());
 						toStringMethod.setBody(toStringSrc.toString());
 						getMethod.setBody(getSrc.toString());
@@ -316,7 +321,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	
 	public static void main(String[] args) {
 		log("DataMapperBuilder Test");
-		IDataMapper<MethodInterceptor> dataMapper = DataMapperBuilder.getInstance(MethodInterceptor.class).getIDataMapper(MethodInterceptor.class, MethodInterceptor.allMetricsMask);
+		IDataMapper dataMapper = DataMapperBuilder.getInstance().getIDataMapper(MethodInterceptor.class.getName(), MethodInterceptor.allMetricsMask);
 		log("Created data mapper:" + dataMapper.toString());
 	}
 	

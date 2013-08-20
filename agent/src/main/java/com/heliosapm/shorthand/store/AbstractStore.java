@@ -30,6 +30,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
+
 import com.heliosapm.shorthand.collectors.ICollector;
 
 /**
@@ -42,15 +44,15 @@ import com.heliosapm.shorthand.collectors.ICollector;
  */
 
 public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implements IStore<T> {
-
+	
 	/** The index of metric name to slab id to find the snapshot */
-	protected final ConcurrentHashMap<String, Long> SNAPSHOT_INDEX;
+	protected final NonBlockingHashMap<String, Long> SNAPSHOT_INDEX;
 
 	/**
 	 * Creates a new AbstractStore
 	 */
 	public AbstractStore() {
-		SNAPSHOT_INDEX = new ConcurrentHashMap<String, Long>(1024, 0.75f, ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors());
+		SNAPSHOT_INDEX = new NonBlockingHashMap<String, Long>(1024); // 1024, 0.75f, ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors()
 	}
 	
 	/**

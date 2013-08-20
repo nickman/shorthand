@@ -40,8 +40,10 @@ public class UnsafeAdapter {
     public final static long INT_ARRAY_OFFSET;
     /** The size of a <b><code>long</code></b>  */
     public final static long LONG_SIZE = 8;    
-    /** The size of a <b><code>long[][]</code></b> array offset */
+    /** The size of a <b><code>long[]</code></b> array offset */
     public final static long LONG_ARRAY_OFFSET;
+    /** The size of a <b><code>byte[]</code></b> array offset */
+    public final static long BYTE_ARRAY_OFFSET;
     
     /** A map of SAFE memory segments */
     private static ByteBuffer allocatedMemory;
@@ -85,6 +87,7 @@ public class UnsafeAdapter {
             OBJECTS_OFFSET = UNSAFE.arrayBaseOffset(Object[].class);
             INT_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(int[].class);
             LONG_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(long[].class);
+            BYTE_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
             int copyMemCount = 0;
             int setMemCount = 0;
             for(Method method: Unsafe.class.getDeclaredMethods()) {
@@ -993,6 +996,17 @@ public class UnsafeAdapter {
 	public static void putLong(long address, long value) {
 		UNSAFE.putLong(address, value);
 	}
+	
+	/**
+	 * Sets the long values in the array starting at at the specified address
+	 * @param address The address of the target put
+	 * @param values The values to put
+	 * @see sun.misc.Unsafe#putLong(long, long)
+	 */
+	public static void putLongs(long address, long[] values) {
+		copyMemory(values, LONG_ARRAY_OFFSET, null, address, values.length*LONG_SIZE);		
+	}
+	
 
 	/**
 	 * @param arg0

@@ -147,9 +147,11 @@ public class SimpleMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 			b.append("\n\t").append(entry.getKey().name());
 			T collector = entry.getValue().getCollector();
 			TObjectLongHashMap<String> map = entry.getValue().getDataPoints();
+			b.append("\n\t\t");
 			for(String subName: collector.getSubMetricNames()) {
-				b.append("\n\t\t").append(subName).append(":").append(map.get(subName));
+				b.append(subName).append(":").append(map.get(subName)).append(", ");
 			}
+			b.deleteCharAt(b.length()-1); b.deleteCharAt(b.length()-1);
 		}
 		b.append("\n]");
 		return b.toString();

@@ -32,6 +32,7 @@ import java.util.Map;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
+import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
 
 /**
@@ -70,7 +71,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	public void setAddress(long address) {
 		this.address = address;
 		Class<T> type = (Class<T>) EnumCollectors.getInstance().type(getEnumIndex());
-		dataMapper = DataMapperBuilder.getInstance(type).getIDataMapper(type, getBitMask()); 
+		dataMapper = DataMapperBuilder.getInstance().getIDataMapper(type.getName(), getBitMask()); 
 	}
 	
 	/**
@@ -110,11 +111,16 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the datapoints
 	 */
 	public long[][] getDataPoints() {
-		Map<T, TIntLongHashMap> dataMap = dataMapper.get(address);
+		Map<T, TIntLongHashMap> dataMap = dataMapper.get(address);		
 		final long[][] datapoints = new long[dataMap.size()][];
 		int cnt = 0;
 		for(Map.Entry<T, TIntLongHashMap> entry: dataMap.entrySet()) {
-			datapoints[cnt] = entry.getValue().values();
+			long values[] = new long[entry.getKey().getSubMetricNames().length];
+			for(int i = 0; i < values.length; i++) {
+				values[i] = entry.getValue().get(i);
+			}
+			datapoints[cnt] = DefaultDataMapper.keyOrderedArray(entry.getValue());
+			cnt++;
 		}
 		return datapoints;
 	}
@@ -134,9 +140,12 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 		b.append(" memsize:").append(getMemSize());
 
 		for(Map.Entry<T, TIntLongHashMap> entry: dataMap.entrySet()) {
-			b.append("\n\t").append(entry.getKey().name()).append(":").append(Arrays.toString(entry.getValue().values()));
+			b.append("\n\t").append(entry.getKey().name()).append(":").append(Arrays.toString(DefaultDataMapper.keyOrderedArray(entry.getValue())));
 		}
 		return b.toString();
 	}
+	
+
+	
 
 }

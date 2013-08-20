@@ -59,6 +59,12 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	public final long periodMs;
 	/** The shutdown hook */
 	private final Thread shutdownHook;
+	
+	/** Indicates if the scheduler thread has been assigned */
+	private boolean hasSchedulerThreadBeenAssigned = false;
+	/** The thread group that the worker threads are put into */
+	private final ThreadGroup periodHandOffThreadGroup = new ThreadGroup("PeriodHandOffThreadGroup");
+	
 	/** Indicates if the period clock is disabled */
 	private final boolean clockDisabled;
 	/** A map of Runnable wrapped period listeners keyed by the registered listener */
@@ -188,6 +194,7 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 			public void run() {
 				try { scheduler.shutdownNow(); } catch (Exception ex) {/* No Op */}
 				try { threadPool.shutdown(); } catch (Exception ex) {/* No Op */}
+				periodHandOffThreadGroup.interrupt();
 				try { 
 					if(threadPool.awaitTermination(periodMs/4, TimeUnit.MILLISECONDS)) {
 						log("Threadpool Clean Shutdown");
@@ -230,7 +237,7 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 		}
 		threadPool.prestartAllCoreThreads();
 		threadPool.execute(new Runnable(){
-			public void run() {
+			public void run() {				
 				while(true) {
 					try {
 						long[] periods = periodHandOff.take();
@@ -244,6 +251,8 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 						for(PeriodEventCompletionListener listener: periodCompletionListeners.values()) { 
 							listener.periodEventComplete(periods, elapsedTime);
 						}
+					} catch (InterruptedException iex) {
+						if(threadPool.isTerminating() || threadPool.isTerminated()) break;
 					} catch (Exception ex) {/* No Op */}
 				}
 			}
@@ -306,7 +315,6 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	}
 	
 
-	private boolean hasSchedulerThreadBeenAssigned = false;
 	/**
 	 * {@inheritDoc}
 	 * @see java.util.concurrent.ThreadFactory#newThread(java.lang.Runnable)
@@ -319,7 +327,8 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 			t = new Thread(r, "PeriodClockSchedulerThread#" + serial.incrementAndGet());
 			t.setDaemon(false);
 		} else {
-			t = new Thread(r, "PeriodClockWorkerThread#" + serial.incrementAndGet());
+			
+			t = new Thread(periodHandOffThreadGroup, r, "PeriodClockWorkerThread#" + serial.incrementAndGet());
 			t.setDaemon(true);
 		}
 		t.setUncaughtExceptionHandler(this);

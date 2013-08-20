@@ -14,9 +14,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
+
+import com.heliosapm.shorthand.accumulator.AccumulatorThreadStats;
+import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
+import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
+import com.heliosapm.shorthand.datamapper.IDataMapper;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
 import com.heliosapm.shorthand.util.OrderedShutdownService;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
@@ -26,6 +33,7 @@ import com.higherfrequencytrading.chronicle.Chronicle;
 import com.higherfrequencytrading.chronicle.Excerpt;
 import com.higherfrequencytrading.chronicle.impl.IndexedChronicle;
 import com.higherfrequencytrading.chronicle.impl.IntIndexedChronicle;
+import com.higherfrequencytrading.chronicle.impl.UnsafeExcerpt;
 
 /**
  * <p>Title: ChronicleStore</p>
@@ -86,6 +94,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	protected final Excerpt enumIndexEx;
 	/** The tier 1 data chronicle */
 	protected final IndexedChronicle tier1Data;
+	
+	/** The address of the global lock for this instance */
+	protected final long globalLockAddress;
+
 	
 	/** A sliding window of flush elapsed times in ns. */
 	protected final ConcurrentLongSlidingWindow flushTimes = new ConcurrentLongSlidingWindow(100); 
@@ -334,6 +346,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 					try { nameIndex.close(); } catch (Exception ex) {}
 				}
 			});
+		globalLockAddress = UnsafeAdapter.allocateMemory(UnsafeAdapter.LONG_SIZE);
+		UnsafeAdapter.putLong(globalLockAddress, UNLOCKED);
 		
 	}
 	
@@ -509,13 +523,11 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			4 + 				// (int) the enum index 
 			4;	 				// (int) the enabled bitmask
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#updatePeriod(long, long, long)
-	 */
-	@Override
-	public long[] updatePeriod(long nameIndex, long periodStart, long periodEnd) {
-		nameIndexEx.index(nameIndex);
+	
+	
+	public void updatePeriod(MemSpaceAccessor<T> memSpaceAccessor, long periodStart, long periodEnd) {
+		final long start = System.nanoTime();
+		nameIndexEx.index(memSpaceAccessor.getNameIndex());
 		// skip to the name
 		nameIndexEx.position(CR_TS_INDEX);
 		// read the name
@@ -528,50 +540,148 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		// read the number of tier addresses
 		int tierAddressCount = nameIndexEx.readInt();
 		long[] tierAddresses = new long[tierAddressCount];
-		// read the tier addresses
 		for(int i = 0; i < tierAddressCount; i++) {
 			tierAddresses[i] = nameIndexEx.readLong();
 		}
-		// done
+		Excerpt ex = tier1Data.createExcerpt();
+		updateSlots(ex, tierAddresses, memSpaceAccessor.getDataPoints());
+		ex.close();
 		nameIndexEx.finish();
-		return tierAddresses;		
+		final long elapsed = System.nanoTime()-start;
+		
 	}
+	
 	
 
 	
 	
-	public void updateSlots(long[] indexes, long[][] values) {
-		Excerpt ex = tier1Data.createExcerpt();
+	/**
+	 * Updates the live tier for a flush
+	 * @param ex The excerpt to write with
+	 * @param indexes The indexes to write to
+	 * @param values The values to write
+	 */
+	public void updateSlots(Excerpt ex, long[] indexes, long[][] values) {
 		try {
+			int vindex = 0;
 			for(int i = 0; i < indexes.length; i++) {
 				long index = indexes[i];
 				if(index < 1) continue;
 				ex.index(index);
-				ex.position(TIER_1_SIZE-4);
-				int slots = ex.readInt();
-				if(slots!=values[i].length) {
-					loge("Invalid slot update. Slot count is [%s] but values array length is [%s]", slots, values[i].length);
-					return;
-				}
-				for(long value: values[i]) {
-					ex.writeLong(value);
-				}
+				ex.position(TIER_1_SIZE);
+				
+//				ex.position(TIER_1_SIZE-4);
+//				int slots = ex.readInt();
+//				if(slots!=values[vindex].length) {
+//					loge("Invalid slot update. Slot count is [%s] but values array length is [%s]", slots, values[vindex].length);
+//					return;
+//				}
+				writeLongArray(ex, values[vindex]);
+//				for(long value: values[vindex]) {
+//					ex.writeLong(value);
+//				}
 				ex.finish();
+				vindex++;
 			}
 		} catch (Exception x) {
 			x.printStackTrace(System.err);
-		} finally {
-			ex.close();
 		}
 	}
 	
-	public static final int TIER_1_SIZEX = 
-			1+ 					// the lock
-			1+ 					// the delete indicator 
-			8+ 					// the name index
-			4+ 					// the enum ordinal index 
-			4; 					// the sub metric count
+	/**
+	 * Writes the entire content of a long array to the current offset in the passed excerpt
+	 * @param ex the excerpt to write to
+	 * @param values the logn array to write
+	 */
+	protected void writeLongArray(Excerpt ex, long[] values) {
+		if(values==null || values.length==0) return;
+		int byteCount = (int)(values.length*UnsafeAdapter.LONG_SIZE);
+		byte[] bytes = new byte[byteCount];
+		UnsafeAdapter.copyMemory(values, UnsafeAdapter.LONG_ARRAY_OFFSET, bytes, UnsafeAdapter.BYTE_ARRAY_OFFSET, byteCount);
+		ex.write(bytes);
+	}
 	
+	
+	public void flush(long  priorStartTime, long priorEndTime) {
+		long tier1Updates = 0;
+		/// ===== Capture 1st and 2nd phase flush elapsed times
+		globalLockNoYield();
+		MemSpaceAccessor<T> msa = new MemSpaceAccessor<T>();  
+		try {
+			long address = -1L;			
+			log("Processing Period Update for [%s] Store Name Index Values", getMetricCacheSize());
+			for(Map.Entry<String, Long> entry: SNAPSHOT_INDEX.entrySet()) {
+				address = entry.getValue();
+				if(address<0) continue;
+				lockNoYield(address);
+				int enumIndex = (int)HeaderOffsets.EnumIndex.get(address);
+				int bitMask = (int)HeaderOffsets.BitMask.get(address);
+				Class<T> collectorType = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
+				
+				long addressCopy = -1L;
+				long addressSize = HeaderOffsets.MemSize.get(address);
+				addressCopy = UnsafeAdapter.allocateMemory(addressSize);
+				UnsafeAdapter.copyMemory(address, addressCopy, addressSize);
+				
+				collectorType.getEnumConstants()[0].resetMemSpace(address, bitMask);
+				unlock(address);	
+				
+				
+				IDataMapper<T> dataMapper = DataMapperBuilder.getInstance().getIDataMapper(collectorType.getName(), bitMask);
+				dataMapper.preFlush(addressCopy);
+				msa.setAddress(addressCopy);
+				//log("Flusing:\n" + msa);
+				
+				updatePeriod(msa, priorStartTime, priorEndTime);
+				UnsafeAdapter.freeMemory(addressCopy);
+			}
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+		} finally {
+			globalUnlock();
+		}
+		
+	}
+	
+	public NonBlockingHashMap<String, Long> dirtyBuffers() {
+		MetricSnapshotAccumulator msa = MetricSnapshotAccumulator.getInstance();
+		NonBlockingHashMap<String, Long> dirty = new NonBlockingHashMap<String, Long>(SNAPSHOT_INDEX.size());
+		for(Map.Entry<String, Long> entry: SNAPSHOT_INDEX.entrySet()) {
+			
+			long dirtyAddress = entry.getValue();
+			// ==================================================
+			// FIXME
+			// Do we need to check for invalidated memspaces ?
+			// ==================================================
+			lock(dirtyAddress);
+			dirty.put(entry.getKey(), dirtyAddress);
+			if(dirtyAddress<0) continue;
+			long memSize = MetricSnapshotAccumulator.HeaderOffsets.MemSize.get(dirtyAddress);
+			long newAddress = UnsafeAdapter.allocateMemory(memSize);
+			UnsafeAdapter.copyMemory(dirtyAddress, newAddress, memSize);
+			int bitMask = (int)MetricSnapshotAccumulator.HeaderOffsets.BitMask.get(dirtyAddress);
+			int enumIndex = (int)MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.get(dirtyAddress);			
+			EnumCollectors.getInstance().type(enumIndex).getEnumConstants()[0].resetMemSpace(newAddress, bitMask);
+			long redirectAddress = UnsafeAdapter.allocateMemory(MetricSnapshotAccumulator.HeaderOffsets.HEADER_SIZE);
+			UnsafeAdapter.copyMemory(dirtyAddress, redirectAddress, MetricSnapshotAccumulator.HeaderOffsets.HEADER_SIZE);
+			MetricSnapshotAccumulator.HeaderOffsets.NameIndex.set(redirectAddress, newAddress*-1);			
+			entry.setValue(redirectAddress);
+			
+		}
+		return dirty;
+	}
+	
+//	protected long[] readLongArray(Excerpt ex, int longCount) {
+//		long[] values = new long[longCount];
+//		long address = ((UnsafeExcerpt)ex). 
+//				ex.     //public long getIndexData(long indexId);  
+//		UnsafeAdapter.copyMemory(null, ex.position(), destBase, destOffset, bytes)
+//		
+//		
+//	}
+	
+	
+
 	/**
 	 * Writes a new metric data slot
 	 * @param nameIndex The name index of the parent name
@@ -598,9 +708,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		
 	}
 	
+
 	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#lastFlushTime(long)
+	 * @param nanos
 	 */
 	public void lastFlushTime(long nanos) {
 		flushTimes.insert(nanos);
@@ -668,8 +778,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public long getAverageFlushElapsedNs() {
-		return flushTimes.avg();
-		
+		return flushTimes.avg();		
 	}
 	/**
 	 * {@inheritDoc}
@@ -677,8 +786,89 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public long getAverageFlushElapsedMs() {
-		return TimeUnit.MILLISECONDS.convert(flushTimes.avg(), TimeUnit.NANOSECONDS);
-		
+		return TimeUnit.MILLISECONDS.convert(flushTimes.avg(), TimeUnit.NANOSECONDS);		
 	}
+	
+	/**
+	 * Locks the passed address. Yield spins while waiting for the lock.
+	 * @param address The address of the lock
+	 * @return indicates if the locked memspace is valid. If false, the memspace 
+	 * has been invalidated and the snapshot index should be re-queried for a new address
+	 */
+	public boolean lock(long address) {
+		long id = Thread.currentThread().getId();
+		int loops = 0;
+		while(!UnsafeAdapter.compareAndSwapLong(null, address, UNLOCKED, id)) {
+			Thread.yield();
+			loops++;
+		}
+		AccumulatorThreadStats.incrementNameLockSpins(loops);
+		return HeaderOffsets.NameIndex.get(address)>0;
+	}
+	
+	
+	/**
+	 * Acquires the passed address with no yielding
+	 * @param address the address to lock
+	 */
+	protected void lockNoYield(long address) {
+		long id = Thread.currentThread().getId();
+		while(!UnsafeAdapter.compareAndSwapLong(null, address, UNLOCKED, id)) {
+			/* No Op */
+		}
+	}
+	
+	
+	/**
+	 * Unlocks the passed address
+	 * @param address The address of the lock
+	 */
+	public void unlock(long address) {		
+		if(!UnsafeAdapter.compareAndSwapLong(null, address, Thread.currentThread().getId(), UNLOCKED)) {			
+			System.err.println("[" + Thread.currentThread().toString() + "] Yikes! Tried to unlock, but was not locked.Expected " +  Thread.currentThread().getId());
+		}
+	}
+	
+	/**
+	 * Acquires the read/write global lock address for this accumulator
+	 * This will lock out all other threads while it is held, so it should be used sparingly and released quickly.
+	 * Intended for period flushes or data exports.
+	 */
+	private void globalLockNoYield() {
+		long id = Thread.currentThread().getId();
+		int loops = 0;
+		while(!UnsafeAdapter.compareAndSwapLong(null, globalLockAddress, UNLOCKED, id)) {			
+			loops++;
+		}
+		AccumulatorThreadStats.incrementGlobalLockSpins(loops);		
+	}
+	
+	/**
+	 * Acquires the read/write global lock address for this accumulator
+	 * This will lock out all other threads while it is held, so it should be used sparingly and released quickly.
+	 * Intended for period flushes or data exports.
+	 */
+	public void globalLock() {
+		long id = Thread.currentThread().getId();
+		int loops = 0;
+		while(!UnsafeAdapter.compareAndSwapLong(null, globalLockAddress, UNLOCKED, id)) {			
+			Thread.yield();
+			loops++;
+		}
+		AccumulatorThreadStats.incrementGlobalLockSpins(loops);
+	}
+	
+	
+	/**
+	 * Releases the read/write global lock address for this accumulator
+	 */
+	public void globalUnlock() {
+		long id = Thread.currentThread().getId();
+		if(!UnsafeAdapter.compareAndSwapLong(null, globalLockAddress, id, UNLOCKED)) {
+			System.err.println("[" + Thread.currentThread().toString() + "] Yikes! Tried to unlock GLOBAL , but was not locked.");
+			new Throwable().printStackTrace(System.err);
+		}
+	}
+	
 
 }

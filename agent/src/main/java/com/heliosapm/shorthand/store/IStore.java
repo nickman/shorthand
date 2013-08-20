@@ -6,7 +6,9 @@ package com.heliosapm.shorthand.store;
 import java.util.Map;
 import java.util.Set;
 
+import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
  * <p>Title: IStore</p>
@@ -18,10 +20,21 @@ import com.heliosapm.shorthand.collectors.ICollector;
  */
 
 public interface IStore<T extends Enum<T> & ICollector<T>> {
+	
+	/** The byte state for unlocked */
+	public static final long UNLOCKED = 0;
+	
 	/**
 	 * Loads the snapshot index at startup
 	 */
 	public void loadSnapshotNameIndex();
+	
+	/**
+	 * Executes a period flush
+	 * @param priorStartTime The period start timestamp
+	 * @param priorEndTime The period end timestamp
+	 */
+	public void flush(long  priorStartTime, long priorEndTime);
 	
 	/**
 	 * Clears the name index and tier1 values.
@@ -79,24 +92,43 @@ public interface IStore<T extends Enum<T> & ICollector<T>> {
 	public long newMetricName(String metricName, T collector, int bitMask);
 	
 	/**
-	 * Updates the period start and end of a name index entry
-	 * @param nameIndex The index of the name
+	 * Updates the name index and live tier of the store
+	 * @param memSpaceAccessor The mem space reader for the accumulator name space being flushed
 	 * @param periodStart The start time of the period being flushed in ms.
 	 * @param periodEnd The end time of the period being flushed in ms.
-	 *  @return The name indexes of the enabled metrics in the live tier
 	 */
-	public long[] updatePeriod(long nameIndex, long periodStart, long periodEnd);
+	public void updatePeriod(MemSpaceAccessor<T> memSpaceAccessor, long periodStart, long periodEnd);
+	
+
+	/**
+	 * Releases the read/write global lock address for this accumulator
+	 */
+	public void globalUnlock();
 	
 	/**
-	 * Updates the data slots in the live tier
-	 * @param indexes The indexes to update
-	 * @param values The data values to update
+	 * Acquires the read/write global lock address for this accumulator
+	 * This will lock out all other threads while it is held, so it should be used sparingly and released quickly.
+	 * Intended for period flushes or data exports.
 	 */
-	public void updateSlots(long[] indexes, long[][] values);
+	public void globalLock();
 	
 	/**
-	 * Pass the last elapsed time of the flush in ns.
-	 * @param nanos the elapsed time in ns.
+	 * Unlocks the passed address
+	 * @param address The address of the lock
 	 */
-	public void lastFlushTime(long nanos);
+	public void unlock(long address);		
+	
+	
+	/**
+	 * Locks the passed address. Yield spins while waiting for the lock.
+	 * @param address The address of the lock
+	 * @return indicates if the locked memspace is valid. If false, the memspace 
+	 * has been invalidated and the snapshot index should be re-queried for a new address
+	 */
+	public boolean lock(long address);	
+
+	
+	
+	
+	
 }

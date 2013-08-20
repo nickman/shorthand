@@ -130,6 +130,15 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 		for(MethodInterceptor mi: MethodInterceptor.values()) {
 			log(mi.name() + " DataStruct:" + mi.ds.dump());
 		}
+		log("Default BitMask:" + defaultMetricsMask);
+		log("All BitMask:" + allMetricsMask);
+		log("Item Count:" + values().length);
+		
+		TObjectLongHashMap<MethodInterceptor> offsets = (TObjectLongHashMap<MethodInterceptor>) EnumCollectors.getInstance().offsets(MethodInterceptor.class.getName(), allMetricsMask);
+		log("Offsets:" + offsets.size());
+		for(MethodInterceptor mi: offsets.keySet()) {
+			log("\t" + mi.name() + " : " + offsets.get(mi));
+		}
 	}
 	
 	public static void log(Object msg) {
@@ -443,22 +452,39 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	}
 	
 	/**
-	 * Callback to "massage" the values before writing to the tier 1 data store
-	 * @param tier1Values An array of long arrays representing the values keyed by the ordinal of the enum collector
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.collectors.ICollector#preFlush(long, int)
 	 */
 	@Override
-	public void preFlush(long[][] tier1Values) {
-		if(tier1Values[INVOCATION_COUNT.ordinal()].length==0) return;
-		long invCount = tier1Values[INVOCATION_COUNT.ordinal()][0];
-		for(int i = 0; i < tier1Values.length; i++) {
-			if(tier1Values[i].length<1) continue;
-			MethodInterceptor mi = ORD2ENUM.get(i);
-			if(mi.ds.size==3) {
-				tier1Values[i][2] = tier1Values[i][2]/ invCount;
-			}
+	public void preFlush(long address, int bitMask) {
+		if(!INVOCATION_COUNT.isEnabled(bitMask)) return;
+		TObjectLongHashMap<MethodInterceptor> offsets =  getOffsets(bitMask);
+		long invCount = UnsafeAdapter.getLong(address + offsets.get(INVOCATION_COUNT));
+		if(invCount<1) return;
+		long offset = address + MetricSnapshotAccumulator.HeaderOffsets.HEADER_SIZE;
+		for(MethodInterceptor mi: getEnabledCollectors(bitMask)) {
+			if(mi.getDataStruct().size!=3) {
+				offset += UnsafeAdapter.LONG_SIZE;				
+			} else {
+				offset += (UnsafeAdapter.LONG_SIZE*2);
+				UnsafeAdapter.putLong(offset, UnsafeAdapter.getLong(offset)/invCount);
+				offset += UnsafeAdapter.LONG_SIZE;
+			}			
 		}
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.collectors.ICollector#resetMemSpace(long, int)
+	 */
+	@Override
+	public void resetMemSpace(long address, int bitmask) {
+		long offset = address + MetricSnapshotAccumulator.HeaderOffsets.HEADER_SIZE;
+		for(MethodInterceptor mi: getEnabledCollectors(bitmask)) {
+			UnsafeAdapter.putLongs(offset, (long[])mi.getDataStruct().defaultValues);
+			offset += (UnsafeAdapter.LONG_SIZE * mi.getDataStruct().size); 
+		}		
+	}
 
 
 	

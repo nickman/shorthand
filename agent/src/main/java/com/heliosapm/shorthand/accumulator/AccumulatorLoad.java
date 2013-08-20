@@ -27,8 +27,8 @@ import com.heliosapm.shorthand.collectors.MethodInterceptor;
 public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionHandler {
 	public static final int THREAD_COUNT = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
 	public static final int WARMUP_LOOPS = 1600;
-	public static final int RUN_LOOPS = 100000;
-	public static final long LOOP_RUN_TIME = 1000; // * 60 *5;
+	public static final int RUN_LOOPS = 1000000;
+	public static final long LOOP_RUN_TIME = 1000 * 60 * 15;
 	public static final int METRIC_COUNT = 20;
 //	public static final int SLEEP_TIME = 10;
 	public static final int BIT_MASK = MethodInterceptor.allMetricsMask & ~MethodInterceptor.USER_CPU.baseMask;

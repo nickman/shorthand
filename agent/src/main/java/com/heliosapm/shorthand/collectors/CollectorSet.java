@@ -79,7 +79,7 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 			offsets.put(t, offset + MetricSnapshotAccumulator.HEADER_SIZE);
 			offset += t.getDataStruct().byteSize;
 		}
-		dataMapper = DataMapperBuilder.getInstance(clazz).getIDataMapper(t.getDeclaringClass(), bitMask);
+		dataMapper = DataMapperBuilder.getInstance().getIDataMapper(t.getDeclaringClass().getName(), bitMask);
 		compiledDataMapper = !dataMapper.getClass().equals(DefaultDataMapper.class);
 	}
 	

@@ -35,9 +35,10 @@ public interface ICollector<T extends Enum<? extends ICollector<T>>> {
 	
 	/**
 	 * Callback to "massage" the values before writing to the tier 1 data store
-	 * @param tier1Values An array of long arrays representing the values keyed by the ordinal of the enum collector
+	 * @param address The address of the metric's memspace in the accumulator
+	 * @param bitMask The configured bitMask
 	 */
-	public void preFlush(long[][] tier1Values);
+	public void preFlush(long address, int bitMask);
 
 	
 	/**
@@ -135,6 +136,13 @@ public interface ICollector<T extends Enum<? extends ICollector<T>>> {
 	 * @return a set of the enabled collectors
 	 */
 	public Set<T> getEnabledCollectors(int bitmask);
+	
+	/**
+	 * Resets the values in a metrics's accumulator memspace after the flush is complete
+	 * @param address The address of the metric's accumulator namespace
+	 * @param bitmask The bitmask of the enabled metrics
+	 */
+	public void resetMemSpace(long address, int bitmask);
 	
 	/**
 	 * Returns an array of pre-apply collectors, in the order in which they should be applied
