@@ -7,13 +7,9 @@ import gnu.trove.map.hash.TIntLongHashMap;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
-import java.util.Date;
-import java.util.EnumMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -21,7 +17,9 @@ import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.collectors.MethodInterceptor;
+import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
 import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
+import com.heliosapm.shorthand.datamapper.IDataMapper;
 import com.heliosapm.shorthand.store.ChronicleStore;
 import com.heliosapm.shorthand.store.IStore;
 import com.heliosapm.shorthand.util.jmx.ShorthandJMXConnectorServer;
@@ -347,7 +345,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	public static enum HeaderOffsets {
 		/** The memory space lock */
 		Lock(0, SIZE_OF_LONG, new HeaderAccessor() { public long get(long address){return UnsafeAdapter.getLong(address);}}),
-		/** The metric bitmaek */
+		/** The metric bitmask */
 		BitMask(Lock.size + Lock.offset, SIZE_OF_INT, new HeaderAccessor() { public long get(long address){return UnsafeAdapter.getInt(address + Lock.size + Lock.offset);}}),
 		/** The enum index */
 		EnumIndex(BitMask.size + BitMask.offset, SIZE_OF_INT, new HeaderAccessor() { public long get(long address){return UnsafeAdapter.getInt(address + BitMask.size + BitMask.offset);}}),
@@ -361,6 +359,18 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 			this.size = size;
 			this.accessor = accessor;
 		}
+		
+		/** The length of the header in bytes */
+		public static final long HEADER_SIZE;
+		
+		static {
+			long offset = 0;
+			for(HeaderOffsets off: HeaderOffsets.values()) {
+				offset += off.size;
+			}
+			HEADER_SIZE = offset;
+		}
+		
 		/** The offset of this header element */
 		public final int offset;
 		/** The size of this header element */
@@ -431,6 +441,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		long start = System.nanoTime();
 		long tier1Updates = 0;
 		globalLockNoYield();
+		MemSpaceAccessor msa = new MemSpaceAccessor();
 		try {
 			long address = -1L;
 			String name = null;			
@@ -444,11 +455,21 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 				long addressSize = HeaderOffsets.MemSize.accessor.get(address);
 				addressCopy = UnsafeAdapter.allocateMemory(addressSize);
 				UnsafeAdapter.copyMemory(address, addressCopy, addressSize);
+				
 				unlock(address);	
+				msa.setAddress(addressCopy);
+				
+				
 				long nameIndex = HeaderOffsets.NameIndex.get(addressCopy);
 				int enumIndex = (int)HeaderOffsets.EnumIndex.get(addressCopy);
-				
 				int bitMask = (int)HeaderOffsets.BitMask.get(addressCopy);
+				Class<T> collectorType = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
+				
+				IDataMapper<T> dataMapper = DataMapperBuilder.getInstance(collectorType).getIDataMapper(collectorType, bitMask);
+				dataMapper.preFlush(addressCopy);
+				log("Flushing Metric:\n" + new MemSpaceAccessor(addressCopy));
+				
+				
 				T[] collectors = (T[]) EnumCollectors.getInstance().type(enumIndex).getEnumConstants();
 				
 				long[] tier1Indexes = store.updatePeriod(nameIndex, priorStartTime, priorEndTime);
@@ -475,7 +496,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 					}				
 					tier1Values[x] = values;
 				}
-				collectors[0].preFlush(tier1Values);
+				//collectors[0].preFlush(tier1Values);
 				store.updateSlots(tier1Indexes, tier1Values);
 				tier1Updates += enabled;
 				UnsafeAdapter.freeMemory(addressCopy);
@@ -543,9 +564,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 							nameIndex = Math.abs(address);
 							//log("Initializing metric [%s] with index [%s]", metricName, nameIndex);
 						}
-						 
-								
-								
 						address = this.allocateMemory(memSize);
 						collectorSet.reset(address);
 						int enumIndex = getEnumIndex((T) collectorSet.getReferenceCollector());

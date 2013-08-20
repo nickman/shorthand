@@ -25,17 +25,17 @@
 package com.heliosapm.shorthand.accumulator;
 import gnu.trove.map.hash.TObjectLongHashMap;
 
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
-import org.junit.Assert;
+import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import test.com.heliosapm.shorthand.FlushCompletionBarrier;
@@ -59,6 +59,31 @@ import com.heliosapm.shorthand.util.unsafe.collections.LongSlidingWindow;
 public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 	/** A flush completion barrier */
 	protected final FlushCompletionBarrier completionBarrier = new FlushCompletionBarrier(5000, TimeUnit.MILLISECONDS); 
+	
+	/**
+	 * Disables the period clock
+	 * @throws java.lang.Exception thrown on any error
+	 */
+	@BeforeClass
+	public static void disablePeriodClock() throws Exception {
+		Method m = PeriodClock.class.getDeclaredMethod("disablePeriodClock");
+		m.setAccessible(true);
+		m.invoke(PeriodClock.getInstance());
+		log("!!! DISABLED PERIOD CLOCK !!!");
+	}
+
+	/**
+	 * Re-enables the period clock
+	 * @throws java.lang.Exception thrown on any error
+	 */
+	@AfterClass
+	public static void enablePeriodClock() throws Exception {
+		Method m = PeriodClock.class.getDeclaredMethod("enablePeriodClock");
+		m.setAccessible(true);
+		m.invoke(PeriodClock.getInstance());
+		log("!!! ENABLED PERIOD CLOCK !!!");
+	}
+	
 	
 	/**
 	 * Registers the completion barrier

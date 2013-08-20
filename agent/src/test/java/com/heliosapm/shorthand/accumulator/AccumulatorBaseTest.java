@@ -27,6 +27,8 @@ package com.heliosapm.shorthand.accumulator;
 import java.util.Arrays;
 import java.util.Date;
 
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Ignore;
 
 import test.com.heliosapm.shorthand.BaseTest;
@@ -48,6 +50,8 @@ public class AccumulatorBaseTest extends BaseTest {
 	protected final MetricSnapshotAccumulator ACCUMULATOR = MetricSnapshotAccumulator.getInstance(); 
 	/** The accumulator store */
 	protected final IStore STORE = ACCUMULATOR.store;
+	
+	
 	
 	/**
 	 * Trigger a period flush

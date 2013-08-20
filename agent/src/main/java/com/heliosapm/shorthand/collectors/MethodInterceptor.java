@@ -446,6 +446,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	 * Callback to "massage" the values before writing to the tier 1 data store
 	 * @param tier1Values An array of long arrays representing the values keyed by the ordinal of the enum collector
 	 */
+	@Override
 	public void preFlush(long[][] tier1Values) {
 		if(tier1Values[INVOCATION_COUNT.ordinal()].length==0) return;
 		long invCount = tier1Values[INVOCATION_COUNT.ordinal()][0];

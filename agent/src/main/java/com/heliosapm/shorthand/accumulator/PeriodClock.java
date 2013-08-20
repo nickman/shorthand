@@ -51,6 +51,8 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	private final ThreadPoolExecutor threadPool;
 	/** The period scheduler */
 	private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1, this);
+	/** The flush schedule handle */
+	private final AtomicReference<ScheduledFuture<?>> scheduleHandle = new AtomicReference<ScheduledFuture<?>>(null);
 	/** Provides serial numbers for created threads */
 	private final AtomicInteger serial = new AtomicInteger();
 	/** The period in ms. */
@@ -65,7 +67,43 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	private final Map<PeriodEventCompletionListener, PeriodEventCompletionListenerWrapper> periodCompletionListeners = new ConcurrentHashMap<PeriodEventCompletionListener, PeriodEventCompletionListenerWrapper>();
 	
 	/** Synch queue to hold the worker thread executing the flushes so the scheduler only has to calc the period and drop the barrier */
-	private final SynchronousQueue<long[]> periodHandOff = new SynchronousQueue<long[]>(true);  
+	private final SynchronousQueue<long[]> periodHandOff = new SynchronousQueue<long[]>(true);
+	
+	/**
+	 * Disables the period clock
+	 */
+	private void disablePeriodClock() {
+		if(!clockDisabled) {
+			periodListeners.clear();
+			periodCompletionListeners.clear();
+			OrderedShutdownService.getInstance().remove(shutdownHook);
+			ScheduledFuture<?> handle = scheduleHandle.get();
+			if(handle!=null) {
+				handle.cancel(true);
+				scheduleHandle.set(null);
+			}
+			System.setProperty(DISABLE_PERIOD_CLOCK_PROP, "true");
+			instance = null;
+			getInstance();
+		}
+		
+	}
+	
+	/**
+	 * Enables the period clock 
+	 */
+	private void enablePeriodClock() {
+		if(clockDisabled) {
+			periodListeners.clear();
+			periodCompletionListeners.clear();
+			OrderedShutdownService.getInstance().remove(shutdownHook);
+			System.setProperty(DISABLE_PERIOD_CLOCK_PROP, "false");
+			instance = null;
+			getInstance();
+		}
+		
+	}
+	
 	
 	/**
 	 * Acquires the PeriodClock singleton instance
@@ -137,6 +175,10 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	private static final int PRIOR_END = 3;
 	private static final int TS = 4;
 	
+	private void shutdown() {
+		
+	}
+	
 	/**
 	 * Creates a new PeriodClock
 	 */
@@ -168,7 +210,7 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 		OrderedShutdownService.getInstance().add(shutdownHook);
 		
 		long[] periodData = getCurrentPeriod();
-		final AtomicReference<ScheduledFuture> scheduleHandle = new AtomicReference<ScheduledFuture>(null);
+		
 		if(!clockDisabled) {
 			scheduleHandle.set(scheduler.scheduleAtFixedRate(new Runnable(){public void run() {
 				int nonDaemons = tmx.getThreadCount()-tmx.getDaemonThreadCount();
@@ -176,8 +218,7 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 				if(nonDaemons==nonDaemonThreadCount-1) {
 					Thread t = new Thread("PeriodHandOffSniper") {
 						public void run() {
-							log("PeriodClock is last non-daemon thread. Killing it.");
-							
+							log("PeriodClock is last non-daemon thread. Killing it.");							
 							scheduleHandle.get().cancel(true);						
 						}
 					};

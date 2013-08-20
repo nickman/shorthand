@@ -61,6 +61,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	private final CtMethod dataMapperResetMethod;
 	private final CtMethod dataMappertoStringMethod;
 	private final CtMethod dataMapperGetMethod;
+	private final CtMethod dataMapperGetByAddressMethod;
 	
 	/** A map of already created data mappers keyed by enum-name/bitmask */
 	private final Map<String, IDataMapper> dataMappers = new ConcurrentHashMap<String, IDataMapper>();
@@ -105,7 +106,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 			dataMapperIface = cp.get(IDataMapper.class.getName());
 			dataMapperSuper = cp.get(DefaultDataMapper.class.getName());
 			copiedAddressProcedureIface = cp.get(CopiedAddressProcedure.class.getName());
-			CtMethod _dataMapperPutMethod = null, _dataMapperResetMethod = null, _dataMapperPrePutMethod = null, _dataMapperGetMethod = null;
+			CtMethod _dataMapperPutMethod = null, _dataMapperResetMethod = null, _dataMapperPrePutMethod = null, _dataMapperGetMethod = null, _dataMapperGetByAddressMethod = null;
 			for(CtMethod cm: dataMapperIface.getDeclaredMethods()) {
 				if("put".equals(cm.getName())) {
 					_dataMapperPutMethod = cm;					
@@ -114,13 +115,18 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 				} else if("prePut".equals(cm.getName())) {
 					_dataMapperPrePutMethod = cm;
 				} else if("get".equals(cm.getName())) {
-					_dataMapperGetMethod = cm;
+					if(cm.getParameterTypes()[0].equals(CtClass.longType)) {
+						_dataMapperGetByAddressMethod = cm;
+					} else {
+						_dataMapperGetMethod = cm;
+					}
 				}
 			}
 			dataMapperPutMethod = _dataMapperPutMethod;
 			dataMapperResetMethod = _dataMapperResetMethod;
 			dataMapperPrePutMethod = _dataMapperPrePutMethod;
 			dataMapperGetMethod = _dataMapperGetMethod;
+			dataMapperGetByAddressMethod = _dataMapperGetByAddressMethod;
 			dataMappertoStringMethod = new CtMethod(stringClazz, "toString", EMPTY_SIG, objectClazz);
 			copiedAddressMethod = new CtMethod(objectClazz, "addressSpace", new CtClass[]{stringClazz, CtClass.longType, objectArrClazz}, copiedAddressProcedureIface);
 			
@@ -128,6 +134,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 			if(dataMapperResetMethod==null) {throw new RuntimeException("Failed to find reset put method"); }
 			if(dataMapperPrePutMethod==null) {throw new RuntimeException("Failed to find prePut method"); }
 			if(dataMapperGetMethod==null) {throw new RuntimeException("Failed to find get method"); }
+			if(dataMapperGetByAddressMethod==null) {throw new RuntimeException("Failed to find get method"); }
 		} catch (NotFoundException e) {
 			throw new RuntimeException("Failed to get CtClass for DefaultDataMapper", e);
 		}
@@ -162,12 +169,13 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						CtMethod putMethod = new CtMethod(dataMapperPutMethod.getReturnType(), dataMapperPutMethod.getName(), dataMapperPutMethod.getParameterTypes(), clazz);
 						CtMethod toStringMethod  = new CtMethod(dataMappertoStringMethod.getReturnType(), dataMappertoStringMethod.getName(), dataMappertoStringMethod.getParameterTypes(), clazz);
 						CtMethod getMethod  = new CtMethod(dataMapperGetMethod.getReturnType(), dataMapperGetMethod.getName(), dataMapperGetMethod.getParameterTypes(), clazz);
+						CtMethod getByAddressMethod  = new CtMethod(dataMapperGetByAddressMethod.getReturnType(), dataMapperGetByAddressMethod.getName(), dataMapperGetByAddressMethod.getParameterTypes(), clazz);
 						CtMethod addrsSpaceMethod = new CtMethod(copiedAddressMethod.getReturnType(), copiedAddressMethod.getName(), copiedAddressMethod.getParameterTypes(), clazz);
 						
 						clazz.addMethod(putMethod);
 						clazz.addMethod(toStringMethod);
 						clazz.addMethod(getMethod);
-						
+						clazz.addMethod(getByAddressMethod);
 						
 						clazz.addInterface(copiedAddressProcedureIface);
 						clazz.addMethod(addrsSpaceMethod);
@@ -177,7 +185,8 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						final TObjectLongHashMap<T> offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(enumCollectorType.getName(), bitMask);
 
 
-						final StringBuilder getSrc = new StringBuilder("{\n\treturn MetricSnapshotAccumulator.getInstance().getMemorySpaceCopy($1, this, EMPTY_ARR);\n}"); 
+						final StringBuilder getSrc = new StringBuilder("{\n\treturn MetricSnapshotAccumulator.getInstance().getMemorySpaceCopy($1, this, EMPTY_ARR);\n}");
+						final StringBuilder getByAddressSrc = new StringBuilder("{\n\t");
 						final StringBuilder putSrc = new StringBuilder("{");
 						final StringBuilder addressSpaceSrc = new StringBuilder("{");
 						final StringBuilder toStringSrc = new StringBuilder(String.format("{ return \"CompiledDataMapper Collector [%s] BitMask[%s] [", enumCollectorType.getSimpleName(), bitMask));
@@ -207,10 +216,17 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 							
 							
 							addressSpaceSrc.append("\n\tlong copyAddress = -1;");
-							
 							addressSpaceSrc.append("\n\tTIntLongHashMap data;"); 
 							addressSpaceSrc.append("\n\tlong[] values;");
 							addressSpaceSrc.append("\n\tint i;");
+							
+							
+							getByAddressSrc.append("\n\tTIntLongHashMap data;"); 
+							getByAddressSrc.append("\n\tlong[] values;");
+							getByAddressSrc.append("\n\tint i;");
+
+							
+							
 							
 							addressSpaceSrc.append("\n\t\tif(copyAddress==-1L) return Collections.emptyMap();");
 							addressSpaceSrc.append("\n\t\tint enumIndex = UnsafeAdapter.getInt(copyAddress + MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.offset);"); 
@@ -219,6 +235,14 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 							addressSpaceSrc.append("\n\t\tClass enumClass = EnumCollectors.getInstance().type(enumIndex);");
 							addressSpaceSrc.append("\n\t\tif(!enumClass.equals(").append(enumCollectorType.getName()).append(".class))  throw new RuntimeException(\"enum class mismatch\");");
 							addressSpaceSrc.append("\n\t\tfinal Map map = new EnumMap(enumClass);");
+							
+							getByAddressSrc.append("\n\t\tint enumIndex = UnsafeAdapter.getInt($1 + MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.offset);"); 
+							getByAddressSrc.append("\n\t\tint bitmask = UnsafeAdapter.getInt($1 + MetricSnapshotAccumulator.HeaderOffsets.BitMask.offset);");
+							getByAddressSrc.append("\n\t\tif(bitmask !=").append(bitMask).append(")  throw new RuntimeException(\"bitMask mismatch\");");
+							getByAddressSrc.append("\n\t\tClass enumClass = EnumCollectors.getInstance().type(enumIndex);");
+							getByAddressSrc.append("\n\t\tif(!enumClass.equals(").append(enumCollectorType.getName()).append(".class))  throw new RuntimeException(\"enum class mismatch\");");
+							getByAddressSrc.append("\n\t\tfinal Map map = new EnumMap(enumClass);");
+							
 //							TObjectLongHashMap<T> offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(enumIndex, bitmask);
 //							final Map<T, TIntLongHashMap> map = new EnumMap<T, TIntLongHashMap>(enumClass);
 							
@@ -242,10 +266,13 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 									DataStruct ds = collector.getDataStruct();
 									String[] subNames = collector.getSubMetricNames();
 									addressSpaceSrc.append("\n\t\tdata = new TIntLongHashMap(").append(subNames.length).append(");");
+									getByAddressSrc.append("\n\t\tdata = new TIntLongHashMap(").append(subNames.length).append(");");
 									for(int i = 0; i < ds.size; i++) {
 										addressSpaceSrc.append(String.format("data.put(%s, UnsafeAdapter.getLong(copyAddress + %s + (%s*UnsafeAdapter.LONG_SIZE)));", i, offset, i));								
+										getByAddressSrc.append(String.format("data.put(%s, UnsafeAdapter.getLong($1 + %s + (%s*UnsafeAdapter.LONG_SIZE)));", i, offset, i));
 									}
 									addressSpaceSrc.append(String.format("\n\t\tmap.put(%s.%s, data);", collector.getDeclaringClass().getName(), collector.name()));
+									getByAddressSrc.append(String.format("\n\t\tmap.put(%s.%s, data);", collector.getDeclaringClass().getName(), collector.name()));
 									// ======================
 									return true;
 								}
@@ -254,6 +281,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 							// address space post loop
 							// ======================
 							addressSpaceSrc.append("\n\t\treturn map;\n}");									
+							getByAddressSrc.append("\n\t\treturn map;\n}");
 //							addressSpaceSrc.append("\n\t} finally {");
 //							addressSpaceSrc.append("\n\t\tif(copyAddress!=-1) UnsafeAdapter.freeMemory(copyAddress);");
 //							addressSpaceSrc.append("\n\t}\n}");
@@ -262,11 +290,13 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						} 
 						putSrc.append("\n}");
 						toStringSrc.deleteCharAt(toStringSrc.length()-1).append("]\";}");
-						//log("Get Source:\n" + getSrc.toString());
+						//log("Get Source:\n" + getByAddressSrc.toString());
 						putMethod.setBody(putSrc.toString());
 						toStringMethod.setBody(toStringSrc.toString());
 						getMethod.setBody(getSrc.toString());
 						addrsSpaceMethod.setBody(addressSpaceSrc.toString());
+						getByAddressMethod.setBody(getByAddressSrc.toString());
+
 						clazz.setModifiers(clazz.getModifiers() & ~Modifier.ABSTRACT);
 						clazz.writeFile(System.getProperty("java.io.tmpdir") + File.separator + "js");
 						Class<? extends IDataMapper> jClazz = clazz.toClass();

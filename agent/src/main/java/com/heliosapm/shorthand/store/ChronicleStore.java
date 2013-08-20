@@ -18,6 +18,7 @@ import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
+import com.heliosapm.shorthand.util.OrderedShutdownService;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 import com.heliosapm.shorthand.util.unsafe.collections.ConcurrentLongSlidingWindow;
@@ -323,15 +324,16 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to initialize name index chronicle", ex);
 		}
-		Runtime.getRuntime().addShutdownHook(new Thread("ChronicleShutdownHook"){
-			public void run() {
-				log("Stopping Chronicle...");
-//				try { enumIndexEx.close(); } catch (Exception ex) {}
-//				try { enumIndex.close(); } catch (Exception ex) {}
-//				try { nameIndexEx.close(); } catch (Exception ex) {}
-//				try { nameIndex.close(); } catch (Exception ex) {}
-			}
-		});
+		OrderedShutdownService.getInstance().add(
+			new Thread("ChronicleShutdownHook"){
+				public void run() {
+					log("Stopping Chronicle...");
+					try { enumIndexEx.close(); } catch (Exception ex) {}
+					try { enumIndex.close(); } catch (Exception ex) {}
+					try { nameIndexEx.close(); } catch (Exception ex) {}
+					try { nameIndex.close(); } catch (Exception ex) {}
+				}
+			});
 		
 	}
 	
@@ -532,7 +534,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		}
 		// done
 		nameIndexEx.finish();
-		log("CHRONICLE UPDATED PERIOD WITH: [%s]  to  [%s]", new Date(periodStart), new Date(periodEnd));
 		return tierAddresses;		
 	}
 	

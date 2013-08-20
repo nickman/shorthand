@@ -75,6 +75,20 @@ public class OrderedShutdownService extends Thread implements Comparator<Thread>
 
         hooks.put(hook, hook);
     }
+    
+    /**
+     * Removes a shutdown hook
+     * @param hook The shutdown hook to remove
+     */
+    public synchronized void remove(Thread hook) {
+        if(hooks == null)
+            throw new IllegalStateException("Shutdown in progress");
+
+        if (hook.isAlive())
+            throw new IllegalArgumentException("Hook already running");
+
+        hooks.remove(hook);    	
+    }
 	
 	/**
 	 * Creates a new OrderedShutdownService

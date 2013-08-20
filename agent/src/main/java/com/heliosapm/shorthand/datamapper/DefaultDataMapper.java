@@ -92,6 +92,50 @@ public class DefaultDataMapper<T extends Enum<T> & ICollector<T>> implements IDa
 		return DefaultDataMapper.class.getSimpleName();
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.datamapper.IDataMapper#get(long)
+	 */
+	@Override
+	public Map<T, TIntLongHashMap> get(final long address) {
+		int enumIndex = UnsafeAdapter.getInt(address + MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.offset); 
+		int bitmask = UnsafeAdapter.getInt(address + MetricSnapshotAccumulator.HeaderOffsets.BitMask.offset);
+		Class<T> enumClass = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
+		Set<T> enabled = (Set<T>) EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitmask);
+		TObjectLongHashMap<T> offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(enumIndex, bitmask);
+		final Map<T, TIntLongHashMap> map = new EnumMap<T, TIntLongHashMap>(enumClass);		
+		offsets.forEachEntry(new TObjectLongProcedure<T>() {
+			@Override
+			public boolean execute(T collector, long offset) {				
+				long[] values = new long[collector.getDataStruct().size];
+				UnsafeAdapter.copyMemory(null, address + offset, values, UnsafeAdapter.LONG_ARRAY_OFFSET, values.length*8);					
+				TIntLongHashMap vmap = new TIntLongHashMap();															
+				for(int i = 0; i < values.length; i++) {
+					vmap.put(i, values[i]);
+				}
+				map.put(collector, vmap);
+				return true;					
+			}
+		});
+		return map;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.datamapper.IDataMapper#preFlush(long)
+	 */
+	@Override
+	public void preFlush(long address) {
+		Map<T, TIntLongHashMap> dataMap = get(address);
+		final long[][] datapoints = new long[dataMap.size()][];
+		int cnt = 0;
+		for(Map.Entry<T, TIntLongHashMap> entry: dataMap.entrySet()) {
+			datapoints[cnt] = entry.getValue().values();
+		}
+		int enumIndex = UnsafeAdapter.getInt(address + MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.offset); 
+		int bitmask = UnsafeAdapter.getInt(address + MetricSnapshotAccumulator.HeaderOffsets.BitMask.offset);
+		EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitmask).iterator().next().preFlush(datapoints);
+	}
 	
 	/**
 	 * {@inheritDoc}
@@ -104,27 +148,7 @@ public class DefaultDataMapper<T extends Enum<T> & ICollector<T>> implements IDa
 					@Override
 					public Map<T, TIntLongHashMap> addressSpace(String metricName, long copyAddress, Object... refs) {							
 						if(copyAddress==-1L) return Collections.emptyMap();
-						int enumIndex = UnsafeAdapter.getInt(copyAddress + MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.offset); 
-						int bitmask = UnsafeAdapter.getInt(copyAddress + MetricSnapshotAccumulator.HeaderOffsets.BitMask.offset);
-						Class<T> enumClass = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
-						Set<T> enabled = (Set<T>) EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitmask);
-						TObjectLongHashMap<T> offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(enumIndex, bitmask);
-						final Map<T, TIntLongHashMap> map = new EnumMap<T, TIntLongHashMap>(enumClass);
-						final long innerAddress = copyAddress;
-						offsets.forEachEntry(new TObjectLongProcedure<T>() {
-							@Override
-							public boolean execute(T collector, long offset) {				
-								long[] values = new long[collector.getDataStruct().size];
-								UnsafeAdapter.copyMemory(null, innerAddress + offset, values, UnsafeAdapter.LONG_ARRAY_OFFSET, values.length*8);					
-								TIntLongHashMap vmap = new TIntLongHashMap();															
-								for(int i = 0; i < values.length; i++) {
-									vmap.put(i, values[i]);
-								}
-								map.put(collector, vmap);
-								return true;					
-							}
-						});
-						return map;
+						return get(copyAddress);
 					}
 				}						
 		);

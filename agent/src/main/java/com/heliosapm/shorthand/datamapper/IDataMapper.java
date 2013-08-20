@@ -48,6 +48,29 @@ public interface IDataMapper<T extends Enum<T> & ICollector<T>> {
 	public Map<T, TIntLongHashMap> get(String metricName);
 	
 	/**
+	 * Returns a map of sub metric names and values keyed by the parent enum collector member
+	 * @param address The address of the accumulator memory space where the metric is resident
+	 * @return a map of sub metric indexes and values keyed by the parent enum collector member
+	 */
+	public Map<T, TIntLongHashMap> get(long address);
+	
+	/**
+	 * Executes the associated pre-flush procedure for the enum collector's data at the specified address
+	 * @param address The address of the accumulator memory space where the metric is resident
+	 */
+	public void preFlush(long address);
+	
+	
+//	/**
+//	 * Returns the datapoints for the metric at the passed address
+//	 * as an array of longs keyed by the ordinal of the enabled metrics.
+//	 * Non-enabled metrics are zero-length long arrays
+//	 * @param address The address to retrieve the data points from
+//	 * @return the datapoints
+//	 */
+//	public long[][] getDataPoints(long address);
+	
+	/**
 	 * Calculates/Aggregates and applies the final value to the memory space allocated for each preApply collector
 	 * @param bitMask The bitmask of the enabled metrics
 	 * @param address The address of the memory space
