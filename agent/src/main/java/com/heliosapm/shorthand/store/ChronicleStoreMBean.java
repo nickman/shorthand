@@ -41,29 +41,52 @@ public interface ChronicleStoreMBean {
 	public long getMetricDataPointSize();
 	
 	/**
-	 * Returns the elapsed time of the last flush in ns.
-	 * @return the elapsed time of the last flush in ns.
+	 * Returns the elapsed time of the last first phase flush in ns.
+	 * @return the elapsed time of the last first phase flush in ns.
 	 */
-	public long getLastFlushElapsedNs();
+	public long getFirstPhaseLastFlushElapsedNs();
 	
 	/**
-	 * Returns the elapsed time of the last flush in ms.
-	 * @return the elapsed time of the last flush in ms.
+	 * Returns the elapsed time of the first phase last flush in ms.
+	 * @return the elapsed time of the first phase last flush in ms.
 	 */
-	public long getLastFlushElapsedMs();
+	public long getFirstPhaseLastFlushElapsedMs();
 	
 	/**
-	 * Returns the rolling average of flush times in ns.
-	 * @return the rolling average of flush times in ns.
+	 * Returns the rolling average of first phase flush times in ns.
+	 * @return the rolling average of first phase flush times in ns.
 	 */
-	public long getAverageFlushElapsedNs();
+	public long getFirstPhaseAverageFlushElapsedNs();
 	
 	/**
-	 * Returns the rolling average of flush times in ms.
-	 * @return the rolling average of flush times in ms.
+	 * Returns the rolling average of first phase flush times in ms.
+	 * @return the rolling average of first phase flush times in ms.
 	 */
-	public long getAverageFlushElapsedMs();
+	public long getFirstPhaseAverageFlushElapsedMs();
 	
+	/**
+	 * Returns the elapsed time of the last second phase flush in ns.
+	 * @return the elapsed time of the last second phase flush in ns.
+	 */
+	public long getSecondPhaseLastFlushElapsedNs();
+	
+	/**
+	 * Returns the elapsed time of the second phase last flush in ms.
+	 * @return the elapsed time of the second phase last flush in ms.
+	 */
+	public long getSecondPhaseLastFlushElapsedMs();
+	
+	/**
+	 * Returns the rolling average of second phase flush times in ns.
+	 * @return the rolling average of second phase flush times in ns.
+	 */
+	public long getSecondPhaseAverageFlushElapsedNs();
+	
+	/**
+	 * Returns the rolling average of second phase flush times in ms.
+	 * @return the rolling average of second phase flush times in ms.
+	 */
+	public long getSecondPhaseAverageFlushElapsedMs();
 	
 	
 	

@@ -8,7 +8,6 @@ import java.util.Set;
 
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.collectors.ICollector;
-import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
  * <p>Title: IStore</p>
@@ -126,8 +125,18 @@ public interface IStore<T extends Enum<T> & ICollector<T>> {
 	 * has been invalidated and the snapshot index should be re-queried for a new address
 	 */
 	public boolean lock(long address);	
-
 	
+	/**
+	 * Unlocks the passed address if it is held by the current thread.
+	 * @param address The address to unlock
+	 */
+	public void unlockIfHeld(long address);
+
+	/**
+	 * Releases a locked and invalidated mem-space back to the store for de-allocation
+	 * @param address the mem-space address to release
+	 */
+	public void release(long address);
 	
 	
 	

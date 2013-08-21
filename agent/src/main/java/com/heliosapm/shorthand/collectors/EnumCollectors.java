@@ -6,7 +6,6 @@ package com.heliosapm.shorthand.collectors;
 
 import gnu.trove.map.hash.TObjectLongHashMap;
 
-import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
@@ -16,7 +15,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
-import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
 
 /**
  * <p>Title: EnumCollectors</p>
@@ -39,6 +37,8 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	private final Map<String, Class<T>> indexByName = new ConcurrentHashMap<String, Class<T>>();
 	/** The enum collector types indexed by assigned index */
 	private final BiMap<Integer, Class<T>> indexByIndex = HashBiMap.create();
+	/** The reference enum collector instance keyed by enum index */
+	private final Map<Integer, T> refByIndex = new ConcurrentHashMap<Integer, T>();
 	
 	/**
 	 * Acquires the singleton instance
@@ -70,9 +70,11 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 				ct = indexByName.get(className);
 				if(ct==null) {
 					try {
+						int index = INDEX_SEQ.incrementAndGet();
 						ct = (Class<T>) Class.forName(className);
 						indexByName.put(className, ct);
-						indexByIndex.put(INDEX_SEQ.incrementAndGet(), ct);
+						indexByIndex.put(index, ct);
+						refByIndex.put(index, ct.getEnumConstants()[0]);
 					} catch (Exception ex) {
 						throw new RuntimeException("Failed to get type for name [" + className + "]", ex);
 					}
@@ -90,6 +92,15 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	public T memberForName(String className) {
 		Class<T> ct = typeForName(className);
 		return ct.getEnumConstants()[0];
+	}
+
+	/**
+	 * Returns the reference enum collector instance for the passed index
+	 * @param index The enum collector index
+	 * @return the reference enum collector 
+	 */
+	public T ref(int index) {
+		return refByIndex.get(index);
 	}
 	
 	/**

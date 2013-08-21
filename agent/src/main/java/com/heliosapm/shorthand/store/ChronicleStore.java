@@ -8,13 +8,16 @@ import gnu.trove.map.hash.TObjectLongHashMap;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.ByteOrder;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
+import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 
 import com.heliosapm.shorthand.accumulator.AccumulatorThreadStats;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
@@ -33,7 +36,6 @@ import com.higherfrequencytrading.chronicle.Chronicle;
 import com.higherfrequencytrading.chronicle.Excerpt;
 import com.higherfrequencytrading.chronicle.impl.IndexedChronicle;
 import com.higherfrequencytrading.chronicle.impl.IntIndexedChronicle;
-import com.higherfrequencytrading.chronicle.impl.UnsafeExcerpt;
 
 /**
  * <p>Title: ChronicleStore</p>
@@ -82,6 +84,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	/** The offset in a name index to the metric name */
 	public static final int NAME_OFFSET=10;
 	
+	/** The available processors */
+	public static final int CORES = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
+	
 	/** The store directory */
 	protected final File dataDir;
 	/** The store name index chronicle */
@@ -99,8 +104,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	protected final long globalLockAddress;
 
 	
-	/** A sliding window of flush elapsed times in ns. */
-	protected final ConcurrentLongSlidingWindow flushTimes = new ConcurrentLongSlidingWindow(100); 
+	/** A sliding window of first phase flush elapsed times in ns. */
+	protected final ConcurrentLongSlidingWindow firstPhaseFlushTimes = new ConcurrentLongSlidingWindow(100); 
+	/** A sliding window of second phase flush elapsed times in ns. */
+	protected final ConcurrentLongSlidingWindow secondPhaseFlushTimes = new ConcurrentLongSlidingWindow(100); 
 	
 	/** A decode of enum class names to a set of all enum entries */
 	protected final TObjectIntHashMap<Class<T>> ENUM_CACHE = new TObjectIntHashMap<Class<T>>(32, 0.2f, -1); 
@@ -338,6 +345,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		}
 		OrderedShutdownService.getInstance().add(
 			new Thread("ChronicleShutdownHook"){
+				@Override
 				public void run() {
 					log("Stopping Chronicle...");
 					try { enumIndexEx.close(); } catch (Exception ex) {}
@@ -457,6 +465,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		}
 	}
 
+	@Override
 	public void finalize() throws Throwable {		
 		try { nameIndex.close(); } catch (Exception ex) {}
 		super.finalize();
@@ -525,6 +534,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	
 	
 	
+	@Override
 	public void updatePeriod(MemSpaceAccessor<T> memSpaceAccessor, long periodStart, long periodEnd) {
 		final long start = System.nanoTime();
 		nameIndexEx.index(memSpaceAccessor.getNameIndex());
@@ -602,74 +612,155 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	}
 	
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#flush(long, long)
+	 */
+	@Override
 	public void flush(long  priorStartTime, long priorEndTime) {
-		long tier1Updates = 0;
-		/// ===== Capture 1st and 2nd phase flush elapsed times
+		final long startTime = System.nanoTime();		
+		final NonBlockingHashMap<String, Long> dirtyBuffers;
 		globalLockNoYield();
+		try {
+			dirtyBuffers = dirtyBuffers();
+		} finally {
+			globalUnlock();
+		}		
+		long elapsed = System.nanoTime()-startTime;
+		firstPhaseFlushTimes.insert(elapsed);
+		log("First Phase Flush Time: [%s] ns.", elapsed);
 		MemSpaceAccessor<T> msa = new MemSpaceAccessor<T>();  
 		try {
 			long address = -1L;			
-			log("Processing Period Update for [%s] Store Name Index Values", getMetricCacheSize());
-			for(Map.Entry<String, Long> entry: SNAPSHOT_INDEX.entrySet()) {
-				address = entry.getValue();
-				if(address<0) continue;
+			log("Processing Period Update for [%s] Store Name Index Values", dirtyBuffers.size());
+			Set<String> keys = dirtyBuffers.keySet();
+			for(String key: keys) {
+				address = dirtyBuffers.get(key);
+				if(address<0) {
+					dirtyBuffers.remove(key);
+					continue;
+				}
 				lockNoYield(address);
 				int enumIndex = (int)HeaderOffsets.EnumIndex.get(address);
 				int bitMask = (int)HeaderOffsets.BitMask.get(address);
 				Class<T> collectorType = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
-				
-				long addressCopy = -1L;
-				long addressSize = HeaderOffsets.MemSize.get(address);
-				addressCopy = UnsafeAdapter.allocateMemory(addressSize);
-				UnsafeAdapter.copyMemory(address, addressCopy, addressSize);
-				
-				collectorType.getEnumConstants()[0].resetMemSpace(address, bitMask);
-				unlock(address);	
-				
-				
 				IDataMapper<T> dataMapper = DataMapperBuilder.getInstance().getIDataMapper(collectorType.getName(), bitMask);
-				dataMapper.preFlush(addressCopy);
-				msa.setAddress(addressCopy);
+				dataMapper.preFlush(address);
+				msa.setAddress(address);
 				//log("Flusing:\n" + msa);
 				
 				updatePeriod(msa, priorStartTime, priorEndTime);
-				UnsafeAdapter.freeMemory(addressCopy);
+				
+				//============================================
+				// FIXME
+				//UnsafeAdapter.freeMemory(addressCopy);
+				//============================================
+				dirtyBuffers.remove(key);
 			}
+			keys.clear();
+			elapsed = System.nanoTime()-startTime;
+			secondPhaseFlushTimes.insert(elapsed);
+			log("Second Phase Flush Time: [%s] ns.", elapsed);			
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		} finally {
-			globalUnlock();
-		}
-		
+			//globalUnlock();
+		}		
 	}
 	
-	public NonBlockingHashMap<String, Long> dirtyBuffers() {
-		MetricSnapshotAccumulator msa = MetricSnapshotAccumulator.getInstance();
+	/**
+	 * Captures all the current mem-spaces during a flush, copies and resets the copy and inserts the new reset copy back into the snapshot index.
+	 * @return A map of the dirty buffers to be flushed into the store
+	 */
+	protected NonBlockingHashMap<String, Long> dirtyBuffers() {		
 		NonBlockingHashMap<String, Long> dirty = new NonBlockingHashMap<String, Long>(SNAPSHOT_INDEX.size());
-		for(Map.Entry<String, Long> entry: SNAPSHOT_INDEX.entrySet()) {
-			
+		for(Map.Entry<String, Long> entry: SNAPSHOT_INDEX.entrySet()) {			
 			long dirtyAddress = entry.getValue();
 			// ==================================================
 			// FIXME
 			// Do we need to check for invalidated memspaces ?
 			// ==================================================
+			//=======================================================
+			// Lock the dirty mem-space and put into the dirty map
+			// If the address is unassigned (<0) the continue
+			//=======================================================
 			lock(dirtyAddress);
 			dirty.put(entry.getKey(), dirtyAddress);
 			if(dirtyAddress<0) continue;
+			//=======================================================
+			// Copy the dirty mem-space to create a new period mem-space
+			// [CHECK: if the metric sub-space is still at the reset value, skip this]
+			//=======================================================			
 			long memSize = MetricSnapshotAccumulator.HeaderOffsets.MemSize.get(dirtyAddress);
+			int enumIndex = (int)MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.get(dirtyAddress);
 			long newAddress = UnsafeAdapter.allocateMemory(memSize);
+			int bitMask = (int)HeaderOffsets.BitMask.get(dirtyAddress);
 			UnsafeAdapter.copyMemory(dirtyAddress, newAddress, memSize);
-			int bitMask = (int)MetricSnapshotAccumulator.HeaderOffsets.BitMask.get(dirtyAddress);
-			int enumIndex = (int)MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.get(dirtyAddress);			
-			EnumCollectors.getInstance().type(enumIndex).getEnumConstants()[0].resetMemSpace(newAddress, bitMask);
-			long redirectAddress = UnsafeAdapter.allocateMemory(MetricSnapshotAccumulator.HeaderOffsets.HEADER_SIZE);
-			UnsafeAdapter.copyMemory(dirtyAddress, redirectAddress, MetricSnapshotAccumulator.HeaderOffsets.HEADER_SIZE);
-			MetricSnapshotAccumulator.HeaderOffsets.NameIndex.set(redirectAddress, newAddress*-1);			
-			entry.setValue(redirectAddress);
-			
+			//=====================================
+			// Get the reference collector for this mem-space
+			//=====================================			
+			T refCollector = (T) EnumCollectors.getInstance().ref(enumIndex);
+			//=====================================
+			// Reset/Prepare the new mem-space
+			//=====================================			
+			refCollector.resetMemSpace(newAddress, bitMask);
+			//=====================================
+			// Insert new mem-space back into index
+			// and that's it for the new space
+			//=====================================			
+			entry.setValue(newAddress);
+			//=====================================
+			// There may be a worker thread spinning
+			// on the lock of the dirty address right
+			// now so we need to mark it as invalid
+			// by setting the name index to -nameIndex
+			// then we can unlock.
+			//=====================================			
+			HeaderOffsets.NameIndex.set(dirtyAddress, HeaderOffsets.NameIndex.get(dirtyAddress)*-1);
+			pendingDeallocates.put(dirtyAddress, dirtyAddress);
+			unlock(dirtyAddress);
+			//=====================================
+			// Queue the dirty address for release
+			//=====================================
+			deAllocateDirtyMemSpace(dirtyAddress);
 		}
 		return dirty;
 	}
+	
+	private final NonBlockingHashMapLong<Long> pendingDeallocates = new NonBlockingHashMapLong<Long>(CORES, false); 
+	
+	/**
+	 * Deallocates the passed address if it can be immediately locked.
+	 * Otherwise, whoever holds the lock should do so.
+	 * @param address The dirty address to deallocate
+	 */
+	protected void deAllocateDirtyMemSpace(long address) {
+		if(UnsafeAdapter.compareAndSwapLong(null, address, UNLOCKED, Thread.currentThread().getId())) {
+			UnsafeAdapter.freeMemory(address);
+		}
+	}
+	
+	/*
+	 * deAllocateDirtyMemSpace and release are both methods intended to de-allocate an invalidated mem-space.
+	 * The first is by the flush thread, the second by an accumulator thread that acquired an invalidated mem-space.
+	 * It's impossible to know if an address has been deallocated or not, so this is tricky.
+	 * 
+	 */
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#release(long)
+	 */
+	@Override
+	public void release(long address) {
+		// this means an accumulator thread acquired a lock on an invalidated mem-space.
+		// 
+		unlock(address);
+		
+	}
+	
+	
 	
 //	protected long[] readLongArray(Excerpt ex, int longCount) {
 //		long[] values = new long[longCount];
@@ -709,12 +800,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	}
 	
 
-	/**
-	 * @param nanos
-	 */
-	public void lastFlushTime(long nanos) {
-		flushTimes.insert(nanos);
-	}
 	
 	/**
 	 * {@inheritDoc}
@@ -758,35 +843,35 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	}
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getLastFlushElapsedNs()
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFirstPhaseLastFlushElapsedNs()
 	 */
 	@Override
-	public long getLastFlushElapsedNs() {
-		return flushTimes.getLast();
+	public long getFirstPhaseLastFlushElapsedNs() {
+		return firstPhaseFlushTimes.getLast();
 	}
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getLastFlushElapsedMs()
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFirstPhaseLastFlushElapsedMs()
 	 */
 	@Override
-	public long getLastFlushElapsedMs() {		
-		return TimeUnit.MILLISECONDS.convert(flushTimes.getLast(), TimeUnit.NANOSECONDS);
+	public long getFirstPhaseLastFlushElapsedMs() {		
+		return TimeUnit.MILLISECONDS.convert(firstPhaseFlushTimes.getLast(), TimeUnit.NANOSECONDS);
 	}
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getAverageFlushElapsedNs()
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFirstPhaseAverageFlushElapsedNs()
 	 */
 	@Override
-	public long getAverageFlushElapsedNs() {
-		return flushTimes.avg();		
+	public long getFirstPhaseAverageFlushElapsedNs() {
+		return firstPhaseFlushTimes.avg();		
 	}
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getAverageFlushElapsedMs()
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFirstPhaseAverageFlushElapsedMs()
 	 */
 	@Override
-	public long getAverageFlushElapsedMs() {
-		return TimeUnit.MILLISECONDS.convert(flushTimes.avg(), TimeUnit.NANOSECONDS);		
+	public long getFirstPhaseAverageFlushElapsedMs() {
+		return TimeUnit.MILLISECONDS.convert(firstPhaseFlushTimes.avg(), TimeUnit.NANOSECONDS);		
 	}
 	
 	/**
@@ -795,6 +880,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * @return indicates if the locked memspace is valid. If false, the memspace 
 	 * has been invalidated and the snapshot index should be re-queried for a new address
 	 */
+	@Override
 	public boolean lock(long address) {
 		long id = Thread.currentThread().getId();
 		int loops = 0;
@@ -806,6 +892,16 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		return HeaderOffsets.NameIndex.get(address)>0;
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#unlockIfHeld(long)
+	 */
+	@Override
+	public void unlockIfHeld(long address) {
+		if(UnsafeAdapter.getLong(address)==Thread.currentThread().getId()) {
+			unlock(address);
+		}
+	}
 	
 	/**
 	 * Acquires the passed address with no yielding
@@ -823,6 +919,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * Unlocks the passed address
 	 * @param address The address of the lock
 	 */
+	@Override
 	public void unlock(long address) {		
 		if(!UnsafeAdapter.compareAndSwapLong(null, address, Thread.currentThread().getId(), UNLOCKED)) {			
 			System.err.println("[" + Thread.currentThread().toString() + "] Yikes! Tried to unlock, but was not locked.Expected " +  Thread.currentThread().getId());
@@ -848,6 +945,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * This will lock out all other threads while it is held, so it should be used sparingly and released quickly.
 	 * Intended for period flushes or data exports.
 	 */
+	@Override
 	public void globalLock() {
 		long id = Thread.currentThread().getId();
 		int loops = 0;
@@ -862,12 +960,49 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	/**
 	 * Releases the read/write global lock address for this accumulator
 	 */
+	@Override
 	public void globalUnlock() {
 		long id = Thread.currentThread().getId();
 		if(!UnsafeAdapter.compareAndSwapLong(null, globalLockAddress, id, UNLOCKED)) {
 			System.err.println("[" + Thread.currentThread().toString() + "] Yikes! Tried to unlock GLOBAL , but was not locked.");
 			new Throwable().printStackTrace(System.err);
 		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getSecondPhaseLastFlushElapsedNs()
+	 */
+	@Override
+	public long getSecondPhaseLastFlushElapsedNs() {		
+		return secondPhaseFlushTimes.getLast();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getSecondPhaseLastFlushElapsedMs()
+	 */
+	@Override
+	public long getSecondPhaseLastFlushElapsedMs() {
+		return TimeUnit.MILLISECONDS.convert(secondPhaseFlushTimes.getLast(), TimeUnit.NANOSECONDS);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getSecondPhaseAverageFlushElapsedNs()
+	 */
+	@Override
+	public long getSecondPhaseAverageFlushElapsedNs() {
+		return secondPhaseFlushTimes.avg();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getSecondPhaseAverageFlushElapsedMs()
+	 */
+	@Override
+	public long getSecondPhaseAverageFlushElapsedMs() {
+		return TimeUnit.MILLISECONDS.convert(secondPhaseFlushTimes.avg(), TimeUnit.NANOSECONDS);
 	}
 	
 

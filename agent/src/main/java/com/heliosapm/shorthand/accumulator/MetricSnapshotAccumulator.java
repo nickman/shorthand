@@ -17,9 +17,7 @@ import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.collectors.MethodInterceptor;
-import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
 import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
-import com.heliosapm.shorthand.datamapper.IDataMapper;
 import com.heliosapm.shorthand.store.ChronicleStore;
 import com.heliosapm.shorthand.store.IStore;
 import com.heliosapm.shorthand.util.jmx.ShorthandJMXConnectorServer;
@@ -29,11 +27,11 @@ import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
  * <p>Title: MetricSnapshotAccumulator</p>
- * <p>Description: </p> 
+ * <p>Description: The central accumulator and aggregator of submitted snapshot metrics</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead 
  * <p><code>com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator</code></p>
- * @param <T> 
+ * @param <T> The enum collector type inference
  */
 
 public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implements PeriodEventListener  {
@@ -340,9 +338,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 				reportAvgs(title + "  AVGS", nanos, count);
 	}
 
-	
-
-
 	/**
 	 * Process a submission of collected metrics for the passed metric name
 	 * @param metricName The metric name
@@ -350,6 +345,19 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 * @param collectedValues The collected values
 	 */
 	public void snap(String metricName, CollectorSet<?> collectorSet, long...collectedValues) {
+		snap(false, metricName, collectorSet, collectedValues);
+	}
+	
+
+
+	/**
+	 * INTERNAL Process a submission of collected metrics for the passed metric name
+	 * @param reentrant Indicates if this call is being made reentrantly
+	 * @param metricName The metric name
+	 * @param collectorSet The collector set created when the code was instrumented
+	 * @param collectedValues The collected values
+	 */
+	private void snap(boolean reentrant, String metricName, CollectorSet<?> collectorSet, long...collectedValues) {
 		final int bitMask = collectorSet.getBitMask();
 		Long address = store.getMetricAddress(metricName);
 		boolean inited = true;
@@ -387,17 +395,21 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 			}
 		}
 		
-		try {
-			if(store.lock(address)) {
-				collectorSet.put(address, collectedValues);				
-			} else {
-				// address has been reset.
-				address = Math.abs(HeaderOffsets.NameIndex.get(address));				
-			}
-		} finally {
+
+		if(store.lock(address)) {
+			collectorSet.put(address, collectedValues);
 			store.unlock(address);
+		} else {
+			// address has been reset.
+			if(reentrant) {
+				log("ERROR. Processing metric name [%s] has been reentrantly called more than once", metricName);
+				return;
+			}			
+			store.release(address);
+			snap(true, metricName, collectorSet, collectedValues);
 		}
 	}
+	
 	
 	/**
 	 * Returns a copy of the memory space for the passed metric name or -1 if the metric name was not found.
