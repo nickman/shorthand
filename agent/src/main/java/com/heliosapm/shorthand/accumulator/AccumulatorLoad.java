@@ -25,7 +25,7 @@ import com.heliosapm.shorthand.collectors.MethodInterceptor;
  */
 
 public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionHandler {
-	public static final int THREAD_COUNT = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
+	public static final int THREAD_COUNT = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors()/2;
 	public static final int WARMUP_LOOPS = 1600;
 	public static final int RUN_LOOPS = 1000000;
 	public static final long LOOP_RUN_TIME = 1000 * 60 * 15;

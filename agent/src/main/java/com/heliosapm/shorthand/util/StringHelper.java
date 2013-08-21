@@ -4,6 +4,11 @@
  */
 package com.heliosapm.shorthand.util;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.management.ThreadMXBean;
+import java.util.concurrent.TimeUnit;
+
 /**
  * <p>Title: StringHelper</p>
  * <p>Description: String helper utility class</p> 
@@ -13,6 +18,64 @@ package com.heliosapm.shorthand.util;
  */
 public class StringHelper {
 	
+	/** The ThreadMXBean */
+	protected static final ThreadMXBean tmx = ManagementFactory.getThreadMXBean();
+
+	/**
+	 * Returns a formatted string representing the thread identified by the passed id
+	 * @param id The id of the thread
+	 * @return the formatted message
+	 */
+	public static String formatThreadName(long id) {
+		if(id<1) return "[Nobody]";
+		ThreadInfo ti = tmx.getThreadInfo(id);		
+		if(ti==null)  return String.format("No Such Thread [%s]", id);
+		return String.format("[%s/%s]", ti.getThreadName(), ti.getThreadId());
+	}
+	
+	
+	/**
+	 * Returns a formatted string presenting the passed elapsed time in the native nanos, microseconds, milliseconds and seconds.
+	 * @param title The arbitrary name for the timing
+	 * @param nanos The elapsed time in nanos
+	 * @return the formatted message
+	 */
+	public static String reportTimes(String title, long nanos) {
+		StringBuilder b = new StringBuilder(title).append(":  ");
+		b.append(nanos).append( " ns.  ");
+		b.append(TimeUnit.MICROSECONDS.convert(nanos, TimeUnit.NANOSECONDS)).append( " \u00b5s.  ");
+		b.append(TimeUnit.MILLISECONDS.convert(nanos, TimeUnit.NANOSECONDS)).append( " ms.  ");
+		b.append(TimeUnit.SECONDS.convert(nanos, TimeUnit.NANOSECONDS)).append( " s.");
+		return b.toString();
+	}
+	
+	/**
+	 * Returns a formatted string presenting the average elapsed time 
+	 * based on the passed time stamp and count of incidents in the native nanos, microseconds, milliseconds and seconds.
+	 * @param title The arbitrary name for the timing
+	 * @param nanos The elapsed time in nanos
+	 * @param count The number of incidents, used for calculating an average
+	 * @return the formatted message
+	 */
+	public static String reportAvgs(String title, long nanos, long count) {
+		if(nanos==0 || count==0) return reportTimes(title, 0);
+		return reportTimes(title, (nanos/count));
+	}
+	
+	/**
+	 * Returns a formatted string presenting the total and average elapsed time 
+	 * based on the passed time stamp and count of incidents in the native nanos, microseconds, milliseconds and seconds.
+	 * @param title The arbitrary name for the timing
+	 * @param nanos The elapsed time in nanos
+	 * @param count The number of incidents, used for calculating an average
+	 * @return the formatted message
+	 */
+	public static String reportSummary(String title, long nanos, long count) {
+		return reportTimes(title, nanos) + 
+				"\n" +
+				reportAvgs(title + "  AVGS", nanos, count);
+	}
+
 
 	/**
 	 * Acquires and truncates the current thread's StringBuilder.

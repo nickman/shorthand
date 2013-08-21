@@ -88,6 +88,25 @@ public interface ChronicleStoreMBean {
 	 */
 	public long getSecondPhaseAverageFlushElapsedMs();
 	
+	/**
+	 * Get and clear the current count of reprobes on the pending deallocate map
+	 * @return the total number of reprobes since the last reset
+	 */
+	public long getPendingDeallocateReprobes();
+	
+	/**
+	 * Get and clear the current count of reprobes on the name index cache
+	 * @return the total number of reprobes since the last reset
+	 */
+	public long getNameIndexReprobes();
+	
+	/**
+	 * Returns the total number of invalid mem-space releases which occurs when an accumulator thread locks an invalidated mem-space.
+	 * @return the total number of invalid mem-space releases
+	 */
+	public long getReleaseCount();
+
+	
 	
 	
 }

@@ -236,6 +236,24 @@ public class UnsafeAdapter {
 	public static final boolean compareAndSwapLong(Object object, long offset, long expect, long value) {
 		return UNSAFE.compareAndSwapLong(object, offset, expect, value);
 	}
+	
+	/**
+	 * Atomically update Java variable or address to x if it is currently holding any of the expecteds.
+	 * @param object The object within which the variable is to be updated. Null if updating pure address.
+	 * @param offset The offset from the base address at which the variable is to be updated, or the address to update the value at (if object is null) 
+	 * @param expects The expected values to find in the variable or at the address
+	 * @param value The value to set into the variable or address
+	 * @return true if succeeded, false otherwise
+	 * @see sun.misc.Unsafe#compareAndSwapLong(java.lang.Object, long, long, long)
+	 */
+	public static final boolean compareMultiAndSwapLong(Object object, long offset, long value, long...expects) {
+		if(expects==null || expects.length==0) return false;
+		for(long expect: expects) {
+			if(UNSAFE.compareAndSwapLong(object, offset, expect, value)) return true;
+		}
+		return false;
+	}
+
 
 	/**
 	 * Atomically update Java variable or address to x if it is currently holding expected.

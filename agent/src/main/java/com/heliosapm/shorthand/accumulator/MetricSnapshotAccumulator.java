@@ -20,6 +20,8 @@ import com.heliosapm.shorthand.collectors.MethodInterceptor;
 import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
 import com.heliosapm.shorthand.store.ChronicleStore;
 import com.heliosapm.shorthand.store.IStore;
+import com.heliosapm.shorthand.util.StringHelper;
+import com.heliosapm.shorthand.util.ThreadRenamer;
 import com.heliosapm.shorthand.util.jmx.ShorthandJMXConnectorServer;
 import com.heliosapm.shorthand.util.jmx.threadinfo.ExtendedThreadManager;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
@@ -318,25 +320,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		AccumulatorThreadStats.reset();
 	}	
 	
-	public static String reportTimes(String title, long nanos) {
-		StringBuilder b = new StringBuilder(title).append(":  ");
-		b.append(nanos).append( " ns.  ");
-		b.append(TimeUnit.MICROSECONDS.convert(nanos, TimeUnit.NANOSECONDS)).append( " \u00b5s.  ");
-		b.append(TimeUnit.MILLISECONDS.convert(nanos, TimeUnit.NANOSECONDS)).append( " ms.  ");
-		b.append(TimeUnit.SECONDS.convert(nanos, TimeUnit.NANOSECONDS)).append( " s.");
-		return b.toString();
-	}
-	
-	public static String reportAvgs(String title, long nanos, long count) {
-		if(nanos==0 || count==0) return reportTimes(title, 0);
-		return reportTimes(title, (nanos/count));
-	}
-	
-	public static String reportSummary(String title, long nanos, long count) {
-		return reportTimes(title, nanos) + 
-				"\n" +
-				reportAvgs(title + "  AVGS", nanos, count);
-	}
 
 	/**
 	 * Process a submission of collected metrics for the passed metric name
@@ -345,7 +328,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 * @param collectedValues The collected values
 	 */
 	public void snap(String metricName, CollectorSet<?> collectorSet, long...collectedValues) {
-		snap(false, metricName, collectorSet, collectedValues);
+		snap(0, metricName, collectorSet, collectedValues);
 	}
 	
 
@@ -357,59 +340,98 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 * @param collectorSet The collector set created when the code was instrumented
 	 * @param collectedValues The collected values
 	 */
-	private void snap(boolean reentrant, String metricName, CollectorSet<?> collectorSet, long...collectedValues) {
+	private void snap(int reentrancy, String metricName, CollectorSet<?> collectorSet, long...collectedValues) {
 		final int bitMask = collectorSet.getBitMask();
-		Long address = store.getMetricAddress(metricName);
-		boolean inited = true;
-		if(address==null || address<1) {
-			try {
-				store.globalLock();
-				address = store.getMetricAddress(metricName);				
-				if(address==null || address<0) {					
-					final long start = System.nanoTime();
-					try {
-						int requestedMem = (int)(collectorSet.getTotalAllocation() + HEADER_SIZE);
-						long memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
-						long nameIndex = -1;
-						if(address==null) {
-							nameIndex = store.newMetricName(metricName, (T) collectorSet.getReferenceCollector(), bitMask);
-							inited = false;
-						} else {
-							nameIndex = Math.abs(address);
-						}
-						address = this.allocateMemory(memSize);
-						collectorSet.reset(address);
-						int enumIndex = getEnumIndex((T) collectorSet.getReferenceCollector());
-						initializeHeader(address, (int)memSize, nameIndex, bitMask, enumIndex); 					
-						store.cacheMetricAddress(metricName, address);
-						long elapsed = System.nanoTime()-start;
-						if(inited) AccumulatorThreadStats.incrementInitMetricTime(elapsed);
-						else AccumulatorThreadStats.incrementNewMetricTime(elapsed);						
-					} catch (Throwable ex) {
-						ex.printStackTrace(System.err);
-						return;
-					}					
-				}
-			} finally {
-				store.globalUnlock();
-			}
-		}
+		Long address = store.getMetricAddress(metricName);		
+		if(address==null || address<1) address = insertNewMetric(metricName, collectorSet, bitMask);
+//		if(reentrancy>0 && HeaderOffsets.MemSize.get(address)==-1L) {
+//			System.err.println(String.format("!! PENDING ERROR !! [%s]->Reentrant call for metric [%s] still got dirty buffer", 
+//					Thread.currentThread().getName(), metricName));
+//		}
 		
-
-		if(store.lock(address)) {
-			collectorSet.put(address, collectedValues);
-			store.unlock(address);
-		} else {
-			// address has been reset.
-			if(reentrant) {
-				log("ERROR. Processing metric name [%s] has been reentrantly called more than once", metricName);
-				return;
+		//log("[%s/%s]->Accumulator Locking Address [%s] (Currently held by %s)", Thread.currentThread().getName(), Thread.currentThread().getId(), address, StringHelper.formatThreadName(UnsafeAdapter.getLong(address)));
+		try {
+			ThreadRenamer.push("Locking Address [%s] Reent [%s]", address, reentrancy);
+			if(store.lock(address)) {
+				collectorSet.put(address, collectedValues);
+				store.unlock(address);
+			} else {
+				Long newAddress = store.getTransferAddress(address);
+				store.release(address);
+				if(newAddress==null) {
+					System.err.println(String.format("!! ERROR !! [%s]->Null transfer address on metric name [%s] and address [%s]", Thread.currentThread().getName(), metricName, address));
+					return;
+				}
+				ThreadRenamer.push("Locking Address [%s] Reent [%s]", newAddress, reentrancy);
+				try {
+					if(store.lock(newAddress)) {
+						collectorSet.put(newAddress, collectedValues);
+						store.unlock(newAddress);
+					} else {
+						store.release(newAddress);
+						System.err.println(String.format("!! ERROR !! [%s]->New transfer address on metric name [%s] and address [%s] was invalidated:\n%s", Thread.currentThread().getName(), metricName, newAddress, new MemSpaceAccessor<T>(newAddress)));
+					}
+				} finally {
+					ThreadRenamer.pop();
+				}
+				//store.unlock(address);
+				// address has been reset.
+				//log("[%s]->Invalidated mem-space at Address[%s], Name:[%s] Reent:[%s] MemSize:[%s]", Thread.currentThread().getName(), address, metricName, reentrancy, HeaderOffsets.MemSize.get(address));
+//				if(reentrancy>0) {				
+//					boolean released = store.release(address);
+//					System.err.println(String.format("!! ERROR !! [%s]->Processing metric name [%s] with address [%s] has been reentrantly called more than once. Complete: %s", Thread.currentThread().getName(), metricName, address, released));
+//					//snap(++reentrancy, metricName, collectorSet, collectedValues);
+//					return;
 			}			
-			store.release(address);
-			snap(true, metricName, collectorSet, collectedValues);
+				
+				//boolean released = store.release(address);
+				//log("[%s]->Released Address [%s]. Completed: %s", Thread.currentThread().getName(), address, released);
+				//snap(++reentrancy, metricName, collectorSet, collectedValues);
+
+		} finally {
+			ThreadRenamer.pop();
 		}
 	}
 	
+	/**
+	 * @param metricName
+	 * @param collectorSet
+	 * @param bitMask
+	 * @return The address of the new metric's mem-space
+	 */
+	protected long insertNewMetric(String metricName, CollectorSet<?> collectorSet, final int bitMask) {
+		Long address;
+		try {
+			store.globalLock();
+			address = store.getMetricAddress(metricName);				
+			if(address==null || address<0) {					
+				final long start = System.nanoTime();
+				try {
+					int requestedMem = (int)(collectorSet.getTotalAllocation() + HEADER_SIZE);
+					long memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
+					long nameIndex = -1;
+					if(address==null) {
+						nameIndex = store.newMetricName(metricName, (T) collectorSet.getReferenceCollector(), bitMask);
+					} else {
+						nameIndex = Math.abs(address);
+					}
+					address = this.allocateMemory(memSize);
+					collectorSet.reset(address);
+					int enumIndex = getEnumIndex((T) collectorSet.getReferenceCollector());
+					initializeHeader(address, (int)memSize, nameIndex, bitMask, enumIndex); 					
+					store.cacheMetricAddress(metricName, address);
+					long elapsed = System.nanoTime()-start;
+					
+											
+				} catch (Throwable ex) {
+					ex.printStackTrace(System.err);					
+				}					
+			}
+			return address;
+		} finally {
+			store.globalUnlock();
+		}
+	}
 	
 	/**
 	 * Returns a copy of the memory space for the passed metric name or -1 if the metric name was not found.

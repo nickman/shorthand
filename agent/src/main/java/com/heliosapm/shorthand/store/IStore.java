@@ -135,8 +135,17 @@ public interface IStore<T extends Enum<T> & ICollector<T>> {
 	/**
 	 * Releases a locked and invalidated mem-space back to the store for de-allocation
 	 * @param address the mem-space address to release
+	 * @return true if address was de-allocated, false if it had already been cleared
 	 */
-	public void release(long address);
+	public boolean release(long address);
+	
+	/**
+	 * Retrieves the new mem-space allocation address assigned in place of the prior invalidated address 
+	 * @param oldAddress the prior invalidated address
+	 * @return the new address
+	 */
+	public Long getTransferAddress(long oldAddress);
+	
 	
 	
 	
