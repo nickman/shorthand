@@ -33,6 +33,8 @@ public class UnsafeAdapter {
     public static final boolean FIVE_COPY;
     /** Indicates if the 4 param set memory is supported */
     public static final boolean FOUR_SET;
+    /** The size of a <b><code>byte</code></b>  */
+    public final static long BYTE_SIZE = 1;
 
     /** The size of an <b><code>int</code></b>  */
     public final static long INT_SIZE = 4;

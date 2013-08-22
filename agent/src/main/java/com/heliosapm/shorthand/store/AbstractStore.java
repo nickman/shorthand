@@ -24,19 +24,19 @@
  */
 package com.heliosapm.shorthand.store;
 
-import java.lang.management.ManagementFactory;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
+import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
  * <p>Title: AbstractStore</p>
- * <p>Description: </p> 
+ * <p>Description: The common base class for {@link IStore} implementations</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.store.AbstractStore</code></p>
@@ -44,15 +44,73 @@ import com.heliosapm.shorthand.collectors.ICollector;
  */
 
 public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implements IStore<T> {
-	
+	/** The period switch address */
+	private final long switchAddress;
 	/** The index of metric name to slab id to find the snapshot */
-	protected final NonBlockingHashMap<String, Long> SNAPSHOT_INDEX;
+	private final NonBlockingHashMap<String, Long> SNAPSHOT_INDEX_ON;
+	/** The index of metric name to slab id to find the snapshot */
+	private final NonBlockingHashMap<String, Long> SNAPSHOT_INDEX_OFF;
 
+	private static final byte ON = 1;
+	private static final byte OFF = 0;
+	
 	/**
 	 * Creates a new AbstractStore
 	 */
 	public AbstractStore() {
-		SNAPSHOT_INDEX = new NonBlockingHashMap<String, Long>(1024); // 1024, 0.75f, ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors()
+		switchAddress = UnsafeAdapter.allocateMemory(UnsafeAdapter.BYTE_SIZE);
+		UnsafeAdapter.putByte(switchAddress, OFF);
+		SNAPSHOT_INDEX_ON = new NonBlockingHashMap<String, Long>(1024); // 1024, 0.75f, ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors()
+		SNAPSHOT_INDEX_OFF = new NonBlockingHashMap<String, Long>(1024);
+	}
+	
+	/**
+	 * Clears both cycle name indexes
+	 */
+	protected void clearAll() {
+		SNAPSHOT_INDEX_ON.clear();
+		SNAPSHOT_INDEX_OFF.clear();
+	}
+	
+	protected boolean putAll(String metricName, long index) {
+		return SNAPSHOT_INDEX_ON.put(metricName, index)==null &&
+		SNAPSHOT_INDEX_OFF.put(metricName, index)==null;		
+	}
+	
+	/**
+	 * Returns the current snapshot index
+	 * @return the current snapshot index
+	 */
+	protected NonBlockingHashMap<String, Long> getSnapshotIndex() {
+		return switchOn() ? SNAPSHOT_INDEX_ON : SNAPSHOT_INDEX_OFF;
+	}
+	/**
+	 * Returns the off-cycle snapshot index
+	 * @return the off-cycle snapshot index
+	 */
+	protected NonBlockingHashMap<String, Long> getOffCycleSnapshotIndex() {
+		return switchOn() ? SNAPSHOT_INDEX_OFF : SNAPSHOT_INDEX_ON;
+	}
+	
+	protected NonBlockingHashMap<String, Long> getOffCycleSnapshotIndexCopy() {
+		NonBlockingHashMap<String, Long> off = switchOn() ? SNAPSHOT_INDEX_OFF : SNAPSHOT_INDEX_ON;
+		NonBlockingHashMap<String, Long> copy = new NonBlockingHashMap<String, Long>(off.size());
+		copy.putAll(off);
+		return copy;
+	}
+	
+	
+	private boolean switchOn() {
+		return UnsafeAdapter.getByte(switchAddress)==ON;
+	}
+	
+	/**
+	 * Switch the snapshot indexes
+	 * @return the current name index
+	 */
+	protected NonBlockingHashMap<String, Long> switchPeriod() {
+		UnsafeAdapter.putByte(switchAddress, switchOn() ? OFF : ON);
+		return getSnapshotIndex();
 	}
 	
 	/**
@@ -61,7 +119,7 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	 */
 	@Override
 	public Set<Map.Entry<String, Long>> indexKeyValues() {
-		return SNAPSHOT_INDEX.entrySet();
+		return getSnapshotIndex().entrySet();
 	}
 
 	/**
@@ -70,16 +128,15 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	 */
 	@Override
 	public Long getMetricAddress(String metricName) {
-		return SNAPSHOT_INDEX.get(metricName);
+		return getSnapshotIndex().get(metricName);
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#cacheMetricAddress(java.lang.String, long)
-	 */
-	@Override
-	public void cacheMetricAddress(String metricName, long address) {
-		SNAPSHOT_INDEX.put(metricName, address);
+	protected void putMetricAddress(String metricName, long address) {
+		SNAPSHOT_INDEX_OFF.put(metricName, address);
+		long size = new MemSpaceAccessor(address).getMemSize();
+		long altAddress = UnsafeAdapter.allocateMemory(size);
+		UnsafeAdapter.copyMemory(address, altAddress, size);
+		SNAPSHOT_INDEX_ON.put(metricName, altAddress);
 	}
 	
 	/**
@@ -88,7 +145,7 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	 */
 	@Override
 	public int getMetricCacheSize() {
-		return SNAPSHOT_INDEX.size();
+		return getSnapshotIndex().size();
 	}
 	
 	/**
@@ -97,6 +154,6 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	 */
 	@Override
 	public Set<String> getMetricCacheKeys() {
-		return Collections.unmodifiableSet(SNAPSHOT_INDEX.keySet());
+		return Collections.unmodifiableSet(getSnapshotIndex().keySet());
 	}
 }

@@ -131,7 +131,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public void clear() {
-		SNAPSHOT_INDEX.clear();
+		clearAll();
 		nameIndex.clear();
 		tier1Data.clear();
 		writeZeroRec(nameIndex);
@@ -158,7 +158,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		long count = 0;
 		long start = System.currentTimeMillis();
 //		store.dump();
-		for(Object o: store.SNAPSHOT_INDEX.keySet()) {
+		for(Object o: store.getSnapshotIndex().keySet()) {
 			String name = o.toString();
 			IMetric metric = store.getMetric(name);
 			if(metric==null) continue;
@@ -175,7 +175,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public IMetric<T> getMetric(String name) {
-		Long address = SNAPSHOT_INDEX.get(name);
+		Long address = getSnapshotIndex().get(name);
 		if(address==null) return null;
 		long index = -1;
 		if(address>0) {
@@ -463,7 +463,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 					loge("Warning: MetricName [%s] had unrecognized enum index [%s]", name, enumIndex);
 					markNameIndexDeleted(nameIndexEx.index());
 				}
-				if(SNAPSHOT_INDEX.put(name, (index * -1L)) != null) {
+				if(!putAll(name, (index * -1L))) {
 					log("WARNING:  Duplicate name [" + name + "] at index [" + index + "]");
 				} else {
 					//log("Loaded [" + name + "]");
@@ -490,10 +490,11 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public long newMetricName(String metricName, T collector, int bitMask) {
+		// Check for DUPS here.
 		int enumIndex = getEnum(collector);		
 		int nameLength = metricName.getBytes().length;		
 		int tier1AddressCount = collector.getDeclaringClass().getEnumConstants().length;
-		int tier1AddressSize = tier1AddressCount*8;
+		int tier1AddressSize = tier1AddressCount << 3;
 		long now = System.currentTimeMillis();
 		int estSize = 	NAME_ENTRY_SIZE + 						// the known part of the total length
 						nameLength + 							// the number of bytes in the metric name
@@ -536,6 +537,15 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		}
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#cacheMetricAddress(java.lang.String, long)
+	 */
+	public void cacheMetricAddress(String metricName, long address) {
+		putMetricAddress(metricName, address);
+	}
+
+	
 
 	
 	/** The offset in the name index for the metric name start */
@@ -551,7 +561,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	public void updatePeriod(MemSpaceAccessor<T> memSpaceAccessor, long periodStart, long periodEnd) {
 		final long start = System.nanoTime();
 		long address = memSpaceAccessor.getNameIndex();
-		if(address<0) address = address*-1;
+		//if(address<0) address = address*-1;
 		nameIndexEx.index(address);
 		// skip to the name
 		nameIndexEx.position(CR_TS_INDEX);
@@ -564,12 +574,15 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		nameIndexEx.writeLong(periodEnd);
 		// read the number of tier addresses
 		int tierAddressCount = nameIndexEx.readInt();
-		long[] tierAddresses = new long[tierAddressCount];
-		for(int i = 0; i < tierAddressCount; i++) {
-			tierAddresses[i] = nameIndexEx.readLong();
+		int actualCount = EnumCollectors.getInstance().type(memSpaceAccessor.getEnumIndex()).getEnumConstants().length;
+		if(tierAddressCount != actualCount) {
+			loge("Invalid name index entry for tier address count. Enum says [%s] Count was [%s]", tierAddressCount, actualCount);
 		}
+		long[] tierAddresses = readLongArray(nameIndexEx, tierAddressCount);
 		Excerpt ex = tier1Data.createExcerpt();
-		updateSlots(ex, tierAddresses, memSpaceAccessor.getDataPoints());
+		if(!updateSlots(ex, tierAddresses, memSpaceAccessor.getDataPoints())) {
+			loge("Slot update failed:\n%s", memSpaceAccessor);
+		}
 		ex.close();
 		nameIndexEx.finish();
 		final long elapsed = System.nanoTime()-start;
@@ -586,7 +599,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * @param indexes The indexes to write to
 	 * @param values The values to write
 	 */
-	public void updateSlots(Excerpt ex, long[] indexes, long[][] values) {
+	public boolean updateSlots(Excerpt ex, long[] indexes, long[][] values) {
 		try {
 			int vindex = 0;
 			for(int i = 0; i < indexes.length; i++) {
@@ -600,16 +613,23 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 //				if(slots!=values[vindex].length) {
 //					loge("Invalid slot update. Slot count is [%s] but values array length is [%s]", slots, values[vindex].length);
 //					return;
-//				}
+//				}    /---------------10------------20/
+				int t = ex.remaining() + ex.position();
 				writeLongArray(ex, values[vindex]);
+				if(ex.position()>t) {
+					loge("!!  ERROR  !! Overwriting slot size. t [%s]  p [%s]", t, ex.position());
+					return false;
+				}
 //				for(long value: values[vindex]) {
 //					ex.writeLong(value);
 //				}
 				ex.finish();
 				vindex++;
 			}
+			return true;
 		} catch (Exception x) {
 			x.printStackTrace(System.err);
+			return false;
 		}
 	}
 	
@@ -626,6 +646,20 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		ex.write(bytes);
 	}
 	
+	/**
+	 * Reads and returns the specified number of longs from the excerpt at its current offset
+	 * @param ex The excerpt to read from
+	 * @param size The number of longs to read
+	 * @return the read longs
+	 */
+	protected long[] readLongArray(Excerpt ex, int size) {
+		byte[] bytes = new byte[size << 3];
+		long[] values = new long[size];
+		ex.read(bytes);
+		UnsafeAdapter.copyMemory(bytes, UnsafeAdapter.BYTE_ARRAY_OFFSET, values, UnsafeAdapter.LONG_ARRAY_OFFSET, bytes.length);
+		return values;
+	}
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -633,61 +667,54 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public void flush(long  priorStartTime, long priorEndTime) {
+		final NonBlockingHashMap<String, Long> currentIndex = switchPeriod();
+		final NonBlockingHashMap<String, Long> priorIndex = getOffCycleSnapshotIndex();
+		
 		final long startTime = System.nanoTime();		
-		final NonBlockingHashMap<String, Long> dirtyBuffers;
-		globalLockNoYield();
-		try {
-			dirtyBuffers = dirtyBuffers();
-		} finally {
-			globalUnlock();
-		}		
-		long elapsed = System.nanoTime()-startTime;
-		firstPhaseFlushTimes.insert(elapsed);
-		log(StringHelper.reportTimes("First Phase Flush Time", elapsed));
-		MemSpaceAccessor<T> msa = new MemSpaceAccessor<T>();
 		long bufferCount = 0;
 		try {
 			long address = -1L;
-			bufferCount = dirtyBuffers.size();
+			bufferCount = priorIndex.size();
 			log("Processing Period Update for [%s] Store Name Index Values", bufferCount);
-			Set<String> keys = dirtyBuffers.keySet();
-			
+			Set<String> keys = priorIndex.keySet();
+			MemSpaceAccessor<T> msa = new MemSpaceAccessor<T>();
 			for(String key: keys) {				
-				address = dirtyBuffers.get(key);
+				address = priorIndex.get(key);
 				if(address<0) {
-					dirtyBuffers.remove(key);
 					bufferCount--;
 					continue;
 				}
-				try {
-					ThreadRenamer.push("Locking Address [%s] (Currently held by %s)", address, StringHelper.formatThreadName(UnsafeAdapter.getLong(address)));
-					//log("[%s/%s]->Locking Address [%s] (Currently held by %s)", Thread.currentThread().getName(), Thread.currentThread().getId(), address, StringHelper.formatThreadName(UnsafeAdapter.getLong(address)));
-					lockNoYield(address);
-				} finally {
-					ThreadRenamer.pop();
-				}
-				//log("[%s/%s]->Locked Address [%s]", Thread.currentThread().getName(), Thread.currentThread().getId(), address);
+				lock(address);
 				int enumIndex = (int)HeaderOffsets.EnumIndex.get(address);
 				int bitMask = (int)HeaderOffsets.BitMask.get(address);
 				Class<T> collectorType = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
 				IDataMapper<T> dataMapper = DataMapperBuilder.getInstance().getIDataMapper(collectorType.getName(), bitMask);
 				dataMapper.preFlush(address);
 				msa.setAddress(address);
-				//log("Flusing:\n" + msa);
-				
 				updatePeriod(msa, priorStartTime, priorEndTime);
+				// ======================================================================
+				// mem4time: to save memory, we can write the negative name index back
+				// into the off-cycle index. On the next period switch, the accumulator threads
+				// will re-create the mem-space as they encounter the negative index.
+				// time4mem: to save time and avoid having to recreate mem-spaces each period
+				// we can simply reset the address; the trade-off being that we're carrying
+				// double mem-space allocations.
+				// ======================================================================
 				
-				//=====================================
-				// Queue the dirty address for release
-				//=====================================
-				deAllocateDirtyMemSpace(address);
+				//  Do this for time4mem
+				dataMapper.reset(address, (TObjectLongHashMap<T>) EnumCollectors.getInstance().ref(enumIndex).getOffsets(bitMask));
+				unlock(address);
 				
-				dirtyBuffers.remove(key);
+				
+				// Do this for mem4time - still need to deal with pending spinners
+//				priorIndex.put(key, msa.getNameIndex()*-1);
+//				UnsafeAdapter.freeMemory(address);
+				
 			}
 			keys.clear();			
-			elapsed = System.nanoTime()-startTime;
+			long elapsed = System.nanoTime()-startTime;
 			secondPhaseFlushTimes.insert(elapsed);			
-			log(StringHelper.reportSummary("Second Phase Flush Time", elapsed, bufferCount));			
+			log(StringHelper.reportSummary("Period Flush Time", elapsed, bufferCount));			
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		} finally {
@@ -700,9 +727,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * @return A map of the dirty buffers to be flushed into the store
 	 */
 	protected NonBlockingHashMap<String, Long> dirtyBuffers() {		
-		NonBlockingHashMap<String, Long> dirty = new NonBlockingHashMap<String, Long>(SNAPSHOT_INDEX.size());
+		NonBlockingHashMap<String, Long> dirty = new NonBlockingHashMap<String, Long>(getSnapshotIndex().size());
 		allocationTransfers.clear();
-		for(Map.Entry<String, Long> entry: SNAPSHOT_INDEX.entrySet()) {			
+		for(Map.Entry<String, Long> entry: getSnapshotIndex().entrySet()) {			
 			long dirtyAddress = entry.getValue();			
 			// ==================================================
 			// FIXME
@@ -1086,7 +1113,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public long getNameIndexReprobes() {
-		return SNAPSHOT_INDEX.reprobes();
+		return getSnapshotIndex().reprobes();
 	}
 
 }

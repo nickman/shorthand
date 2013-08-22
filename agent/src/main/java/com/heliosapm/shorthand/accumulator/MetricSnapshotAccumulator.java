@@ -344,52 +344,11 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		final int bitMask = collectorSet.getBitMask();
 		Long address = store.getMetricAddress(metricName);		
 		if(address==null || address<1) address = insertNewMetric(metricName, collectorSet, bitMask);
-//		if(reentrancy>0 && HeaderOffsets.MemSize.get(address)==-1L) {
-//			System.err.println(String.format("!! PENDING ERROR !! [%s]->Reentrant call for metric [%s] still got dirty buffer", 
-//					Thread.currentThread().getName(), metricName));
-//		}
-		
-		//log("[%s/%s]->Accumulator Locking Address [%s] (Currently held by %s)", Thread.currentThread().getName(), Thread.currentThread().getId(), address, StringHelper.formatThreadName(UnsafeAdapter.getLong(address)));
 		try {
-			ThreadRenamer.push("Locking Address [%s] Reent [%s]", address, reentrancy);
-			if(store.lock(address)) {
-				collectorSet.put(address, collectedValues);
-				store.unlock(address);
-			} else {
-				Long newAddress = store.getTransferAddress(address);
-				store.release(address);
-				if(newAddress==null) {
-					System.err.println(String.format("!! ERROR !! [%s]->Null transfer address on metric name [%s] and address [%s]", Thread.currentThread().getName(), metricName, address));
-					return;
-				}
-				ThreadRenamer.push("Locking Address [%s] Reent [%s]", newAddress, reentrancy);
-				try {
-					if(store.lock(newAddress)) {
-						collectorSet.put(newAddress, collectedValues);
-						store.unlock(newAddress);
-					} else {
-						store.release(newAddress);
-						System.err.println(String.format("!! ERROR !! [%s]->New transfer address on metric name [%s] and address [%s] was invalidated:\n%s", Thread.currentThread().getName(), metricName, newAddress, new MemSpaceAccessor<T>(newAddress)));
-					}
-				} finally {
-					ThreadRenamer.pop();
-				}
-				//store.unlock(address);
-				// address has been reset.
-				//log("[%s]->Invalidated mem-space at Address[%s], Name:[%s] Reent:[%s] MemSize:[%s]", Thread.currentThread().getName(), address, metricName, reentrancy, HeaderOffsets.MemSize.get(address));
-//				if(reentrancy>0) {				
-//					boolean released = store.release(address);
-//					System.err.println(String.format("!! ERROR !! [%s]->Processing metric name [%s] with address [%s] has been reentrantly called more than once. Complete: %s", Thread.currentThread().getName(), metricName, address, released));
-//					//snap(++reentrancy, metricName, collectorSet, collectedValues);
-//					return;
-			}			
-				
-				//boolean released = store.release(address);
-				//log("[%s]->Released Address [%s]. Completed: %s", Thread.currentThread().getName(), address, released);
-				//snap(++reentrancy, metricName, collectorSet, collectedValues);
-
+			store.lock(address);
+			collectorSet.put(address, collectedValues);				
 		} finally {
-			ThreadRenamer.pop();
+			store.unlock(address);
 		}
 	}
 	
@@ -405,7 +364,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 			store.globalLock();
 			address = store.getMetricAddress(metricName);				
 			if(address==null || address<0) {					
-				final long start = System.nanoTime();
 				try {
 					int requestedMem = (int)(collectorSet.getTotalAllocation() + HEADER_SIZE);
 					long memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
@@ -420,7 +378,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 					int enumIndex = getEnumIndex((T) collectorSet.getReferenceCollector());
 					initializeHeader(address, (int)memSize, nameIndex, bitMask, enumIndex); 					
 					store.cacheMetricAddress(metricName, address);
-					long elapsed = System.nanoTime()-start;
+
 					
 											
 				} catch (Throwable ex) {
