@@ -82,6 +82,15 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 		return (DataMapperBuilder<T>) instance;
 	}
 	
+	/**
+	 * Returns the data mapper for the passed key or null if it is not found
+	 * @param key The data mapper key which is a string as the <b><code>[enum collector type name]/[bitMask]</code></b>
+	 * @return the data mapper or null if not found
+	 */
+	public IDataMapper<T> dataMapper(String key) {
+		return dataMappers.get(key);
+	}
+	
 	/** Empty signature const */
 	public static final CtClass[] EMPTY_SIG = {};
 	

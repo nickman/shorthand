@@ -31,13 +31,12 @@ import java.util.Map;
 
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
-import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
 import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
 
 /**
  * <p>Title: MemSpaceAccessor</p>
- * <p>Description: Pojo style ccessor for the accumulator memspace</p> 
+ * <p>Description: Pojo style accessor for the accumulator memspace</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.accumulator.MemSpaceAccessor</code></p>
@@ -45,33 +44,30 @@ import com.heliosapm.shorthand.datamapper.IDataMapper;
  */
 
 public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
-	/** The accumulator memspace address */
-	private long address;
-	/** The data mapper for the specified address */
-	private IDataMapper<T> dataMapper;
+	/** The address for the mem-space in focus for this thread */
+	private static final ThreadLocal<long[]> _address = new ThreadLocal<long[]>() {
+		@Override
+		protected long[] initialValue() {
+			return new long[1];
+		}
+	};
+	/** The single accessor instance */
+	private static final MemSpaceAccessor INSTANCE = new MemSpaceAccessor();
 
 	/**
 	 * Creates a new MemSpaceAccessor
 	 */
-	public MemSpaceAccessor() {
+	private MemSpaceAccessor() {
 	}
 	
 	/**
-	 * Creates a new MemSpaceAccessor
-	 * @param address The accumulator memspace address
+	 * Sets the address for the current thread
+	 * @param address The address of the memspace to access
+	 * @return a MemSpaceAccessor set to the passed address for the current thread
 	 */
-	public MemSpaceAccessor(long address) {
-		setAddress(address);		
-	}
-	
-	/**
-	 * Updates the address and the data mapper
-	 * @param address The address of the mem space
-	 */
-	public void setAddress(long address) {
-		this.address = address;
-		Class<T> type = (Class<T>) EnumCollectors.getInstance().type(getEnumIndex());
-		dataMapper = DataMapperBuilder.getInstance().getIDataMapper(type.getName(), getBitMask()); 
+	public static MemSpaceAccessor get(long address) {
+		_address.get()[0] = address;
+		return INSTANCE;
 	}
 	
 	/**
@@ -79,7 +75,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the bitmask
 	 */
 	public int getBitMask() {
-		return (int)MetricSnapshotAccumulator.HeaderOffsets.BitMask.get(address);
+		return (int)MetricSnapshotAccumulator.HeaderOffsets.BitMask.get(_address.get()[0]);
 	}
 
 	/**
@@ -87,7 +83,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the collector enum index
 	 */
 	public int getEnumIndex() {
-		return (int)MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.get(address);
+		return (int)MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.get(_address.get()[0]);
 	}
 	
 	/**
@@ -95,7 +91,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the size of the memory space allocated
 	 */
 	public int getMemSize() {
-		return (int)MetricSnapshotAccumulator.HeaderOffsets.MemSize.get(address);
+		return (int)MetricSnapshotAccumulator.HeaderOffsets.MemSize.get(_address.get()[0]);
 	}
 	
 	/**
@@ -103,15 +99,16 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the index of the metric in the store name index
 	 */
 	public long getNameIndex() {
-		return MetricSnapshotAccumulator.HeaderOffsets.NameIndex.get(address);
+		return MetricSnapshotAccumulator.HeaderOffsets.NameIndex.get(_address.get()[0]);
 	}
 	
 	/**
 	 * Returns the datapoints as an array of longs keyed in the sequence of the enabled metrics.
 	 * @return the datapoints
 	 */
-	public long[][] getDataPoints() {
-		Map<T, TIntLongHashMap> dataMap = dataMapper.get(address);		
+	public long[][] getDataPoints() {		
+		IDataMapper dataMapper = getDataMapper();
+		Map<T, TIntLongHashMap> dataMap = dataMapper.get(_address.get()[0]);		
 		final long[][] datapoints = new long[dataMap.size()][];
 		int cnt = 0;
 		for(Map.Entry<T, TIntLongHashMap> entry: dataMap.entrySet()) {
@@ -125,13 +122,21 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 		return datapoints;
 	}
 	
+	public IDataMapper<T> getDataMapper() {
+		return (IDataMapper<T>) EnumCollectors.getInstance().dataMapper(getEnumIndex(), getBitMask());
+	}
+	
+	public void preFlush() {
+		getDataMapper().preFlush(_address.get()[0]);
+	}
+	
 	/**
 	 * {@inheritDoc}
 	 * @see java.lang.Object#toString()
 	 */
 	@Override
 	public String toString() {
-		Map<T, TIntLongHashMap> dataMap = dataMapper.get(address);
+		Map<T, TIntLongHashMap> dataMap = getDataMapper().get(_address.get()[0]);
 		Class<T> t = (Class<T>) EnumCollectors.getInstance().type(getEnumIndex());
 		StringBuilder b = new StringBuilder("[").append(EnumCollectors.getInstance().type(getEnumIndex()).getSimpleName()).append("]");
 		b.append(" enumindex:").append(getEnumIndex());

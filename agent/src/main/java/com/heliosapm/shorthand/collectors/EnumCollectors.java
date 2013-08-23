@@ -12,9 +12,13 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
+
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
+import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
+import com.heliosapm.shorthand.datamapper.IDataMapper;
 
 /**
  * <p>Title: EnumCollectors</p>
@@ -34,12 +38,16 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	private static final AtomicInteger INDEX_SEQ = new AtomicInteger();
 
 	/** The enum collector types indexed by class-name */
-	private final Map<String, Class<T>> indexByName = new ConcurrentHashMap<String, Class<T>>();
+	private final Map<String, Class<T>> indexByName = new NonBlockingHashMap<String, Class<T>>();
 	/** The enum collector types indexed by assigned index */
 	private final BiMap<Integer, Class<T>> indexByIndex = HashBiMap.create();
 	/** The reference enum collector instance keyed by enum index */
-	private final Map<Integer, T> refByIndex = new ConcurrentHashMap<Integer, T>();
-	
+	private final Map<Integer, T> refByIndex = new NonBlockingHashMap<Integer, T>();
+	/** The data-mappers keyed by enum index and bit-mask as a string */
+	private final Map<String, IDataMapper<T>> dataMappers = new NonBlockingHashMap<String, IDataMapper<T>>();
+	/** A map of relative offset maps keyed by the enum index and bit-mask as a string */
+	private final Map<String, TObjectLongHashMap<T>> offsets = new NonBlockingHashMap<String, TObjectLongHashMap<T>>();
+	 
 	/**
 	 * Acquires the singleton instance
 	 * @return the singleton instance
@@ -56,6 +64,40 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 		return instance;
 	}
 	
+	
+	/**
+	 * Returns a map of offsets keyed by the enum collector member for the passed enum collector index
+	 * @param index The enum collector index
+	 * @param bitMask The bitmask
+	 * @return a map of offsets keyed by the enum collector member
+	 */
+	public TObjectLongHashMap<T> offsets(int enumIndex, int bitMask) {
+		final String key = String.format("%s/%s", type(enumIndex).getDeclaringClass().getName(), bitMask);
+		TObjectLongHashMap<T> _offsets = offsets.get(key);
+		if(_offsets==null) {
+			_offsets = ref(enumIndex).getOffsets(bitMask);
+			offsets.put(key, _offsets);
+		}
+		return _offsets;
+	}
+	
+	/**
+	 * Returns the data mapper for the passed key or null if it is not found
+	 * @param key The data mapper key which is a string as the <b><code>[enum collector type name]/[bitMask]</code></b>
+	 * @return the data mapper or null if not found
+	 */
+	public IDataMapper<T> dataMapper(String key) {
+		return dataMappers.get(key);
+	}
+	
+	public IDataMapper<T> dataMapper(int enumIndex, int bitMask) {
+		final String key = String.format("%s/%s", type(enumIndex).getDeclaringClass().getName(), bitMask);
+		IDataMapper<T> dataMapper = dataMappers.get(key);
+		if(dataMapper==null) {
+			dataMapper = DataMapperBuilder.getInstance().getIDataMapper(type(enumIndex).getDeclaringClass().getName(), bitMask);
+		}
+		return dataMapper;
+	}
 
 	/**
 	 * Returns the enum collection type for the passed name
@@ -256,15 +298,6 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 		return offsets;
 	}
 	
-	/**
-	 * Returns a map of offsets keyed by the enum collector member for the passed enum collector index
-	 * @param index The enum collector index
-	 * @param bitMask The bitmask
-	 * @return a map of offsets keyed by the enum collector member
-	 */
-	public TObjectLongHashMap<T> offsets(int index, int bitMask) {
-		return offsets(name(index),  bitMask);
-	}
 	
 	/**
 	 * Creates a new EnumCollectors
