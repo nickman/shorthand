@@ -12,6 +12,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.nio.ByteOrder;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -55,6 +56,27 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	public static final String DEFAULT_DIRECTORY = String.format("%s%sshorthand", System.getProperty("java.io.tmpdir"), File.separator);
 	/** System property name to override the default directory */
 	public static final String CHRONICLE_DIR_PROP = "shorthand.store.chronicle.dir";
+	
+	/** The singleton instance */
+	private static volatile ChronicleStore<?> instance = null;
+	/** The singleton instance ctor lock */
+	private static final Object lock = new Object();
+	
+	/**
+	 * Acquires the singleton ChronicleStore instance
+	 * @return the singleton ChronicleStore instance
+	 */
+	public static ChronicleStore<?> getInstance() {		
+		if(instance==null) {
+			synchronized(lock) {
+				if(instance==null) {
+					instance = new ChronicleStore();
+				}
+			}
+		}
+		return instance;
+	}
+
 	
 	/** The chronicle name for the name index */
 	public static final String NAME_INDEX = "metricNameIndex";
@@ -138,19 +160,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		writeZeroRec(tier1Data);
 	}
 	
-	@SuppressWarnings("javadoc")
-	public static void log(String fmt, Object...msgs) {
-		System.out.println(String.format("[ChronicleStore]" + fmt, msgs));
-	}
-	@SuppressWarnings("javadoc")
-	public static void loge(String fmt, Throwable t, Object...msgs) {
-		System.err.println(String.format("[ChronicleStore]" + fmt, msgs));
-		if(t!=null) t.printStackTrace(System.err);
-	}
-	@SuppressWarnings("javadoc")
-	public static void loge(String fmt, Object...msgs) {
-		loge(fmt, null, msgs);
-	}
+
 	
 	public static void main(String[] args) {
 		log("Dumping Shorthand DB");
@@ -175,6 +185,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public IMetric<T> getMetric(String name) {
+		log("Fetching metric name from Index [%s]  Size: [%s]", System.identityHashCode(SNAPSHOT_INDEX), SNAPSHOT_INDEX.size());
 		Long address = SNAPSHOT_INDEX.get(name);
 		if(address==null) return null;
 		long index = -1;
@@ -300,7 +311,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	/**
 	 * Creates a new ChronicleStore persisting to the default directory
 	 */
-	public ChronicleStore() {		
+	protected ChronicleStore() {		
 		this(ConfigurationHelper.getSystemThenEnvProperty(CHRONICLE_DIR_PROP, DEFAULT_DIRECTORY));
 	}
 	
@@ -320,7 +331,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * Creates a new ChronicleStore persisting to the specified directory
 	 * @param dataDirectory the name of the directory to persist in
 	 */
-	public ChronicleStore(String dataDirectory) {
+	protected ChronicleStore(String dataDirectory) {
 		dataDir = new File(dataDirectory);
 		if(!dataDir.exists()) {
 			dataDir.mkdirs();
@@ -665,14 +676,14 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public void flush(long  priorStartTime, long priorEndTime) {
-		
+		log("Flushing Index [%s]  Size: [%s]", System.identityHashCode(SNAPSHOT_INDEX), SNAPSHOT_INDEX.size());
 		final long startTime = System.nanoTime();		
 		long bufferCount = 0;
 		try {
 			long address = -1L;
 			bufferCount = SNAPSHOT_INDEX.size();
 			log("Processing Period Update for [%s] Store Name Index Values", bufferCount);
-			Set<String> keys = SNAPSHOT_INDEX.keySet();
+			Set<String> keys = new HashSet<String>(SNAPSHOT_INDEX.keySet());
 			MemSpaceAccessor<T> msa = null;
 			for(String key: keys) {				
 				address = SNAPSHOT_INDEX.get(key);
@@ -706,7 +717,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			keys.clear();			
 			long elapsed = System.nanoTime()-startTime;
 			secondPhaseFlushTimes.insert(elapsed);			
-			log(StringHelper.reportSummary("Period Flush Time", elapsed, bufferCount));			
+					
+			log("Flushing Index [%s]  Size: [%s]", System.identityHashCode(SNAPSHOT_INDEX), SNAPSHOT_INDEX.size());
+			log(StringHelper.reportSummary("Period Flush Time", elapsed, bufferCount));
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		} finally {

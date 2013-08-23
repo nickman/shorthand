@@ -33,6 +33,7 @@ import org.junit.Ignore;
 
 import test.com.heliosapm.shorthand.BaseTest;
 
+import com.heliosapm.shorthand.store.ChronicleStore;
 import com.heliosapm.shorthand.store.IStore;
 
 /**
@@ -49,7 +50,7 @@ public class AccumulatorBaseTest extends BaseTest {
 	/** The accumulator */
 	protected final MetricSnapshotAccumulator ACCUMULATOR = MetricSnapshotAccumulator.getInstance(); 
 	/** The accumulator store */
-	protected final IStore STORE = ACCUMULATOR.store;
+	protected final IStore STORE = ChronicleStore.getInstance();
 	
 	
 	

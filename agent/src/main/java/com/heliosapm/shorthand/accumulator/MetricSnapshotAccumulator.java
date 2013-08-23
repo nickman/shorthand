@@ -48,7 +48,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 
 	
 	/** The store impl we're using  FIXME: Needs to be configurable */
-	protected final IStore<T> store = new ChronicleStore<T>();
+	protected final IStore<T> store = (IStore<T>) ChronicleStore.getInstance();
 	
 	/** The current total unsafely allocated memory  */
 	protected final AtomicLong unsafeMemoryAllocated = new AtomicLong();

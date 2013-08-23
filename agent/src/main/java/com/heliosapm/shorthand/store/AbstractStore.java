@@ -101,6 +101,7 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 					//UnsafeAdapter.setMemory(address, 0, (byte)0);
 					MemSpaceAccessor.get(address).initializeHeader(address, memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
 					SNAPSHOT_INDEX.put(metricName, address);
+					log("Put metric name into Index [%s]  Size: [%s]", System.identityHashCode(SNAPSHOT_INDEX), SNAPSHOT_INDEX.size());
 				}
 			}
 		}
@@ -144,4 +145,18 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	public Set<String> getMetricCacheKeys() {
 		return Collections.unmodifiableSet(SNAPSHOT_INDEX.keySet());
 	}
+	
+	@SuppressWarnings("javadoc")
+	public static void log(String fmt, Object...msgs) {
+		System.out.println(String.format("[ChronicleStore]" + fmt, msgs));
+	}
+	@SuppressWarnings("javadoc")
+	public static void loge(String fmt, Throwable t, Object...msgs) {
+		System.err.println(String.format("[ChronicleStore]" + fmt, msgs));
+		if(t!=null) t.printStackTrace(System.err);
+	}
+	@SuppressWarnings("javadoc")
+	public static void loge(String fmt, Object...msgs) {
+		loge(fmt, null, msgs);
+	}	
 }

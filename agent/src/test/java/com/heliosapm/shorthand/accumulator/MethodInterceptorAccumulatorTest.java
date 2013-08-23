@@ -144,6 +144,7 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 		long PERIOD_END = period[3];		
 		long[][] pivotedValues = ArrayUtils.pivot(values);		
 		IAssert.assertTrue("Pivoted Array Mismatch", Arrays.deepEquals(values, ArrayUtils.pivot(pivotedValues)));
+		
 		IMetric<MethodInterceptor> metric = STORE.getMetric(metricName);
 		IAssert.assertEquals("Unexpected metric name", metricName, metric.getName());
 		IAssert.assertEquals("Unexpected collector type name", MethodInterceptor.class.getSimpleName(), metric.getCollectorTypeName());
