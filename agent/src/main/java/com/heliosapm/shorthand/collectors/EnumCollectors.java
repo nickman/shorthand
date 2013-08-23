@@ -91,10 +91,10 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	}
 	
 	public IDataMapper<T> dataMapper(int enumIndex, int bitMask) {
-		final String key = String.format("%s/%s", type(enumIndex).getDeclaringClass().getName(), bitMask);
+		final String key = String.format("%s/%s", type(enumIndex).getName(), bitMask);
 		IDataMapper<T> dataMapper = dataMappers.get(key);
 		if(dataMapper==null) {
-			dataMapper = DataMapperBuilder.getInstance().getIDataMapper(type(enumIndex).getDeclaringClass().getName(), bitMask);
+			dataMapper = DataMapperBuilder.getInstance().getIDataMapper(type(enumIndex).getName(), bitMask);
 		}
 		return dataMapper;
 	}

@@ -689,7 +689,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				Class<T> collectorType = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
 				IDataMapper<T> dataMapper = DataMapperBuilder.getInstance().getIDataMapper(collectorType.getName(), bitMask);
 				dataMapper.preFlush(address);
-				msa.setAddress(address);
+				msa = MemSpaceAccessor.get(address);
 				updatePeriod(msa, priorStartTime, priorEndTime);
 				// ======================================================================
 				// mem4time: to save memory, we can write the negative name index back
@@ -979,7 +979,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			}
 		}
 //		AccumulatorThreadStats.incrementNameLockSpins(loops);
-		return new MemSpaceAccessor(address).getMemSize()>0;
+		return MemSpaceAccessor.get(address).getMemSize()>0;
 	}
 	
 	/**
