@@ -639,11 +639,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * @param values the logn array to write
 	 */
 	protected void writeLongArray(Excerpt ex, long[] values) {
-		if(values==null || values.length==0) return;
-		int byteCount = (int)(values.length*UnsafeAdapter.LONG_SIZE);
-		byte[] bytes = new byte[byteCount];
-		UnsafeAdapter.copyMemory(values, UnsafeAdapter.LONG_ARRAY_OFFSET, bytes, UnsafeAdapter.BYTE_ARRAY_OFFSET, byteCount);
-		ex.write(bytes);
+		for(long v: values) {
+			ex.writeLong(v);
+		}
 	}
 	
 	/**
@@ -653,10 +651,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * @return the read longs
 	 */
 	protected long[] readLongArray(Excerpt ex, int size) {
-		byte[] bytes = new byte[size << 3];
 		long[] values = new long[size];
-		ex.read(bytes);
-		UnsafeAdapter.copyMemory(bytes, UnsafeAdapter.BYTE_ARRAY_OFFSET, values, UnsafeAdapter.LONG_ARRAY_OFFSET, bytes.length);
+		for(int i = 0; i < size; i++) {
+			values[i] = ex.readLong();
+		}
 		return values;
 	}
 	
@@ -684,12 +682,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				}
 				lock(address);
 				msa = MemSpaceAccessor.get(address);
-				int enumIndex = (int)HeaderOffsets.EnumIndex.get(address);
-				int bitMask = (int)HeaderOffsets.BitMask.get(address);
-				Class<T> collectorType = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
-				IDataMapper<T> dataMapper = DataMapperBuilder.getInstance().getIDataMapper(collectorType.getName(), bitMask);
-				dataMapper.preFlush(address);
-				msa = MemSpaceAccessor.get(address);
+				msa.preFlush();
 				updatePeriod(msa, priorStartTime, priorEndTime);
 				// ======================================================================
 				// mem4time: to save memory, we can write the negative name index back
@@ -701,7 +694,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				// ======================================================================
 				
 				//  Do this for time4mem
-				dataMapper.reset(address, (TObjectLongHashMap<T>) EnumCollectors.getInstance().ref(enumIndex).getOffsets(bitMask));
+				msa.reset();
 				unlock(address);
 				
 				

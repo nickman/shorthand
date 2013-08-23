@@ -60,7 +60,6 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	private final CtMethod dataMapperPrePutMethod;
 	private final CtMethod dataMapperResetMethod;
 	private final CtMethod dataMappertoStringMethod;
-	private final CtMethod dataMapperGetMethod;
 	private final CtMethod dataMapperGetByAddressMethod;
 	
 	/** A map of already created data mappers keyed by enum-name/bitmask */
@@ -115,7 +114,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 			dataMapperIface = cp.get(IDataMapper.class.getName());
 			dataMapperSuper = cp.get(DefaultDataMapper.class.getName());
 			copiedAddressProcedureIface = cp.get(CopiedAddressProcedure.class.getName());
-			CtMethod _dataMapperPutMethod = null, _dataMapperResetMethod = null, _dataMapperPrePutMethod = null, _dataMapperGetMethod = null, _dataMapperGetByAddressMethod = null;
+			CtMethod _dataMapperPutMethod = null, _dataMapperResetMethod = null, _dataMapperPrePutMethod = null, _dataMapperGetByAddressMethod = null;
 			for(CtMethod cm: dataMapperIface.getDeclaredMethods()) {
 				if("put".equals(cm.getName())) {
 					_dataMapperPutMethod = cm;					
@@ -126,15 +125,12 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 				} else if("get".equals(cm.getName())) {
 					if(cm.getParameterTypes()[0].equals(CtClass.longType)) {
 						_dataMapperGetByAddressMethod = cm;
-					} else {
-						_dataMapperGetMethod = cm;
 					}
 				}
 			}
 			dataMapperPutMethod = _dataMapperPutMethod;
 			dataMapperResetMethod = _dataMapperResetMethod;
-			dataMapperPrePutMethod = _dataMapperPrePutMethod;
-			dataMapperGetMethod = _dataMapperGetMethod;
+			dataMapperPrePutMethod = _dataMapperPrePutMethod;			
 			dataMapperGetByAddressMethod = _dataMapperGetByAddressMethod;
 			dataMappertoStringMethod = new CtMethod(stringClazz, "toString", EMPTY_SIG, objectClazz);
 			copiedAddressMethod = new CtMethod(objectClazz, "addressSpace", new CtClass[]{stringClazz, CtClass.longType, objectArrClazz}, copiedAddressProcedureIface);
@@ -142,7 +138,6 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 			if(dataMapperPutMethod==null) { throw new RuntimeException("Failed to find put method"); }
 			if(dataMapperResetMethod==null) {throw new RuntimeException("Failed to find reset put method"); }
 			if(dataMapperPrePutMethod==null) {throw new RuntimeException("Failed to find prePut method"); }
-			if(dataMapperGetMethod==null) {throw new RuntimeException("Failed to find get method"); }
 			if(dataMapperGetByAddressMethod==null) {throw new RuntimeException("Failed to find get method"); }
 		} catch (NotFoundException e) {
 			throw new RuntimeException("Failed to get CtClass for DefaultDataMapper", e);
@@ -152,7 +147,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	//public void reset(long address, TObjectLongHashMap<ICcomollector<?>> offsets);
 	
 	/**
-	 * @param enumCollectorType The enum collector [class] to generate a data mapper for
+	 * @param enumCollectorTypeName The enum collector [class] to generate a data mapper for
 	 * @param bitMask The bit mask
 	 * @return a data mapper
 	 */
@@ -180,14 +175,12 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 					try {
 						CtClass clazz = cp.makeClass("DataMapper_" + enumCollectorType.getName() + "_" + bitMask, dataMapperSuper);
 						CtMethod putMethod = new CtMethod(dataMapperPutMethod.getReturnType(), dataMapperPutMethod.getName(), dataMapperPutMethod.getParameterTypes(), clazz);
-						CtMethod toStringMethod  = new CtMethod(dataMappertoStringMethod.getReturnType(), dataMappertoStringMethod.getName(), dataMappertoStringMethod.getParameterTypes(), clazz);
-						CtMethod getMethod  = new CtMethod(dataMapperGetMethod.getReturnType(), dataMapperGetMethod.getName(), dataMapperGetMethod.getParameterTypes(), clazz);
+						CtMethod toStringMethod  = new CtMethod(dataMappertoStringMethod.getReturnType(), dataMappertoStringMethod.getName(), dataMappertoStringMethod.getParameterTypes(), clazz);						
 						CtMethod getByAddressMethod  = new CtMethod(dataMapperGetByAddressMethod.getReturnType(), dataMapperGetByAddressMethod.getName(), dataMapperGetByAddressMethod.getParameterTypes(), clazz);
 						CtMethod addrsSpaceMethod = new CtMethod(copiedAddressMethod.getReturnType(), copiedAddressMethod.getName(), copiedAddressMethod.getParameterTypes(), clazz);
 						
 						clazz.addMethod(putMethod);
 						clazz.addMethod(toStringMethod);
-						clazz.addMethod(getMethod);
 						clazz.addMethod(getByAddressMethod);
 						
 						clazz.addInterface(copiedAddressProcedureIface);
@@ -198,7 +191,6 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						final TObjectLongHashMap<T> offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(enumCollectorType.getName(), bitMask);
 
 
-						final StringBuilder getSrc = new StringBuilder("{\n\treturn MetricSnapshotAccumulator.getInstance().getMemorySpaceCopy($1, this, EMPTY_ARR);\n}");
 						final StringBuilder getByAddressSrc = new StringBuilder("{\n\t");
 						final StringBuilder putSrc = new StringBuilder("{");
 						final StringBuilder addressSpaceSrc = new StringBuilder("{");
@@ -307,7 +299,6 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						//log("Put Source:\n" + putSrc.toString());
 						putMethod.setBody(putSrc.toString());
 						toStringMethod.setBody(toStringSrc.toString());
-						getMethod.setBody(getSrc.toString());
 						addrsSpaceMethod.setBody(addressSpaceSrc.toString());
 						getByAddressMethod.setBody(getByAddressSrc.toString());
 

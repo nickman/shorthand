@@ -39,14 +39,6 @@ public interface IDataMapper<T extends Enum<T> & ICollector<T>> {
 	 */
 	public void put(long address, TObjectLongHashMap<T> offsets, long[] data);
 	
-
-	/**
-	 * Returns a map of sub metric names and values keyed by the parent enum collector member
-	 * @param metricName The metric name to retrieve
-	 * @return a map of sub metric indexes and values keyed by the parent enum collector member
-	 */
-	public Map<T, TIntLongHashMap> get(String metricName);
-	
 	/**
 	 * Returns a map of sub metric names and values keyed by the parent enum collector member
 	 * @param address The address of the accumulator memory space where the metric is resident

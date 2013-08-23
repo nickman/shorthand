@@ -25,6 +25,7 @@
 package com.heliosapm.shorthand.accumulator;
 
 import gnu.trove.map.hash.TIntLongHashMap;
+import gnu.trove.map.hash.TObjectLongHashMap;
 
 import java.util.Arrays;
 import java.util.Map;
@@ -33,6 +34,7 @@ import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
+import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
  * <p>Title: MemSpaceAccessor</p>
@@ -69,6 +71,28 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 		_address.get()[0] = address;
 		return INSTANCE;
 	}
+	
+	/**
+	 * Initializes the header of the memory space allocated for a new metric
+	 * @param address The address of the memory space
+	 * @param memorySize The amount of memory allocated
+	 * @param nameIndex The name index of the new metric
+	 * @param bitMask The enabled bitmask of the new metric
+	 */
+	public void initializeHeader(long address, int memorySize, long nameIndex, int bitMask, int enumIndex) {		
+		long pos = address;
+		UnsafeAdapter.putLong(address, 0);   	// Lock
+		pos += UnsafeAdapter.LONG_SIZE;
+		UnsafeAdapter.putInt(pos, bitMask);		// BitMask
+		pos += UnsafeAdapter.INT_SIZE;
+		UnsafeAdapter.putInt(pos, enumIndex);	// EnumIndex
+		pos += UnsafeAdapter.INT_SIZE;
+		UnsafeAdapter.putInt(pos, memorySize);	// Mem Size
+		pos += UnsafeAdapter.INT_SIZE;				
+		UnsafeAdapter.putLong(pos,nameIndex);	// Name Index
+		pos += UnsafeAdapter.LONG_SIZE;
+	}
+	
 	
 	/**
 	 * Returns the bitmask
@@ -130,6 +154,9 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 		getDataMapper().preFlush(_address.get()[0]);
 	}
 	
+	public void reset() {
+		getDataMapper().reset(_address.get()[0], (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(getEnumIndex(), getBitMask()));
+	}
 	/**
 	 * {@inheritDoc}
 	 * @see java.lang.Object#toString()

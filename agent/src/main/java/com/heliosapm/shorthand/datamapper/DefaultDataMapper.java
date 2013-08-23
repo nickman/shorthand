@@ -148,22 +148,7 @@ public class DefaultDataMapper<T extends Enum<T> & ICollector<T>> implements IDa
 	}
 	
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.datamapper.IDataMapper#get(java.lang.String)
-	 */
-	@Override
-	public Map<T, TIntLongHashMap> get(String metricName) {
-		return MetricSnapshotAccumulator.getInstance().getMemorySpaceCopy(metricName,  
-				new CopiedAddressProcedure<Map<T, TIntLongHashMap>>() {
-					@Override
-					public Map<T, TIntLongHashMap> addressSpace(String metricName, long copyAddress, Object... refs) {							
-						if(copyAddress==-1L) return Collections.emptyMap();
-						return get(copyAddress);
-					}
-				}						
-		);
-	}
+
 	
 	/**
 	 * {@inheritDoc}

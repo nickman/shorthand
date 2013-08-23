@@ -67,12 +67,12 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	
 	/**
 	 * Returns a map of offsets keyed by the enum collector member for the passed enum collector index
-	 * @param index The enum collector index
+	 * @param enumIndex The enum collector index
 	 * @param bitMask The bitmask
 	 * @return a map of offsets keyed by the enum collector member
 	 */
 	public TObjectLongHashMap<T> offsets(int enumIndex, int bitMask) {
-		final String key = String.format("%s/%s", type(enumIndex).getDeclaringClass().getName(), bitMask);
+		final String key = String.format("%s/%s", type(enumIndex).getName(), bitMask);
 		TObjectLongHashMap<T> _offsets = offsets.get(key);
 		if(_offsets==null) {
 			_offsets = ref(enumIndex).getOffsets(bitMask);

@@ -32,7 +32,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
+import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
+import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
+import com.heliosapm.shorthand.collectors.CollectorSet;
+import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
  * <p>Title: AbstractStore</p>
@@ -47,12 +52,18 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	
 	/** The index of metric name to slab id to find the snapshot */
 	protected final NonBlockingHashMap<String, Long> SNAPSHOT_INDEX;
+	/** Indicates if the mem-spaces should be padded */
+	protected boolean padCache = true;
+    /** The system prop name to indicate if mem-spaces should be padded to the next largest pow(2) */
+    public static final String USE_POW2_ALLOC_PROP = "shorthand.memspace.padcache";
+	
 
 	/**
 	 * Creates a new AbstractStore
 	 */
-	public AbstractStore() {
+	protected AbstractStore() {
 		SNAPSHOT_INDEX = new NonBlockingHashMap<String, Long>(1024); // 1024, 0.75f, ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors()
+		padCache = System.getProperty(USE_POW2_ALLOC_PROP, "true").toLowerCase().trim().equals("true");
 	}
 	
 	/**
@@ -63,15 +74,49 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	public Set<Map.Entry<String, Long>> indexKeyValues() {
 		return SNAPSHOT_INDEX.entrySet();
 	}
+	
+	/** The byte value that all newly created mem-spaces are initialized to */
+	public static final byte MEM_INIT = 0;
 
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#getMetricAddress(java.lang.String)
+	 * @see com.heliosapm.shorthand.store.IStore#getMetricAddress(java.lang.String, com.heliosapm.shorthand.collectors.CollectorSet)
 	 */
 	@Override
-	public Long getMetricAddress(String metricName) {
-		return SNAPSHOT_INDEX.get(metricName);
+	public long getMetricAddress(String metricName, CollectorSet<T> collectorSet) {
+		Long address = SNAPSHOT_INDEX.get(metricName);
+		if(address==null || address <0) {
+			synchronized(SNAPSHOT_INDEX) {
+				address = SNAPSHOT_INDEX.get(metricName);
+				if(address==null || address <0) {
+					int requestedMem = (int)(collectorSet.getTotalAllocation() + HeaderOffsets.HEADER_SIZE);
+					int memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
+					long nameIndex;
+					if(address==null) {
+						nameIndex = newMetricName(metricName, (T) collectorSet.getReferenceCollector(), collectorSet.getBitMask());
+					} else {
+						nameIndex = address * -1;
+					}
+					address = UnsafeAdapter.allocateMemory(memSize);
+					//UnsafeAdapter.setMemory(address, 0, (byte)0);
+					MemSpaceAccessor.get(address).initializeHeader(address, memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
+					SNAPSHOT_INDEX.put(metricName, address);
+				}
+			}
+		}
+		return address;
 	}
+	
+	
+	
+	   /**
+     * Finds the next positive power of 2 for the passed value
+     * @param value the value to find the next power of 2 for
+     * @return the next power of 2
+     */
+    public static int findNextPositivePowerOfTwo(final int value) {
+		return 1 << (32 - Integer.numberOfLeadingZeros(value - 1));
+	}	
 	
 	/**
 	 * {@inheritDoc}

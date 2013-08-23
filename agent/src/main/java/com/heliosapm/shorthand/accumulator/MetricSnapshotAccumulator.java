@@ -43,8 +43,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	private static final Object lock = new Object();
 
 	
-	/** Indicates if the mem-spaces should be padded */
-	protected boolean padCache = true;
 	/** Indicates if DEBUG is on */
 	protected boolean DEBUG = false;
 
@@ -61,17 +59,8 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
     /** The number of bytes in a long */
     public static final int SIZE_OF_LONG = 8;
     
-    /** The system prop name to indicate if mem-spaces should be padded to the next largest pow(2) */
-    public static final String USE_POW2_ALLOC_PROP = "shorthand.memspace.padcache";
 	
-    /**
-     * Finds the next positive power of 2 for the passed value
-     * @param value the value to find the next power of 2 for
-     * @return the next power of 2
-     */
-    public static int findNextPositivePowerOfTwo(final int value) {
-		return 1 << (32 - Integer.numberOfLeadingZeros(value - 1));
-	}
+ 
 	
 	/**
 	 * Acquires the singleton MetricSnapshotAccumulator instance
@@ -140,8 +129,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	
 	
 	private MetricSnapshotAccumulator() {	
-		ShorthandJMXConnectorServer.getInstance();
-		padCache = System.getProperty(USE_POW2_ALLOC_PROP, "true").toLowerCase().trim().equals("true");
+		ShorthandJMXConnectorServer.getInstance();		
 		ExtendedThreadManager.install();
 		PeriodClock.getInstance().registerListener(this);
 		log("MetricSnapshotAccumulator Created");
@@ -321,29 +309,18 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	}	
 	
 
-	/**
-	 * Process a submission of collected metrics for the passed metric name
-	 * @param metricName The metric name
-	 * @param collectorSet The collector set created when the code was instrumented
-	 * @param collectedValues The collected values
-	 */
-	public void snap(String metricName, CollectorSet<?> collectorSet, long...collectedValues) {
-		snap(0, metricName, collectorSet, collectedValues);
-	}
+
 	
 
 
 	/**
 	 * INTERNAL Process a submission of collected metrics for the passed metric name
-	 * @param reentrant Indicates if this call is being made reentrantly
 	 * @param metricName The metric name
 	 * @param collectorSet The collector set created when the code was instrumented
 	 * @param collectedValues The collected values
 	 */
-	private void snap(int reentrancy, String metricName, CollectorSet<?> collectorSet, long...collectedValues) {
-		final int bitMask = collectorSet.getBitMask();
-		Long address = store.getMetricAddress(metricName);		
-		if(address==null || address<1) address = insertNewMetric(metricName, collectorSet, bitMask);
+	public void snap(String metricName, CollectorSet<T> collectorSet, long...collectedValues) {
+		long address = store.getMetricAddress(metricName, collectorSet);		
 		try {
 			store.lock(address);
 			collectorSet.put(address, collectedValues);				
@@ -351,253 +328,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 			store.unlock(address);
 		}
 	}
-	
-	/**
-	 * @param metricName
-	 * @param collectorSet
-	 * @param bitMask
-	 * @return The address of the new metric's mem-space
-	 */
-	protected long insertNewMetric(String metricName, CollectorSet<?> collectorSet, final int bitMask) {
-		Long address;
-		try {
-			store.globalLock();
-			address = store.getMetricAddress(metricName);				
-			if(address==null || address<0) {					
-				try {
-					int requestedMem = (int)(collectorSet.getTotalAllocation() + HEADER_SIZE);
-					long memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
-					long nameIndex = -1;
-					if(address==null) {
-						nameIndex = store.newMetricName(metricName, (T) collectorSet.getReferenceCollector(), bitMask);
-					} else {
-						nameIndex = Math.abs(address);
-					}
-					address = this.allocateMemory(memSize);
-					collectorSet.reset(address);
-					int enumIndex = getEnumIndex((T) collectorSet.getReferenceCollector());
-					initializeHeader(address, (int)memSize, nameIndex, bitMask, enumIndex); 					
-					store.cacheMetricAddress(metricName, address);
-
-					
-											
-				} catch (Throwable ex) {
-					ex.printStackTrace(System.err);					
-				}					
-			}
-			return address;
-		} finally {
-			store.globalUnlock();
-		}
-	}
-	
-	/**
-	 * Returns a copy of the memory space for the passed metric name or -1 if the metric name was not found.
-	 * Use advisedly. The memory should be released when you're done.
-	 * @param metricName The metric name
-	 * @param procedure The procedure to execute in the copied address space
-	 * @param refs Objects to be passed back in the procedure callback
-	 * @return the address of the copy of the memory space for the passed metric name or null if the metric name was not found.
-	 */
-	public <R> R getMemorySpaceCopy(String metricName, CopiedAddressProcedure<R> procedure, Object...refs) {
-		long copyAddress = -1;
-		try {
-			try {
-				store.globalLock();
-				Long address = store.getMetricAddress(metricName);
-				if(address!=null && address>0) {
-					int memSize = UnsafeAdapter.getInt(address + HeaderOffsets.MemSize.offset);
-					copyAddress = allocateMemory(memSize);
-					UnsafeAdapter.copyMemory(address, copyAddress, memSize);
-				}
-			} finally {
-				store.globalUnlock();
-			}
-			return procedure.addressSpace(metricName, copyAddress, refs);
-		} finally {
-			if(copyAddress!=-1) freeMemory(copyAddress);
-		}
-	}
-	
-	
-	public static void main(String[] args) {
-		ThreadMXBean tmx = ManagementFactory.getThreadMXBean();
-		tmx.setThreadContentionMonitoringEnabled(true);
-		tmx.setThreadCpuTimeEnabled(true);
-		log("MetricSnapshotAccumulator Test");
-		//int bitMask = MethodInterceptor.defaultMetricsMask;
-		int bitMask = MethodInterceptor.allMetricsMask;
-		long[] snap = null;
-		CollectorSet<?> cs = new CollectorSet<MethodInterceptor>(MethodInterceptor.class, bitMask); 
-		
-		final Random r = new Random(System.currentTimeMillis());
-		byte[] randomBytes = new byte[2048];
-		
-		int innerLoops = 1000;
-		long loops = 1600;
-		for(int i = 0; i < loops; i++) {			
-			snap = MethodInterceptor.methodEnter(bitMask);
-			for(int x = 0; x < innerLoops; x++) {
-				r.nextBytes(randomBytes);			
-			}
-			//try { Thread.sleep(r.nextInt(5)); } catch (Exception e) {}
-			MetricSnapshotAccumulator.getInstance().snap("Foo", (CollectorSet<?>) cs, MethodInterceptor.methodExit(snap));
-		}
-		log("Warmup Complete");
-		long start = System.nanoTime();
-		//loops = 300;
-		for(int i = 0; i < loops; i++) {	
-
-			snap = MethodInterceptor.methodEnter(bitMask);			
-//			for(int x = 0; x < innerLoops; x++) {
-//				r.nextBytes(randomBytes);	
-//				factorial(1000);
-//				
-//			}
-//			try { Thread.sleep(r.nextInt(5)); } catch (Exception e) {}			
-			MetricSnapshotAccumulator.getInstance().snap("Foo2", (CollectorSet<?>) cs, MethodInterceptor.methodExit(snap));
-			//log("======================================");
-		}
-		long elapsed = System.nanoTime() - start;
-		log("Elapsed:" + elapsed + " ns.   " + (TimeUnit.MILLISECONDS.convert(elapsed, TimeUnit.NANOSECONDS)) + "  ms.");
-		long avgNs = (elapsed/loops);
-		log("Avg:\n\t" + avgNs + " ns.\n\t" 
-				+ TimeUnit.MILLISECONDS.convert(avgNs, TimeUnit.NANOSECONDS) + " ms.\n\t"
-				+ TimeUnit.MICROSECONDS.convert(avgNs, TimeUnit.NANOSECONDS) + " us\n\t"				
-		);
-		for(int i = 0; i < loops; i++) {
-			MetricSnapshotAccumulator.getInstance().summary();
-		}
-		
-		start = System.nanoTime();
-		for(int i = 0; i < loops; i++) {
-			MetricSnapshotAccumulator.getInstance().summary();
-		}
-		log(MetricSnapshotAccumulator.getInstance().summary());
-		elapsed = System.nanoTime() - start;
-		long avg = elapsed/(loops+1);
-		log("Summary elapsed:%s ns.  %s us.  %s ms.", elapsed, 
-				TimeUnit.MICROSECONDS.convert(elapsed, TimeUnit.NANOSECONDS),
-				TimeUnit.MILLISECONDS.convert(elapsed, TimeUnit.NANOSECONDS)
-		);
-		log("Summary AVG:%s ns.  %s us.  %s ms.", avg, 
-				TimeUnit.MICROSECONDS.convert(avg, TimeUnit.NANOSECONDS),
-				TimeUnit.MILLISECONDS.convert(avg, TimeUnit.NANOSECONDS)
-		);
-		
-		
-		//log(MetricSnapshotAccumulator.getInstance().summary());
-//		final Random r = new Random(System.currentTimeMillis());
-//		int numberOfArrays = 3;
-//		int numberOfValues = 10;		
-//		long[][] values = new long[numberOfArrays][];		
-//		for(int i = 0; i < numberOfArrays; i++) {
-//			values[i] = new long[numberOfValues];
-//			for(int x = 0; x < numberOfValues; x++) {
-//				values[i][x] = r.nextLong();
-//			}
-//		}
-//		
-//		int index = 0;
-//		long[] addresses = new long[numberOfArrays];
-//		for(long[] entry: values) {
-////			snapshot.move(index);
-////			snapshot.setBaseline(entry);
-//			addresses[index] = put(entry); 
-//			index++;
-//		}
-//		log("Slab loaded");
-//		long[][] values2 = new long[numberOfArrays][];
-//		for(int i = 0; i < numberOfArrays; i++) {
-//			values2[i] = get(addresses[i]);
-//		}
-//		log("Slab read");
-//		boolean ok = true;
-//		for(int i = 0; i < numberOfArrays; i++) {
-//			for(int x = 0; x < numberOfValues; x++) {
-//				if(values[i][x]!=values2[i][x]) {
-//					ok = false;
-//					log("Fail  [" + values[i][x] + "] vs. [" + values2[i][x] + "]");
-//				}
-//			}
-//		}
-//		if(ok) log("All tests passed");
-//			
-		
-		
-	}
-	
-	public static int factorial(int n) {
-        int fact = 1; // this  will be the result
-        for (int i = 1; i <= n; i++) {
-            fact *= i;
-        }
-        return fact;
-    }
-	
-	
-	
-	
-	
-	public String summary() {
-		Set<String> keys = null;
-		try {
-			store.globalLock();
-			log("SnapshotIndex Size:" + store.getMetricCacheSize());
-			keys = store.getMetricCacheKeys();
-			
-			//for(String s: keys) {
-				//log("\t[%s] : %s", s, SNAPSHOT_INDEX.get(s));
-			//}
-		} finally {
-			store.globalUnlock();
-		}
-		StringBuilder b = new StringBuilder();
-		for(String metricName: keys) {			
-			Map<T, TIntLongHashMap> map = DefaultDataMapper.INSTANCE.get(metricName);
-			if(map.isEmpty()) continue;
-			b.append(metricName);
-			for(Map.Entry<T, TIntLongHashMap> col: map.entrySet()) {
-				String[] subNames = col.getKey().getSubMetricNames();
-				b.append("\n\t").append(col.getKey().name()).append("(").append(col.getKey().getUnit()).append(")");
-				for(int i = 0; i < col.getValue().size(); i++) {
-					b.append("\n\t\t").append(subNames[i]).append(":").append(col.getValue().get(i));
-				}
-			 }
-			//log("Completed [%s]", metricName);
-			 b.append("\n");
-//			 log(b);
-		}
-		return b.toString();
-//		return "";
-	}
-	
-	public String summary(String...names) {
-		StringBuilder b = new StringBuilder();
-		for(String metricName: names) {	
-			log("Summary for [%s]", metricName);
-			Map<T, TIntLongHashMap> map = DefaultDataMapper.INSTANCE.get(metricName);
-			if(map.isEmpty()) continue;
-			b.append(metricName);
-			for(Map.Entry<T, TIntLongHashMap> col: map.entrySet()) {
-				String[] subNames = col.getKey().getSubMetricNames();
-				b.append("\n\t").append(col.getKey().name()).append("(").append(col.getKey().getUnit()).append(")");
-				for(int i = 0; i < col.getValue().size(); i++) {
-					b.append("\n\t\t").append(subNames[i]).append(":").append(col.getValue().get(i));
-				}
-			 }
-			//log("Completed [%s]", metricName);
-			 b.append("\n");
-//			 log(b);
-		}
-		return b.toString();
-//		return "";
-	}
-	
-	
-	
-	
-	
 	
 	
 

@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
+import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.ICollector;
 
 /**
@@ -57,10 +58,10 @@ public interface IStore<T extends Enum<T> & ICollector<T>> {
 	/**
 	 * Returns the address of a metric's address space
 	 * @param metricName The metric name
-	 * @return The address of the metric space. Will be negative if the metric name
-	 * exists but has not been allocated, or null if the metric name is not found.
+	 * @param collectorSet The collector set submitting, used to create a mem-space if this metric does not already exist 
+	 * @return The address of the mem-space for the named metric.
 	 */
-	public Long getMetricAddress(String metricName);
+	public long getMetricAddress(String metricName, CollectorSet<T> collectorSet);
 	
 	/**
 	 * Caches a meric memory space address
