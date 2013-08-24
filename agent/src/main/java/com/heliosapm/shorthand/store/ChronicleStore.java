@@ -693,8 +693,11 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				}
 				lock(address);
 				msa = MemSpaceAccessor.get(address);
+				log("PreFlush MSA:\n%s", msa);
 				msa.preFlush();
+				log("PostPreFlush MSA:\n%s", msa);
 				updatePeriod(msa, priorStartTime, priorEndTime);
+				
 				// ======================================================================
 				// mem4time: to save memory, we can write the negative name index back
 				// into the off-cycle index. On the next period switch, the accumulator threads

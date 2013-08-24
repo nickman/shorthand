@@ -34,10 +34,12 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.AfterClass;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import test.com.heliosapm.shorthand.ExceptionRecordingAssert;
 import test.com.heliosapm.shorthand.FlushCompletionBarrier;
 
 import com.heliosapm.shorthand.collectors.CollectorSet;
@@ -112,18 +114,19 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 	 * @throws Exception thrown on any error
 	 */
 	@Test
-	public void testOnePeriodFlush() throws Exception {
+	public void testOnePeriodFlush() throws Exception {		
 		STORE.clear();
 		final int bitMask = MethodInterceptor.getBitMaskFor(MethodInterceptor.values());
 		CollectorSet<MethodInterceptor> cs = new CollectorSet<MethodInterceptor>(MethodInterceptor.class, bitMask);
-		IAssert.assertEquals(true, true);
-		final int LOOPS = 1000;
+		Assert.assertEquals(true, true);
+		final int LOOPS = 100;
 		final String metricName = getClass().getName() + ".testOnePeriodFlush"; 
 		final int ITEM_COUNT = MethodInterceptor.values().length;
 		final Map<Long, long[]> testValues = new LinkedHashMap<Long, long[]>(LOOPS);
 		long[][] values = new long[LOOPS][];
 		long startTime = System.nanoTime();
 		long periodTime = System.currentTimeMillis();
+		long address = STORE.getMetricAddress(metricName, cs);
 		for(int i = 0; i < LOOPS; i++) {
 			values[i] = new long[ITEM_COUNT+2];
 			for(int x = 0; x < ITEM_COUNT; x++) {
@@ -132,9 +135,16 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 			values[i][ITEM_COUNT] = bitMask;
 			values[i][ITEM_COUNT+1] = 0;
 			values[i][MethodInterceptor.INVOCATION_COUNT.ordinal()] = nextPosInt(9)+1;
-			testValues.put(periodTime + (i*1000), values[i]);			
-			ACCUMULATOR.snap(metricName, cs, values[i]);
+			testValues.put(periodTime + (i*1000), values[i]);	
+			cs.put(address, values[i]);
+			//ACCUMULATOR.snap(metricName, cs, values[i]);	
+			log("Snapped:%s", Arrays.toString(values[i]));
 		}		
+		
+		log("MemSpace Address:%s", address);
+		MemSpaceAccessor msa = MemSpaceAccessor.get(address);
+		//log("MSA:%s", Arrays.deepToString(msa.getDataPoints()));
+		log("MSA:%s", msa);
 		long endTime = System.nanoTime()-startTime;
 		log("Completed [%s] snaps in [%s] ns for an average of [%s] ns. per snap", LOOPS, endTime, endTime/LOOPS);
 		completionBarrier.reset();
@@ -143,15 +153,15 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 		long PERIOD_START = period[2];
 		long PERIOD_END = period[3];		
 		long[][] pivotedValues = ArrayUtils.pivot(values);		
-		IAssert.assertTrue("Pivoted Array Mismatch", Arrays.deepEquals(values, ArrayUtils.pivot(pivotedValues)));
+		Assert.assertTrue("Pivoted Array Mismatch", Arrays.deepEquals(values, ArrayUtils.pivot(pivotedValues)));
 		
 		IMetric<MethodInterceptor> metric = STORE.getMetric(metricName);
-		IAssert.assertEquals("Unexpected metric name", metricName, metric.getName());
-		IAssert.assertEquals("Unexpected collector type name", MethodInterceptor.class.getSimpleName(), metric.getCollectorTypeName());
-		IAssert.assertEquals("Unexpected period start", PERIOD_START, metric.getPeriodStart());
-		IAssert.assertEquals("Unexpected period end", PERIOD_END, metric.getPeriodEnd());
-		IAssert.assertEquals("Unexpected period start", new Date(PERIOD_START), new Date(metric.getPeriodStart()));
-		IAssert.assertEquals("Unexpected period end", new Date(PERIOD_END), new Date(metric.getPeriodEnd()));
+		Assert.assertEquals("Unexpected metric name", metricName, metric.getName());
+		Assert.assertEquals("Unexpected collector type name", MethodInterceptor.class.getSimpleName(), metric.getCollectorTypeName());
+		Assert.assertEquals("Unexpected period start", PERIOD_START, metric.getPeriodStart());
+		Assert.assertEquals("Unexpected period end", PERIOD_END, metric.getPeriodEnd());
+		Assert.assertEquals("Unexpected period start", new Date(PERIOD_START), new Date(metric.getPeriodStart()));
+		Assert.assertEquals("Unexpected period end", new Date(PERIOD_END), new Date(metric.getPeriodEnd()));
 		
 		Map<MethodInterceptor, IMetricDataPoint<MethodInterceptor>> dataPoints = metric.getMetricDataPoints();
 		
@@ -160,10 +170,10 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 			LongSlidingWindow arr = new ConcurrentLongSlidingWindow(LOOPS, pivotedValues[mi.ordinal()]);
 			long totalInvocations = new ConcurrentLongSlidingWindow(LOOPS, pivotedValues[MethodInterceptor.INVOCATION_COUNT.ordinal()]).sum();
 			IMetricDataPoint<MethodInterceptor> mdp = dataPoints.get(mi);
-			IAssert.assertEquals("Unexpected collector", mi, mdp.getCollector());			
+			Assert.assertEquals("Unexpected collector", mi, mdp.getCollector());			
 			TObjectLongHashMap<String> dp = mdp.getDataPoints();			
 			if(mi.getDataStruct().size==1) {
-				IAssert.assertEquals("Unexpected period total", arr.sum(), dp.get(mi.getSubMetricNames()[0]));
+				Assert.assertEquals("Unexpected period total", arr.sum(), dp.get(mi.getSubMetricNames()[0]));
 			} else {
 				
 				for(int i = 0; i < mi.getDataStruct().size; i++) {
@@ -171,17 +181,17 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 					long storeValue = dp.get(subMetricName);
 					switch(i) {
 						case 0:
-							IAssert.assertEquals("Unexpected sub metric name for index [" + i + "]", "Min", subMetricName);
-							IAssert.assertEquals("Unexpected Min Value", arr.min(), storeValue);
+							Assert.assertEquals("Unexpected sub metric name for index [" + i + "]", "Min", subMetricName);
+							Assert.assertEquals("Unexpected Min Value", arr.min(), storeValue);
 							break;
 						case 1:
-							IAssert.assertEquals("Unexpected sub metric name for index [" + i + "]", "Max", subMetricName);
-							IAssert.assertEquals("Unexpected Max Value", arr.max(), storeValue);
+							Assert.assertEquals("Unexpected sub metric name for index [" + i + "]", "Max", subMetricName);
+							Assert.assertEquals("Unexpected Max Value", arr.max(), storeValue);
 							break;
 						case 2:
-							IAssert.assertEquals("Unexpected sub metric name for index [" + i + "]", "Avg", subMetricName);
+							Assert.assertEquals("Unexpected sub metric name for index [" + i + "]", "Avg", subMetricName);
 							
-							IAssert.assertEquals(
+							Assert.assertEquals(
 									"Unexpected Avg Value for values " + Arrays.toString(arr.asLongArray()) + "\n and invocations:"
 									+ Arrays.toString(pivotedValues[MethodInterceptor.INVOCATION_COUNT.ordinal()])
 									, arr.sum()/totalInvocations, storeValue);

@@ -47,6 +47,9 @@ public class ExceptionRecordingAssert {
 	/**  */
 	static final Map<Method, Method> ifaceToClassMapping = new ConcurrentHashMap<Method, Method>();
 	
+	/** If true, records exceptions and suppresses, otherwise throws */
+	public static boolean recordingMode = true;
+	
 	public static IAssert recorder(final AtomicInteger counter, final Map<Integer, String> exceptionContainer) {
 		
 		return (IAssert) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class[]{IAssert.class}, new InvocationHandler(){
@@ -60,6 +63,7 @@ public class ExceptionRecordingAssert {
 					}
 					return m.invoke(null, args);
 				} catch (Throwable t) {
+					if(!recordingMode) throw t;
 					if(t instanceof InvocationTargetException) {
 						InvocationTargetException ite = (InvocationTargetException)t;
 						exceptionContainer.put(counter.incrementAndGet(), ite.getCause().toString());

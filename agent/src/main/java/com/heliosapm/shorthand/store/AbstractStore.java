@@ -89,7 +89,7 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 			synchronized(SNAPSHOT_INDEX) {
 				address = SNAPSHOT_INDEX.get(metricName);
 				if(address==null || address <0) {
-					int requestedMem = (int)(collectorSet.getTotalAllocation() + HeaderOffsets.HEADER_SIZE);
+					int requestedMem = (int)(collectorSet.getTotalAllocation());
 					int memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
 					long nameIndex;
 					if(address==null) {
@@ -99,7 +99,8 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 					}
 					address = UnsafeAdapter.allocateMemory(memSize);
 					//UnsafeAdapter.setMemory(address, 0, (byte)0);
-					MemSpaceAccessor.get(address).initializeHeader(address, memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
+					MemSpaceAccessor.get(address).initializeHeader(memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
+					MemSpaceAccessor.get(address).reset();
 					SNAPSHOT_INDEX.put(metricName, address);
 					log("Put metric name into Index [%s]  Size: [%s]", System.identityHashCode(SNAPSHOT_INDEX), SNAPSHOT_INDEX.size());
 				}
@@ -110,7 +111,7 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	
 	
 	
-	   /**
+	/**
      * Finds the next positive power of 2 for the passed value
      * @param value the value to find the next power of 2 for
      * @return the next power of 2

@@ -19,7 +19,9 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
+import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.collectors.measurers.AbstractDeltaMeasurer;
 import com.heliosapm.shorthand.collectors.measurers.DefaultMeasurer;
 import com.heliosapm.shorthand.collectors.measurers.DelegatingMeasurer;
@@ -220,14 +222,14 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	 * @param bitMask The bitmask to calculate total allocation for
 	 * @return the total number of bytes needed for the passed bitmask
 	 */
-	public static long getTotalAllocation(int bitMask) {
-		long total = 0;
+	public static int getTotalAllocation(int bitMask) {
+		int total = 0;
 		for(MethodInterceptor mi: MethodInterceptor.values()) {
 			if(mi.isEnabled(bitMask)) {
 				total += mi.ds.byteSize;
 			}
 		}
-		return total;
+		return total + HeaderOffsets.HEADER_SIZE;
 	}
 	
 	/**
@@ -438,15 +440,24 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 //			if(v < state[0]) state[0] = v;
 //			if(v > state[1]) state[1] = v;
 //			state[2] = rollingAvg(v, state[2], collectedValues[INVOCATION_COUNT.ordinal()]);
-//			UnsafeAdapter.copyMemory(state, UnsafeAdapter.LONG_ARRAY_OFFSET, null, address, MIN_MAX_AVG_SIZE);			
-			if(v < UnsafeAdapter.getLong(offset)) UnsafeAdapter.putLong(offset, v);
+//			UnsafeAdapter.copyMemory(state, UnsafeAdapter.LONG_ARRAY_OFFSET, null, address, MIN_MAX_AVG_SIZE);		
+			
+			if(v < UnsafeAdapter.getLong(offset)) {
+				UnsafeAdapter.putLong(offset, v);
+			}
 			offset += 8;
-			if(v > UnsafeAdapter.getLong(offset)) UnsafeAdapter.putLong(offset, v);
+			if(v > UnsafeAdapter.getLong(offset)) {
+				UnsafeAdapter.putLong(offset, v);				
+			}
 			offset += 8;
 			// ===============
 			// Changing to capture total and deferring Avg calc to flush 
 			// ===============
-			UnsafeAdapter.putLong(offset, UnsafeAdapter.getLong(offset) + v); 
+			if(UnsafeAdapter.getLong(offset)==-1L) {
+				UnsafeAdapter.putLong(offset, v);
+			} else {
+				UnsafeAdapter.putLong(offset, UnsafeAdapter.getLong(offset) + v);
+			}
 			//UnsafeAdapter.putLong(offset, rollingAvg(v, UnsafeAdapter.getLong(offset), collectedValues[INVOCATION_COUNT.ordinal()]));
 		}
 	}

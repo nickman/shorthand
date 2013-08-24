@@ -237,10 +237,10 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 				
 		
 		/** The length of the header in bytes */
-		public static final long HEADER_SIZE;
+		public static final int HEADER_SIZE;
 		
 		static {
-			long offset = 0;
+			int offset = 0;
 			for(HeaderOffsets off: HeaderOffsets.values()) {
 				offset += off.size;
 			}

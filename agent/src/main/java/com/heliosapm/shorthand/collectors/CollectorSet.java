@@ -73,12 +73,7 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 		icollectors.retainAll(t.getEnabledCollectors(bitMask));
 		this.bitMask = bitMask;
 		totalAllocation = t.getAllocationFor(bitMask);
-		offsets = new TObjectLongHashMap<T>(icollectors.size(), 0.2f);
-		long offset = 0;
-		for(T t: icollectors) {
-			offsets.put(t, offset + MetricSnapshotAccumulator.HEADER_SIZE);
-			offset += t.getDataStruct().byteSize;
-		}
+		offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(clazz.getName(), bitMask);
 		dataMapper = DataMapperBuilder.getInstance().getIDataMapper(t.getDeclaringClass().getName(), bitMask);
 		compiledDataMapper = !dataMapper.getClass().equals(DefaultDataMapper.class);
 	}
