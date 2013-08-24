@@ -25,19 +25,21 @@ import com.heliosapm.shorthand.store.IStore;
  */
 
 public interface IDataMapper<T extends Enum<T> & ICollector<T>> {
+	
+	/** The touched flag value */
+	public static final byte TOUCHED = 1; 
+
 	/**
 	 * Resets the memory space pointed to by the passed address
 	 * @param address The address of the memory space
-	 * @param offsets A map of offsets keyed by the collector for which the memory space is allocated
 	 */
-	public void reset(long address, TObjectLongHashMap<T> offsets);
+	public void reset(long address);
 	/**
 	 * Calculates/Aggregates and applies the final value to the memory space allocated for each collector
 	 * @param address The address of the memory space
-	 * @param offsets A map of offsets keyed by the collector for which the memory space is allocated
 	 * @param data The collected values to apply from
 	 */
-	public void put(long address, TObjectLongHashMap<T> offsets, long[] data);
+	public void put(long address, long[] data);
 	
 	/**
 	 * Returns a map of sub metric names and values keyed by the parent enum collector member
@@ -52,6 +54,25 @@ public interface IDataMapper<T extends Enum<T> & ICollector<T>> {
 	 */
 	public void preFlush(long address);
 	
+	/**
+	 * Returns the enum collector index for this data mapper
+	 * @return the enum collector index
+	 */
+	public int getEnumIndex();
+	
+	/**
+	 * Returns the metric bit mask for this data mapper
+	 * @return the metric bit mask
+	 */
+	public int getBitMask();
+	
+	/**
+	 * Returns the mem-space body offsets for each enabled metric
+	 * @return the mem-space body offsets for each enabled metric
+	 */
+	public TObjectLongHashMap<T> getOffsets();
+	
+	
 	
 //	/**
 //	 * Returns the datapoints for the metric at the passed address
@@ -64,12 +85,10 @@ public interface IDataMapper<T extends Enum<T> & ICollector<T>> {
 	
 	/**
 	 * Calculates/Aggregates and applies the final value to the memory space allocated for each preApply collector
-	 * @param bitMask The bitmask of the enabled metrics
 	 * @param address The address of the memory space
-	 * @param offsets A map of offsets keyed by the collector for which the memory space is allocated
 	 * @param data The collected values to apply from
 	 */
-	public void prePut(int bitMask, long address, TObjectLongHashMap<T> offsets, long[] data);
+	public void prePut(long address, long[] data);
 	
 	/**
 	 * Flushes the accumulated metric at the passed address to the live tier store

@@ -8,7 +8,7 @@ import java.util.Set;
 
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
-import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
+import com.heliosapm.shorthand.datamapper.AbstractDataMapper;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
 
 /**
@@ -75,7 +75,7 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 		totalAllocation = t.getAllocationFor(bitMask);
 		offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(clazz.getName(), bitMask);
 		dataMapper = DataMapperBuilder.getInstance().getIDataMapper(t.getDeclaringClass().getName(), bitMask);
-		compiledDataMapper = !dataMapper.getClass().equals(DefaultDataMapper.class);
+		compiledDataMapper = !dataMapper.getClass().equals(AbstractDataMapper.class);
 	}
 	
 	/**
@@ -110,7 +110,7 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 	 * @param address the address
 	 */
 	public void reset(long address) {
-		dataMapper.reset(address, getOffsets());
+		dataMapper.reset(address);
 	}
 	
 	/**
@@ -122,7 +122,7 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 //		TObjectLongHashMap<T> offsets = getOffsets();
 //		log("Offsets:" + offsets);
 //		log(dataMapper.toString());
-		dataMapper.put(address, compiledDataMapper ? null : getOffsets(), collectedValues);
+		dataMapper.put(address, collectedValues);		
 	}
 	
 	public static void log(Object msg) {

@@ -96,7 +96,7 @@ public class MemSpaceAccessorTest extends BaseTest {
 			// Reset/Initialize the mem-space body
 			//======================================================================
 			TObjectLongHashMap<MethodInterceptor>  offsets = (TObjectLongHashMap<MethodInterceptor>) EnumCollectors.getInstance().offsets(enumIndex, bitMask);
-			dataMapper.reset(address, EnumCollectors.getInstance().offsets(enumIndex, bitMask));
+			dataMapper.reset(address);
 			//======================================================================
 			//  Validate the reset mem-space body
 			//======================================================================
@@ -136,8 +136,8 @@ public class MemSpaceAccessorTest extends BaseTest {
 			Assert.assertEquals("Bit Mask", bitMask, values[MethodInterceptor.bitMaskIndex]);
 			//======================================================================
 			//  Load the data into the mem-space
-			//======================================================================			
-			dataMapper.put(address, EnumCollectors.getInstance().offsets(enumIndex, bitMask), values);
+			//======================================================================	
+			dataMapper.put(address, values);
 			//======================================================================
 			//  Validate the data set mem-space body using direct references
 			//======================================================================

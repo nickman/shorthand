@@ -668,8 +668,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		}
 		return values;
 	}
-	
-	
+
+
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.shorthand.store.IStore#flush(long, long)
@@ -684,7 +684,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			bufferCount = SNAPSHOT_INDEX.size();
 			log("Processing Period Update for [%s] Store Name Index Values", bufferCount);
 			Set<String> keys = new HashSet<String>(SNAPSHOT_INDEX.keySet());
-			MemSpaceAccessor<T> msa = null;
+			MemSpaceAccessor<T> msa = MemSpaceAccessor.get(-1L);
 			for(String key: keys) {				
 				address = SNAPSHOT_INDEX.get(key);
 				if(address<0) {
@@ -692,10 +692,15 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 					continue;
 				}
 				lock(address);
-				msa = MemSpaceAccessor.get(address);
-				log("PreFlush MSA:\n%s", msa);
+				msa.setAddress(address);
+				if(!msa.isTouched()) {
+					unlock(address);
+					bufferCount--;
+					continue;					
+				}
+//				log("PreFlush MSA:\n%s", msa);
 				msa.preFlush();
-				log("PostPreFlush MSA:\n%s", msa);
+//				log("PostPreFlush MSA:\n%s", msa);
 				updatePeriod(msa, priorStartTime, priorEndTime);
 				
 				// ======================================================================

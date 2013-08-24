@@ -30,9 +30,10 @@ import gnu.trove.map.hash.TObjectLongHashMap;
 import java.util.Arrays;
 import java.util.Map;
 
+import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
-import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
+import com.heliosapm.shorthand.datamapper.AbstractDataMapper;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
@@ -56,13 +57,21 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 //	/** The single accessor instance */
 //	private static final MemSpaceAccessor INSTANCE = new MemSpaceAccessor();
 	
-	private final long address;
+	/** The reset and untouched flag value */
+	public static final byte UNTOUCHED = 0; 
+	
+	
+	private long address;
 
 	/**
 	 * Creates a new MemSpaceAccessor
 	 */
 	private MemSpaceAccessor(long address) {
 		this.address = address;
+	}
+	
+	public void setAddress(long address) {
+		this.address =address;
 	}
 	
 	/**
@@ -81,10 +90,12 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @param bitMask The enabled bitmask of the new metric
 	 * @param enumIndex The enum collector index
 	 */
-	public void initializeHeader(int memorySize, long nameIndex, int bitMask, int enumIndex) {		
+	public void initializeHeader(int memorySize, long nameIndex, int bitMask, int enumIndex) {			
 		long pos = address;
-		UnsafeAdapter.putLong(address, 0);   	// Lock
+		UnsafeAdapter.putLong(pos, 0);   		// Lock
 		pos += UnsafeAdapter.LONG_SIZE;
+		UnsafeAdapter.putByte(pos, UNTOUCHED);  // Touched
+		pos += UnsafeAdapter.BYTE_SIZE;		
 		UnsafeAdapter.putInt(pos, bitMask);		// BitMask
 		pos += UnsafeAdapter.INT_SIZE;
 		UnsafeAdapter.putInt(pos, enumIndex);	// EnumIndex
@@ -93,6 +104,14 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 		pos += UnsafeAdapter.INT_SIZE;				
 		UnsafeAdapter.putLong(pos,nameIndex);	// Name Index
 		pos += UnsafeAdapter.LONG_SIZE;
+	}
+	
+	/**
+	 * Determines if this mem-space has been touched since the last reset
+	 * @return true if this mem-space has been touched since the last reset, false otherwise
+	 */
+	public boolean isTouched() {
+		return UnsafeAdapter.getByte(address + HeaderOffsets.Touch.offset)>0;
 	}
 	
 	
@@ -142,7 +161,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 			for(int i = 0; i < values.length; i++) {
 				values[i] = entry.getValue().get(i);
 			}
-			datapoints[cnt] = DefaultDataMapper.keyOrderedArray(entry.getValue());
+			datapoints[cnt] = AbstractDataMapper.keyOrderedArray(entry.getValue());
 			cnt++;
 		}
 		return datapoints;
@@ -157,7 +176,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	}
 	
 	public void reset() {
-		getDataMapper().reset(address, (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(getEnumIndex(), getBitMask()));
+		getDataMapper().reset(address);		
 	}
 	/**
 	 * {@inheritDoc}
@@ -174,7 +193,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 		b.append(" memsize:").append(getMemSize());
 
 		for(Map.Entry<T, TIntLongHashMap> entry: dataMap.entrySet()) {
-			b.append("\n\t").append(entry.getKey().name()).append(":").append(Arrays.toString(DefaultDataMapper.keyOrderedArray(entry.getValue())));
+			b.append("\n\t").append(entry.getKey().name()).append(":").append(Arrays.toString(AbstractDataMapper.keyOrderedArray(entry.getValue())));
 		}
 		return b.toString();
 	}

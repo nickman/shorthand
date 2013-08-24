@@ -102,7 +102,6 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 					MemSpaceAccessor.get(address).initializeHeader(memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
 					MemSpaceAccessor.get(address).reset();
 					SNAPSHOT_INDEX.put(metricName, address);
-					log("Put metric name into Index [%s]  Size: [%s]", System.identityHashCode(SNAPSHOT_INDEX), SNAPSHOT_INDEX.size());
 				}
 			}
 		}

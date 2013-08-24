@@ -17,7 +17,7 @@ import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.collectors.MethodInterceptor;
-import com.heliosapm.shorthand.datamapper.DefaultDataMapper;
+import com.heliosapm.shorthand.datamapper.AbstractDataMapper;
 import com.heliosapm.shorthand.store.ChronicleStore;
 import com.heliosapm.shorthand.store.IStore;
 import com.heliosapm.shorthand.util.StringHelper;
@@ -53,6 +53,8 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	/** The current total unsafely allocated memory  */
 	protected final AtomicLong unsafeMemoryAllocated = new AtomicLong();
 	
+    /** The number of bytes in a byte */
+    public static final int SIZE_OF_BYTE = 1;
 	
     /** The number of bytes in an int */
     public static final int SIZE_OF_INT = 4;
@@ -165,8 +167,14 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		
 	}
 	
+	/** The reset and untouched flag value */
+	public static final byte UNTOUCHED = 0; 
+	
 	/** The size of the accumulator lock */
 	public static final int LOCK_SIZE = SIZE_OF_LONG;
+	/** The period touched flag */
+	public static final int PERIOD_TOUCHED = SIZE_OF_BYTE;
+	
 	/** The size of the memory allocation */
 	public static final int MEM_SIZE = SIZE_OF_INT;
 	
@@ -178,7 +186,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	public static final int ENUMINDEX_SIZE = SIZE_OF_INT;
 	
 	/** The size of the accumulator header */
-	public static final long HEADER_SIZE = LOCK_SIZE + BITMASK_SIZE + NAMEINDEX_SIZE + ENUMINDEX_SIZE + MEM_SIZE;
+	public static final long HEADER_SIZE = LOCK_SIZE + PERIOD_TOUCHED + BITMASK_SIZE + NAMEINDEX_SIZE + ENUMINDEX_SIZE + MEM_SIZE;
 	
 	
 	/**
@@ -190,15 +198,17 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 */
 	private static void initializeHeader(long address, int memorySize, long nameIndex, int bitMask, int enumIndex) {		
 		long pos = address;
-		UnsafeAdapter.putLong(address, 0);   	// Lock
+		UnsafeAdapter.putLong(address, 0);   			// Lock
 		pos += SIZE_OF_LONG;
-		UnsafeAdapter.putInt(pos, bitMask);		// BitMask
+		UnsafeAdapter.putByte(address, UNTOUCHED);   	// Touch Flag
+		pos += SIZE_OF_BYTE;
+		UnsafeAdapter.putInt(pos, bitMask);				// BitMask
 		pos += SIZE_OF_INT;
-		UnsafeAdapter.putInt(pos, enumIndex);	// EnumIndex
+		UnsafeAdapter.putInt(pos, enumIndex);			// EnumIndex
 		pos += SIZE_OF_INT;
-		UnsafeAdapter.putInt(pos, memorySize);	// Mem Size
+		UnsafeAdapter.putInt(pos, memorySize);			// Mem Size
 		pos += SIZE_OF_INT;				
-		UnsafeAdapter.putLong(pos,nameIndex);	// Name Index
+		UnsafeAdapter.putLong(pos,nameIndex);			// Name Index
 		pos += SIZE_OF_LONG;
 		assert pos==HEADER_SIZE;
 	}
@@ -212,15 +222,17 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 */
 	public static enum HeaderOffsets {
 		/** The memory space lock */
-		Lock(0, SIZE_OF_LONG),									// At offset 0 
+		Lock(0, SIZE_OF_LONG),									// At offset 0
+		/** The touch flag */
+		Touch(Lock.size + Lock.offset, SIZE_OF_BYTE),			// At offset 8 		
 		/** The metric bitmask */
-		BitMask(Lock.size + Lock.offset, SIZE_OF_INT),			// At offset 8
+		BitMask(Touch.size + Touch.offset, SIZE_OF_INT),		// At offset 9
 		/** The enum index */
-		EnumIndex(BitMask.size + BitMask.offset, SIZE_OF_INT),	// At offset 12
+		EnumIndex(BitMask.size + BitMask.offset, SIZE_OF_INT),	// At offset 13
 		/** The total memory size of this allocation */
-		MemSize(EnumIndex.size + EnumIndex.offset, SIZE_OF_INT),// At offset 16
+		MemSize(EnumIndex.size + EnumIndex.offset, SIZE_OF_INT),// At offset 17
 		/** The name index */
-		NameIndex(MemSize.size + MemSize.offset, SIZE_OF_LONG); // At offset 20
+		NameIndex(MemSize.size + MemSize.offset, SIZE_OF_LONG); // At offset 21
 		
 		private HeaderOffsets(int offset, int size) {
 			this.offset = offset;
@@ -259,7 +271,9 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		 * @return the value as a long (it may be an int)
 		 */
 		public long get(long address) {
-			if(size==4) {
+			if(size==1) {
+				return UnsafeAdapter.getByte(address + offset);
+			} else if(size==4) {
 				return UnsafeAdapter.getInt(address + offset);
 			}
 			return UnsafeAdapter.getLong(address + offset);
@@ -271,7 +285,9 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		 * @param value The value to set the header to
 		 */
 		public void set(long address, long value) {
-			if(size==4) {
+			if(size==1) {
+				UnsafeAdapter.putByte(address + offset, (byte)value);
+			} else if(size==4) {
 				UnsafeAdapter.putInt(address + offset, (int)value);
 			} else {
 				UnsafeAdapter.putLong(address + offset, value);
