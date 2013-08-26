@@ -3,11 +3,12 @@ package com.heliosapm.shorthand.accumulator;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Random;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -28,8 +29,8 @@ public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionH
 	public static final int THREAD_COUNT = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors()/2;
 	public static final int WARMUP_LOOPS = 1600;
 	public static final int RUN_LOOPS = 1000000;
-	public static final long LOOP_RUN_TIME = 1000;
-	public static final int METRIC_COUNT = 20;
+	public static final long LOOP_RUN_TIME = 1000 * 60 * 15;
+	public static final int METRIC_COUNT = 1000;
 //	public static final int SLEEP_TIME = 10;
 	public static final int BIT_MASK = MethodInterceptor.allMetricsMask & ~MethodInterceptor.USER_CPU.baseMask;
 	//public static final int BIT_MASK = MethodInterceptor.defaultMetricsMask;
@@ -51,9 +52,9 @@ public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionH
 		completionLatch = new CountDownLatch(threadCount);
 		String[] metricNames = new String[metricCount];
 		String[] warmupMetricNames = new String[metricCount];
-		Iterator<Object> iter = System.getProperties().keySet().iterator();
-		for(int i = 0; i < metricCount; i++) { metricNames[i] = iter.next().toString(); }
-		for(int i = 0; i < metricCount; i++) { warmupMetricNames[i] = iter.next().toString(); }
+		//Iterator<Object> iter = System.getProperties().keySet().iterator();
+		for(int i = 0; i < metricCount; i++) { metricNames[i] = UUID.randomUUID().toString();  }
+		for(int i = 0; i < metricCount; i++) { warmupMetricNames[i] = UUID.randomUUID().toString(); }
 		CollectorSet<MethodInterceptor> cs = new CollectorSet<MethodInterceptor>(MethodInterceptor.class, bitMask);
 		log("Data Mapper [%s]", cs.getDataMapper().getClass().getName());
 		accumulator = MetricSnapshotAccumulator.getInstance();
@@ -103,9 +104,9 @@ public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionH
 			public void run() {
 				final long startTime = System.currentTimeMillis(), endTime = startTime + LOOP_RUN_TIME;
 				while(true) {
-					List<String> _metricNames = new ArrayList<String>(metricNames.length);
+					Set<String> _metricNames = new HashSet<String>(metricNames.length);
 					Collections.addAll(_metricNames, metricNames.clone());
-					Collections.shuffle(_metricNames, RANDOM);
+					//Collections.shuffle(_metricNames, RANDOM);
 					long[] snap;
 					if(startLatch.getCount()>0) {
 						try { startLatch.await(); } catch (Exception ex) {}

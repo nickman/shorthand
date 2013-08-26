@@ -17,7 +17,13 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.management.ListenerNotFoundException;
@@ -27,6 +33,7 @@ import javax.management.NotificationBroadcaster;
 import javax.management.NotificationBroadcasterSupport;
 import javax.management.NotificationFilter;
 import javax.management.NotificationListener;
+import javax.management.ObjectName;
 
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
@@ -35,6 +42,7 @@ import com.heliosapm.shorthand.accumulator.AccumulatorThreadStats;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
+import com.heliosapm.shorthand.accumulator.PeriodClock;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
@@ -58,14 +66,20 @@ import com.higherfrequencytrading.chronicle.impl.IntIndexedChronicle;
  * @param <T> The collector set type
  */
 
-public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractStore<T> implements ChronicleStoreMBean, NotificationBroadcaster {
+public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractStore<T> implements ChronicleStoreMBean, NotificationBroadcaster,  RejectedExecutionHandler, Thread.UncaughtExceptionHandler, ThreadFactory {
 	/** The default directory */
 	public static final String DEFAULT_DIRECTORY = String.format("%s%sshorthand", System.getProperty("java.io.tmpdir"), File.separator);
 	/** System property name to override the default directory */
 	public static final String CHRONICLE_DIR_PROP = "shorthand.store.chronicle.dir";
 	
+	/** JMX notification type for a period end event */
+	public static final String NOTIF_PERIOD_END = "shorthand.store.period.end";
+	/** JMX notification type for new metric names at period end */
+	public static final String NOTIF_NEW_METRICS = "shorthand.store.period.newmetrics";
+	
 	private static final MBeanNotificationInfo[] NOTIFS = new MBeanNotificationInfo[]{
-		
+		new MBeanNotificationInfo(new String[]{NOTIF_PERIOD_END}, Notification.class.getName(), "Notification indicating a metric period has ended"),
+		new MBeanNotificationInfo(new String[]{NOTIF_NEW_METRICS}, Notification.class.getName(), "Notification indicating new metrics were created in the prior period")
 	};
 	
 	/** The singleton instance */
@@ -75,6 +89,14 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	
 	/** The notification broadcaster delegate */
 	protected final NotificationBroadcasterSupport notificationBroadcaterSupport; 
+	/** A set of metric names that have been added this period */
+	protected final Set<String> addedMetricNames = new CopyOnWriteArraySet<String>();
+	/** Serial number factory for notification sequences */
+	protected final AtomicLong notificationSerial = new AtomicLong();
+	/** Serial number factory for notification thread pool thread names */
+	protected final AtomicInteger threadSerial = new AtomicInteger();
+	/** Notification thread pool */
+	protected final ThreadPoolExecutor notificationProcessors = new ThreadPoolExecutor(2, 2, 15000, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(1000, false), this, this); 
 	
 	/**
 	 * Acquires the singleton ChronicleStore instance
@@ -147,13 +169,16 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 
 	
 	/** A sliding window of first phase flush elapsed times in ns. */
-	protected final ConcurrentLongSlidingWindow firstPhaseFlushTimes = new ConcurrentLongSlidingWindow(100); 
+	protected final ConcurrentLongSlidingWindow firstPhaseFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(PeriodClock.PERIOD_PROP, 15000)); 
 	/** A sliding window of second phase flush elapsed times in ns. */
-	protected final ConcurrentLongSlidingWindow secondPhaseFlushTimes = new ConcurrentLongSlidingWindow(100); 
+	protected final ConcurrentLongSlidingWindow secondPhaseFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(PeriodClock.PERIOD_PROP, 15000));
 	/** A map of addresses pending de-allocation */
 	private final NonBlockingHashMapLong<Boolean> pendingDeallocates = new NonBlockingHashMapLong<Boolean>(CORES, false);
 	/** A map of new allocation addresses keyed by the prior deallocated address */
 	private final NonBlockingHashMapLong<Long> allocationTransfers = new NonBlockingHashMapLong<Long>(1024, false);
+	
+	/** This store's JMX ObjectName */
+	public static final ObjectName OBJECT_NAME = JMXHelper.objectName("com.heliosapm.shorthand.store:service=Store,type=Chronicle");
 	
 	/** A decode of enum class names to a set of all enum entries */
 	protected final TObjectIntHashMap<Class<T>> ENUM_CACHE = new TObjectIntHashMap<Class<T>>(32, 0.2f, -1); 
@@ -357,7 +382,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		}
 		try {
 			enumIndex = getIntChronicle(ENUM_INDEX);
-//			enumIndex.multiThreaded(true);
 			enumIndex.useUnsafe(true);				
 			writeZeroRec(enumIndex);
 			log(printChronicleDetails(enumIndex));
@@ -376,10 +400,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			writeZeroRec(tier1Data);
 			log(printChronicleDetails(tier1Data));
 			loadSnapshotNameIndex();
-			notificationBroadcaterSupport = new NotificationBroadcasterSupport(NOTIFS); 
-			JMXHelper.registerMBean(this, JMXHelper.objectName("com.heliosapm.shorthand.store:service=Store,type=Chronicle"));
-
-			
+			notificationBroadcaterSupport = new NotificationBroadcasterSupport(notificationProcessors, NOTIFS); 
+			JMXHelper.registerMBean(this, OBJECT_NAME);			
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			throw new RuntimeException("Failed to initialize name index chronicle", ex);
@@ -520,7 +542,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public long newMetricName(String metricName, T collector, int bitMask) {
-		// Check for DUPS here.
 		int enumIndex = getEnum(collector);		
 		int nameLength = metricName.getBytes().length;		
 		int tier1AddressCount = collector.getDeclaringClass().getEnumConstants().length;
@@ -560,6 +581,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				offset += UnsafeAdapter.LONG_SIZE;
 			}
 			nameIndexEx.finish();
+			addedMetricNames.add(metricName);
 			return nindex;
 		} catch (Exception ex) {
 			loge("Failed to write new metric name [%s]", ex, metricName);
@@ -715,7 +737,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 					continue;
 				}
 				// =========================================================================
-				long ref = lock(address);
+				long ref = lockNoYield(address);
 				msa.setAddress(ref);
 				if(!msa.isTouched()) {
 					unlock(address);					
@@ -735,8 +757,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				msa.setAddress(ref);
 				msa.preFlush();
 				updatePeriod(msa, priorStartTime, priorEndTime);
-			}
-			keys.clear();			
+			}			
+			closedPeriodNotif(priorStartTime, priorEndTime);
+			newMetricNotifs();
 			elapsed = System.nanoTime()-startTime;
 			secondPhaseFlushTimes.insert(elapsed);			
 			log(StringHelper.reportTimes("Second Phase Flush Elapsed Time", elapsed));
@@ -747,6 +770,29 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		}		
 	}
 	
+	/**
+	 * Sends a closed period notification
+	 * @param priorStartTime The start time of the closed period
+	 * @param priorEndTime The end time of the closed period
+	 */
+	protected void closedPeriodNotif(long priorStartTime, long priorEndTime) {
+		Notification n = new Notification(NOTIF_PERIOD_END, OBJECT_NAME, notificationSerial.incrementAndGet(), System.currentTimeMillis(), "Metric Period End [" + new Date(priorStartTime) + "] to [" + new Date(priorEndTime) + "]");
+		n.setUserData(new long[]{priorStartTime, priorEndTime});
+		sendNotification(n);
+	}
+	
+	/**
+	 * Sends a new metrics JMX notification
+	 */
+	protected void newMetricNotifs() {
+		if(!addedMetricNames.isEmpty()) {
+			Set<String> names = new HashSet<String>(addedMetricNames);
+			addedMetricNames.removeAll(names);
+			Notification n = new Notification(NOTIF_NEW_METRICS, OBJECT_NAME, notificationSerial.incrementAndGet(), System.currentTimeMillis(), "New Metrics [" + names.size() + "]");
+			n.setUserData(names);
+			sendNotification(n);
+		}
+	}
 	/**
 	 * Captures all the current mem-spaces during a flush, copies and resets the copy and inserts the new reset copy back into the snapshot index.
 	 * @return A map of the dirty buffers to be flushed into the store
@@ -960,7 +1006,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public long getFirstPhaseLastFlushElapsedNs() {
-		return firstPhaseFlushTimes.getLast();
+		return firstPhaseFlushTimes.getFirst();
 	}
 	/**
 	 * {@inheritDoc}
@@ -968,7 +1014,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public long getFirstPhaseLastFlushElapsedMs() {		
-		return TimeUnit.MILLISECONDS.convert(firstPhaseFlushTimes.getLast(), TimeUnit.NANOSECONDS);
+		return TimeUnit.MILLISECONDS.convert(firstPhaseFlushTimes.getFirst(), TimeUnit.NANOSECONDS);
 	}
 	/**
 	 * {@inheritDoc}
@@ -1092,7 +1138,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public long getSecondPhaseLastFlushElapsedNs() {		
-		return secondPhaseFlushTimes.getLast();
+		return secondPhaseFlushTimes.getFirst();
 	}
 
 	/**
@@ -1101,7 +1147,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public long getSecondPhaseLastFlushElapsedMs() {
-		return TimeUnit.MILLISECONDS.convert(secondPhaseFlushTimes.getLast(), TimeUnit.NANOSECONDS);
+		return TimeUnit.MILLISECONDS.convert(secondPhaseFlushTimes.getFirst(), TimeUnit.NANOSECONDS);
 	}
 
 	/**
@@ -1148,10 +1194,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * @param handback
 	 * @see javax.management.NotificationBroadcasterSupport#addNotificationListener(javax.management.NotificationListener, javax.management.NotificationFilter, java.lang.Object)
 	 */
-	public void addNotificationListener(NotificationListener listener,
-			NotificationFilter filter, Object handback) {
-		notificationBroadcaterSupport.addNotificationListener(listener, filter,
-				handback);
+	public void addNotificationListener(NotificationListener listener, NotificationFilter filter, Object handback) {
+		notificationBroadcaterSupport.addNotificationListener(listener, filter, handback);
 	}
 
 
@@ -1161,12 +1205,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * @throws ListenerNotFoundException
 	 * @see javax.management.NotificationBroadcasterSupport#removeNotificationListener(javax.management.NotificationListener)
 	 */
-	public void removeNotificationListener(NotificationListener listener)
-			throws ListenerNotFoundException {
+	public void removeNotificationListener(NotificationListener listener) throws ListenerNotFoundException {
 		notificationBroadcaterSupport.removeNotificationListener(listener);
 	}
-
-
 
 	/**
 	 * @param listener
@@ -1174,12 +1215,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 * @param handback
 	 * @throws ListenerNotFoundException
 	 * @see javax.management.NotificationBroadcasterSupport#removeNotificationListener(javax.management.NotificationListener, javax.management.NotificationFilter, java.lang.Object)
-	 */
-	public void removeNotificationListener(NotificationListener listener,
-			NotificationFilter filter, Object handback)
-			throws ListenerNotFoundException {
-		notificationBroadcaterSupport.removeNotificationListener(listener,
-				filter, handback);
+	 */ 
+	public void removeNotificationListener(NotificationListener listener, NotificationFilter filter, Object handback) throws ListenerNotFoundException {
+		notificationBroadcaterSupport.removeNotificationListener(listener, filter, handback);
 	}
 
 
@@ -1200,6 +1238,41 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	public void sendNotification(Notification notification) {
 		notificationBroadcaterSupport.sendNotification(notification);
+	}
+
+	
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see java.util.concurrent.ThreadFactory#newThread(java.lang.Runnable)
+	 */
+	@Override
+	public Thread newThread(Runnable r) {
+		Thread t = new Thread(r, "ShorthandNotificationThread#" + threadSerial.incrementAndGet());
+		t.setDaemon(true);
+		return t;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Thread.UncaughtExceptionHandler#uncaughtException(java.lang.Thread, java.lang.Throwable)
+	 */
+	@Override
+	public void uncaughtException(Thread t, Throwable e) {
+		loge("Uncaught exception on thread [%s]", e, t.getName());
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see java.util.concurrent.RejectedExecutionHandler#rejectedExecution(java.lang.Runnable, java.util.concurrent.ThreadPoolExecutor)
+	 */
+	@Override
+	public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+		loge("Rejected execution for [%s]", r);
+		
 	}
 
 }
