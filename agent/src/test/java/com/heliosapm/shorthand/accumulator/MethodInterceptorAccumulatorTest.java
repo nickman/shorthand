@@ -86,6 +86,25 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 		log("!!! ENABLED PERIOD CLOCK !!!");
 	}
 	
+	/**
+	 * Generates a random series of data samples
+	 * @param periods The number of periods to generate
+	 * @param samplesPerPeriod The number of samples per period
+	 * @param invCount If not negative, this index of each period will have a random invocation count (1-10).
+	 * @return the generated random data samples
+	 */
+	public long[][] getDataSamples(final int periods, final int samplesPerPeriod, final int invCount) {
+		long[][] dataSamples = new long[periods][];
+		for(int i = 0; i < periods; i++) {
+			dataSamples[i] = new long[samplesPerPeriod];
+			for(int x = 0; x < samplesPerPeriod; x++) {
+				if(x==invCount) dataSamples[i][x] = nextPosInt(9)+1;
+				else dataSamples[i][x] = nextPosInt(10000)+1;
+			}
+		}
+		return dataSamples;
+	}
+	
 	
 	/**
 	 * Registers the completion barrier
@@ -118,33 +137,30 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 		STORE.clear();
 		final int bitMask = MethodInterceptor.getBitMaskFor(MethodInterceptor.values());
 		CollectorSet<MethodInterceptor> cs = new CollectorSet<MethodInterceptor>(MethodInterceptor.class, bitMask);
-		Assert.assertEquals(true, true);
 		final int LOOPS = 100;
 		final String metricName = getClass().getName() + ".testOnePeriodFlush"; 
 		final int ITEM_COUNT = MethodInterceptor.values().length;
 		final Map<Long, long[]> testValues = new LinkedHashMap<Long, long[]>(LOOPS);
-		long[][] values = new long[LOOPS][];
+		final long[][] values = getDataSamples(LOOPS, ITEM_COUNT+2, MethodInterceptor.INVOCATION_COUNT.ordinal());
 		long startTime = System.nanoTime();
 		long periodTime = System.currentTimeMillis();
-		long address = STORE.getMetricAddress(metricName, cs);
+		long lock = STORE.getMetricAddress(metricName, cs);
+		long address = STORE.lock(lock);
 		for(int i = 0; i < LOOPS; i++) {
-			values[i] = new long[ITEM_COUNT+2];
-			for(int x = 0; x < ITEM_COUNT; x++) {
-				values[i][x] = nextPosInt(10000)+1;
-			}
+//			values[i] = new long[ITEM_COUNT+2];
+//			for(int x = 0; x < ITEM_COUNT; x++) {
+//				values[i][x] = nextPosInt(10000)+1;
+//			}
 			values[i][ITEM_COUNT] = bitMask;
 			values[i][ITEM_COUNT+1] = 0;
-			values[i][MethodInterceptor.INVOCATION_COUNT.ordinal()] = nextPosInt(9)+1;
+//			values[i][MethodInterceptor.INVOCATION_COUNT.ordinal()] = nextPosInt(9)+1;
 			testValues.put(periodTime + (i*1000), values[i]);	
 			cs.put(address, values[i]);
-			//ACCUMULATOR.snap(metricName, cs, values[i]);	
-			log("Snapped:%s", Arrays.toString(values[i]));
 		}		
 		
-		log("MemSpace Address:%s", address);
 		MemSpaceAccessor msa = MemSpaceAccessor.get(address);
 		//log("MSA:%s", Arrays.deepToString(msa.getDataPoints()));
-		log("MSA:%s", msa);
+		STORE.unlock(lock);
 		long endTime = System.nanoTime()-startTime;
 		log("Completed [%s] snaps in [%s] ns for an average of [%s] ns. per snap", LOOPS, endTime, endTime/LOOPS);
 		completionBarrier.reset();
@@ -175,7 +191,6 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 			if(mi.getDataStruct().size==1) {
 				Assert.assertEquals("Unexpected period total", arr.sum(), dp.get(mi.getSubMetricNames()[0]));
 			} else {
-				
 				for(int i = 0; i < mi.getDataStruct().size; i++) {
 					String subMetricName = mi.getSubMetricNames()[i];
 					long storeValue = dp.get(subMetricName);

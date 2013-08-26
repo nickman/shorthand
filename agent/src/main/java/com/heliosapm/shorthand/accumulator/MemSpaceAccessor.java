@@ -114,6 +114,17 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 		return UnsafeAdapter.getByte(address + HeaderOffsets.Touch.offset)>0;
 	}
 	
+	public long copy() {
+		long addr = UnsafeAdapter.allocateMemory(getMemSize());
+		UnsafeAdapter.copyMemory(address, addr, getMemSize());
+		long currentAddress = address;
+		setAddress(addr);
+		reset();
+		address = currentAddress;
+		return addr;
+				
+	}
+	
 	
 	/**
 	 * Returns the bitmask

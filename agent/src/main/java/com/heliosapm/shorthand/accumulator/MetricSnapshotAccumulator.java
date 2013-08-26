@@ -338,8 +338,8 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	public void snap(String metricName, CollectorSet<T> collectorSet, long...collectedValues) {
 		long address = store.getMetricAddress(metricName, collectorSet);		
 		try {
-			store.lock(address);
-			collectorSet.put(address, collectedValues);				
+			long ref = store.lock(address);
+			collectorSet.put(ref, collectedValues);				
 		} finally {
 			store.unlock(address);
 		}

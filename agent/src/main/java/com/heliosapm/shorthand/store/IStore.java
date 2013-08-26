@@ -120,12 +120,12 @@ public interface IStore<T extends Enum<T> & ICollector<T>> {
 	
 	
 	/**
-	 * Locks the passed address. Yield spins while waiting for the lock.
-	 * @param address The address of the lock
-	 * @return indicates if the locked memspace is valid. If false, the memspace 
-	 * has been invalidated and the snapshot index should be re-queried for a new address
+	 * Locks the passed address reference. Yield spins while waiting for the lock.
+	 * Once the address reference is locked, then returns the associated actual mem-space address.
+	 * @param address The address reference of the lock
+	 * @return the actual address of the mem-space
 	 */
-	public boolean lock(long address);	
+	public long lock(long address);	
 	
 	/**
 	 * Unlocks the passed address if it is held by the current thread.

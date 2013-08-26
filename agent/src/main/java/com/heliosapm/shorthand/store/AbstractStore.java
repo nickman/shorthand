@@ -98,14 +98,19 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 						nameIndex = address * -1;
 					}
 					address = UnsafeAdapter.allocateMemory(memSize);
-					//UnsafeAdapter.setMemory(address, 0, (byte)0);
 					MemSpaceAccessor.get(address).initializeHeader(memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
 					MemSpaceAccessor.get(address).reset();
-					SNAPSHOT_INDEX.put(metricName, address);
+					long memSpaceRef = UnsafeAdapter.allocateMemory(UnsafeAdapter.LONG_SIZE * 2);
+					UnsafeAdapter.putLong(memSpaceRef, 0);
+					UnsafeAdapter.putLong(memSpaceRef + UnsafeAdapter.LONG_SIZE, address);
+					SNAPSHOT_INDEX.put(metricName, memSpaceRef);
+					address = memSpaceRef;
 				}
 			}
 		}
 		return address;
+		
+		
 	}
 	
 	
