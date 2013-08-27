@@ -52,6 +52,9 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	
 	/** The index of metric name to slab id to find the snapshot */
 	protected final NonBlockingHashMap<String, Long> SNAPSHOT_INDEX;
+	/** The index of metric name to chronicle index for unloaded metrics */
+	protected final NonBlockingHashMap<String, Long> UNLOADED_INDEX;
+	
 	/** Indicates if the mem-spaces should be padded */
 	protected boolean padCache = true;
     /** The system prop name to indicate if mem-spaces should be padded to the next largest pow(2) */
@@ -62,7 +65,8 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	 * Creates a new AbstractStore
 	 */
 	protected AbstractStore() {
-		SNAPSHOT_INDEX = new NonBlockingHashMap<String, Long>(1024); // 1024, 0.75f, ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors()
+		SNAPSHOT_INDEX = new NonBlockingHashMap<String, Long>(1024);
+		UNLOADED_INDEX = new NonBlockingHashMap<String, Long>(1024);
 		padCache = System.getProperty(USE_POW2_ALLOC_PROP, "true").toLowerCase().trim().equals("true");
 	}
 	
@@ -85,6 +89,7 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 	@Override
 	public long getMetricAddress(String metricName, CollectorSet<T> collectorSet) {
 		Long address = SNAPSHOT_INDEX.get(metricName);
+		if(address==null) address = UNLOADED_INDEX.get(metricName);
 		if(address==null || address <0) {
 			synchronized(SNAPSHOT_INDEX) {
 				address = SNAPSHOT_INDEX.get(metricName);
@@ -92,10 +97,12 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 					int requestedMem = (int)(collectorSet.getTotalAllocation());
 					int memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
 					long nameIndex;
+					boolean unloaded = false;
 					if(address==null) {
 						nameIndex = newMetricName(metricName, (T) collectorSet.getReferenceCollector(), collectorSet.getBitMask());
 					} else {
 						nameIndex = address * -1;
+						unloaded = true;
 					}
 					address = UnsafeAdapter.allocateMemory(memSize);
 					MemSpaceAccessor.get(address).initializeHeader(memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
@@ -104,6 +111,7 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 					UnsafeAdapter.putLong(memSpaceRef, 0);
 					UnsafeAdapter.putLong(memSpaceRef + UnsafeAdapter.LONG_SIZE, address);
 					SNAPSHOT_INDEX.put(metricName, memSpaceRef);
+					if(unloaded) UNLOADED_INDEX.remove(metricName);
 					address = memSpaceRef;
 				}
 			}

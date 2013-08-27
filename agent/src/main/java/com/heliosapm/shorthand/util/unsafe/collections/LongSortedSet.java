@@ -16,6 +16,13 @@ public class LongSortedSet {
 	protected final UnsafeLongArray array;
 	
 	/**
+	 * Deallocates the allocated memory for this array
+	 */
+	public void destroy() {
+		array.destroy();
+	}
+	
+	/**
 	 * Creates a new LongSortedSet
 	 * @param array the cloned array
 	 */

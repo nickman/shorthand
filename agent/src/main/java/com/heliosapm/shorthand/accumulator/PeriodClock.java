@@ -34,11 +34,16 @@ import com.heliosapm.shorthand.util.OrderedShutdownService;
 public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandler, RejectedExecutionHandler, PeriodEventListener {
 	/** The system property that defines the shorthand period in ms. */
 	public static final String PERIOD_PROP = "shorthand.period";
+	/** The system property that defines the shorthand stale period in ms. which is the elapsed time in which a metric is considered stale with no activity */
+	public static final String STALE_PERIOD_PROP = "shorthand.period.stale";
+	
 	/** The system property that defines if the period clock should be disabled, usually for testing purposes */
 	public static final String DISABLE_PERIOD_CLOCK_PROP = "shorthand.period.disabled";
 	
 	/** The default shorthand period in ms, which is 15000 */
 	public static final long DEFAULT_PERIOD = 15000;
+	/** The default shorthand stale period in ms, which is 15000 */
+	public static final long DEFAULT_STALE_PERIOD = DEFAULT_PERIOD * 4 * 5;  // 5 minutes
 	
 	/** The thread mxbean */
 	protected static final ThreadMXBean tmx = ManagementFactory.getThreadMXBean();
@@ -55,8 +60,11 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	private final AtomicReference<ScheduledFuture<?>> scheduleHandle = new AtomicReference<ScheduledFuture<?>>(null);
 	/** Provides serial numbers for created threads */
 	private final AtomicInteger serial = new AtomicInteger();
-	/** The period in ms. */
+	/** The configured period in ms. */
 	public final long periodMs;
+	/** The configured stale period in ms. */
+	public final long stalePeriodMs;
+	
 	/** The shutdown hook */
 	private final Thread shutdownHook;
 	
@@ -209,6 +217,7 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 			log("\n\t================================================\n\tPERIOD CLOCK DISABLED\n\t================================================\n");
 		}
 		periodMs = getPeriod();
+		stalePeriodMs = ConfigurationHelper.getLongSystemThenEnvProperty(STALE_PERIOD_PROP, DEFAULT_STALE_PERIOD);
 		int cores = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
 		threadPool = new ThreadPoolExecutor(2,cores,(periodMs*2), TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(10, true), this, this);
 		

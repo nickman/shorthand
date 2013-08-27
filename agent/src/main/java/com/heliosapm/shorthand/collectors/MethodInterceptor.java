@@ -404,7 +404,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 		final Map<MethodInterceptor, Long> offsets = new EnumMap(MethodInterceptor.class);
 		long offset = 0;
 		for(MethodInterceptor t: icollectors) {
-			offsets.put(t, offset + MetricSnapshotAccumulator.HEADER_SIZE);
+			offsets.put(t, offset + HeaderOffsets.HEADER_SIZE);
 			offset += t.getDataStruct().byteSize;
 		}
 		return offsets;
@@ -499,6 +499,22 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	}
 
 
+
+	/**
+	 * Returns the default [reset] values for a collector's mem-space
+	 * @param bitMask The bitmask of all enabled metrics
+	 * @return an array of default values for each enabled metric
+	 */
+	public long[][] getDefaultValues(int bitMask) {
+		Set<MethodInterceptor> enabled = getEnabledCollectors(bitMask);
+		long[][] defValues = new long[enabled.size()][];
+		int index = 0;
+		for(MethodInterceptor mi: enabled) {
+			defValues[index] = (long[])mi.getDataStruct().defaultValues;
+			index++;
+		}
+		return defValues;
+	}
 	
 	/**
 	 * {@inheritDoc}

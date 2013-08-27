@@ -4,11 +4,11 @@ package com.heliosapm.shorthand.collectors;
 import gnu.trove.map.hash.TObjectLongHashMap;
 
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
-import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
 import com.heliosapm.shorthand.datamapper.AbstractDataMapper;
+import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
 
 /**
@@ -29,8 +29,6 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 	private final int bitMask;
 	/** The total memory allocation required for this collector set */
 	private final long totalAllocation;
-	/** A map of address offsets keyed by the collector for which the space is allocated */
-	private final TObjectLongHashMap<T> offsets; 
 	/** The data mapper that will execute the memory space updates */
 	private final IDataMapper dataMapper;
 	/** Indicates if the data mapper is compiled or the default */
@@ -47,8 +45,8 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 	 * Returns the enabled collector's offsets
 	 * @return the offsets
 	 */
-	public TObjectLongHashMap<T> getOffsets() {
-		return new TObjectLongHashMap<T>(offsets);
+	public Map<T, Long> getOffsets() {
+		return dataMapper.getOffsets();
 	}
 
 	
@@ -73,7 +71,6 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 		icollectors.retainAll(t.getEnabledCollectors(bitMask));
 		this.bitMask = bitMask;
 		totalAllocation = t.getAllocationFor(bitMask);
-		offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(clazz.getName(), bitMask);
 		dataMapper = DataMapperBuilder.getInstance().getIDataMapper(t.getDeclaringClass().getName(), bitMask);
 		compiledDataMapper = !dataMapper.getClass().equals(AbstractDataMapper.class);
 	}

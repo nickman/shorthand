@@ -52,6 +52,8 @@ import com.heliosapm.shorthand.util.ThreadRenamer;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 import com.heliosapm.shorthand.util.unsafe.collections.ConcurrentLongSlidingWindow;
+import com.heliosapm.shorthand.util.unsafe.collections.ConcurrentLongSortedSet;
+import com.heliosapm.shorthand.util.unsafe.collections.LongSortedSet;
 import com.higherfrequencytrading.chronicle.Chronicle;
 import com.higherfrequencytrading.chronicle.Excerpt;
 import com.higherfrequencytrading.chronicle.impl.IndexedChronicle;
@@ -75,11 +77,14 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	/** JMX notification type for a period end event */
 	public static final String NOTIF_PERIOD_END = "shorthand.store.period.end";
 	/** JMX notification type for new metric names at period end */
-	public static final String NOTIF_NEW_METRICS = "shorthand.store.period.newmetrics";
+	public static final String NOTIF_NEW_METRICS = "shorthand.store.period.metrics.new";
+	/** JMX notification type for stale metric names at period end */
+	public static final String NOTIF_STALE_METRICS = "shorthand.store.period.metrics.stale";
 	
 	private static final MBeanNotificationInfo[] NOTIFS = new MBeanNotificationInfo[]{
 		new MBeanNotificationInfo(new String[]{NOTIF_PERIOD_END}, Notification.class.getName(), "Notification indicating a metric period has ended"),
-		new MBeanNotificationInfo(new String[]{NOTIF_NEW_METRICS}, Notification.class.getName(), "Notification indicating new metrics were created in the prior period")
+		new MBeanNotificationInfo(new String[]{NOTIF_NEW_METRICS}, Notification.class.getName(), "Notification indicating new metrics were created in the prior period"),
+		new MBeanNotificationInfo(new String[]{NOTIF_STALE_METRICS}, Notification.class.getName(), "Notification indicating stale metrics were cleared")
 	};
 	
 	/** The singleton instance */
@@ -515,7 +520,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 					loge("Warning: MetricName [%s] had unrecognized enum index [%s]", name, enumIndex);
 					markNameIndexDeleted(nameIndexEx.index());
 				}
-				if(SNAPSHOT_INDEX.put(name, (index * -1L))!=null) {
+				if(UNLOADED_INDEX.put(name, (index * -1L))!=null) {
 					log("WARNING:  Duplicate name [" + name + "] at index [" + index + "]");
 				} else {
 					//log("Loaded [" + name + "]");
@@ -717,8 +722,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public void flush(long priorStartTime, long priorEndTime) {
-		log("Flushing Index [%s]  Size: [%s]", System.identityHashCode(SNAPSHOT_INDEX), SNAPSHOT_INDEX.size());
-				
+		log("Flushing Index Size: [%s]", SNAPSHOT_INDEX.size());
+		LongSortedSet dirtyKeys = null;
+		LongSortedSet untouched = null;
 		long bufferCount = 0;
 		try {
 //			long address = -1L;
@@ -729,17 +735,17 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			// Phase 1 Flush
 			// =========================================================================
 			final long startTime = System.nanoTime();
-			TLongHashSet dirtyKeys = new TLongHashSet(SNAPSHOT_INDEX.size()); 			
+			dirtyKeys = new LongSortedSet(SNAPSHOT_INDEX.size());
+			untouched = new LongSortedSet(); 
+			//TLongHashSet dirtyKeys = new TLongHashSet(SNAPSHOT_INDEX.size()); 			
 						
-			for(Map.Entry<String, Long> entry: SNAPSHOT_INDEX.entrySet()) {
-				long address = entry.getValue();
-				if(address<0) {					
-					continue;
-				}
+			for(String metricName: SNAPSHOT_INDEX.keySet()) {
+				long address = SNAPSHOT_INDEX.get(metricName);
 				// =========================================================================
 				long ref = lockNoYield(address);
 				msa.setAddress(ref);
 				if(!msa.isTouched()) {
+					untouched.add(address);
 					unlock(address);					
 					continue;					
 				}
@@ -753,20 +759,33 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			// =========================================================================
 			// Phase 2 Flush
 			// =========================================================================
-			for(long ref: dirtyKeys.toArray()) {
-				msa.setAddress(ref);
+			for(int i = 0; i < dirtyKeys.size(); i++) {
+				long address = dirtyKeys.get(i);
+				msa.setAddress(address);
 				msa.preFlush();
 				updatePeriod(msa, priorStartTime, priorEndTime);
-			}			
+				UnsafeAdapter.freeMemory(address);
+			}
+			dirtyKeys.clear();
 			closedPeriodNotif(priorStartTime, priorEndTime);
 			newMetricNotifs();
 			elapsed = System.nanoTime()-startTime;
 			secondPhaseFlushTimes.insert(elapsed);			
 			log(StringHelper.reportTimes("Second Phase Flush Elapsed Time", elapsed));
+			// =========================================================================
+			// Phase 3 Flush / Purge Stale Mem-Spaces
+			// =========================================================================
+			
+
+			
+
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		} finally {
 			//globalUnlock();
+			if(dirtyKeys!=null) dirtyKeys.destroy();
+			if(untouched!=null) untouched.destroy();
+			
 		}		
 	}
 	

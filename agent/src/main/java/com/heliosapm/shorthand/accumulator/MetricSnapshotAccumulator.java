@@ -3,25 +3,13 @@
  */
 package com.heliosapm.shorthand.accumulator;
 
-import gnu.trove.map.hash.TIntLongHashMap;
-
-import java.lang.management.ManagementFactory;
-import java.lang.management.ThreadMXBean;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
-import com.heliosapm.shorthand.collectors.MethodInterceptor;
-import com.heliosapm.shorthand.datamapper.AbstractDataMapper;
 import com.heliosapm.shorthand.store.ChronicleStore;
 import com.heliosapm.shorthand.store.IStore;
-import com.heliosapm.shorthand.util.StringHelper;
-import com.heliosapm.shorthand.util.ThreadRenamer;
 import com.heliosapm.shorthand.util.jmx.ShorthandJMXConnectorServer;
 import com.heliosapm.shorthand.util.jmx.threadinfo.ExtendedThreadManager;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
@@ -82,16 +70,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	/** The byte state for unlocked */
 	public static final long UNLOCKED = 0;
 	
-	/**
-	 * Allocates a native memory space of the passed size
-	 * @param size The size to be allocated
-	 * @return the memory address of the allocated space
-	 */
-	private long allocateMemory(long size) {
-		long address = UnsafeAdapter.allocateMemory(size);
-		//unsafeMemoryAllocated.addAndGet(size);
-		return address;
-	}
+
 	
 	/**
 	 * Frees the memory at the passed address
@@ -185,33 +164,9 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	/** The size of the accumulator enum decode index */
 	public static final int ENUMINDEX_SIZE = SIZE_OF_INT;
 	
-	/** The size of the accumulator header */
-	public static final long HEADER_SIZE = LOCK_SIZE + PERIOD_TOUCHED + BITMASK_SIZE + NAMEINDEX_SIZE + ENUMINDEX_SIZE + MEM_SIZE;
 	
 	
-	/**
-	 * Initializes the header of the memory space allocated for a new metric
-	 * @param address The address of the memory space
-	 * @param memorySize The amount of memory allocated
-	 * @param nameIndex The name index of the new metric
-	 * @param bitMask The enabled bitmask of the new metric
-	 */
-	private static void initializeHeader(long address, int memorySize, long nameIndex, int bitMask, int enumIndex) {		
-		long pos = address;
-		UnsafeAdapter.putLong(address, 0);   			// Lock
-		pos += SIZE_OF_LONG;
-		UnsafeAdapter.putByte(address, UNTOUCHED);   	// Touch Flag
-		pos += SIZE_OF_BYTE;
-		UnsafeAdapter.putInt(pos, bitMask);				// BitMask
-		pos += SIZE_OF_INT;
-		UnsafeAdapter.putInt(pos, enumIndex);			// EnumIndex
-		pos += SIZE_OF_INT;
-		UnsafeAdapter.putInt(pos, memorySize);			// Mem Size
-		pos += SIZE_OF_INT;				
-		UnsafeAdapter.putLong(pos,nameIndex);			// Name Index
-		pos += SIZE_OF_LONG;
-		assert pos==HEADER_SIZE;
-	}
+
 	
 	/**
 	 * <p>Title: HeaderOffsets</p>
@@ -221,18 +176,18 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 * <p><code>com.heliosapm.shorthand.accumulator.HeaderOffsets</code></p>
 	 */
 	public static enum HeaderOffsets {
-		/** The memory space lock */
-		Lock(0, SIZE_OF_LONG),									// At offset 0
 		/** The touch flag */
-		Touch(Lock.size + Lock.offset, SIZE_OF_BYTE),			// At offset 8 		
+		Touch(0, SIZE_OF_BYTE),									// At offset 0 		
 		/** The metric bitmask */
-		BitMask(Touch.size + Touch.offset, SIZE_OF_INT),		// At offset 9
+		BitMask(Touch.size + Touch.offset, SIZE_OF_INT),		// At offset 1
 		/** The enum index */
-		EnumIndex(BitMask.size + BitMask.offset, SIZE_OF_INT),	// At offset 13
+		EnumIndex(BitMask.size + BitMask.offset, SIZE_OF_INT),	// At offset 5
 		/** The total memory size of this allocation */
-		MemSize(EnumIndex.size + EnumIndex.offset, SIZE_OF_INT),// At offset 17
+		MemSize(EnumIndex.size + EnumIndex.offset, SIZE_OF_INT),// At offset 9
 		/** The name index */
-		NameIndex(MemSize.size + MemSize.offset, SIZE_OF_LONG); // At offset 21
+		NameIndex(MemSize.size + MemSize.offset, SIZE_OF_LONG); // At offset 13
+		
+		// body starts at offset 21
 		
 		private HeaderOffsets(int offset, int size) {
 			this.offset = offset;
@@ -246,6 +201,28 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 			}
 			log("Total Header Size:" + HEADER_SIZE);
 		}
+		
+		/**
+		 * Initializes the header of the memory space allocated for a new metric
+		 * @param address The address of the memory space
+		 * @param memorySize The amount of memory allocated
+		 * @param nameIndex The name index of the new metric
+		 * @param bitMask The enabled bitmask of the new metric
+		 */
+		public static void initializeHeader(long address, int memorySize, long nameIndex, int bitMask, int enumIndex) {		
+			long pos = address;
+			UnsafeAdapter.putByte(address, UNTOUCHED);   	// Touch Flag
+			pos += SIZE_OF_BYTE;
+			UnsafeAdapter.putInt(pos, bitMask);				// BitMask
+			pos += SIZE_OF_INT;
+			UnsafeAdapter.putInt(pos, enumIndex);			// EnumIndex
+			pos += SIZE_OF_INT;
+			UnsafeAdapter.putInt(pos, memorySize);			// Mem Size
+			pos += SIZE_OF_INT;				
+			UnsafeAdapter.putLong(pos,nameIndex);			// Name Index
+			pos += SIZE_OF_LONG;
+			assert pos==HEADER_SIZE;
+		}		
 				
 		
 		/** The length of the header in bytes */

@@ -24,11 +24,8 @@
  */
 package com.heliosapm.shorthand.accumulator;
 
-import gnu.trove.map.hash.TIntLongHashMap;
-import gnu.trove.map.hash.TObjectLongHashMap;
-
 import java.util.Arrays;
-import java.util.Map;
+import java.util.Set;
 
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
@@ -90,20 +87,8 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @param bitMask The enabled bitmask of the new metric
 	 * @param enumIndex The enum collector index
 	 */
-	public void initializeHeader(int memorySize, long nameIndex, int bitMask, int enumIndex) {			
-		long pos = address;
-		UnsafeAdapter.putLong(pos, 0);   		// Lock
-		pos += UnsafeAdapter.LONG_SIZE;
-		UnsafeAdapter.putByte(pos, UNTOUCHED);  // Touched
-		pos += UnsafeAdapter.BYTE_SIZE;		
-		UnsafeAdapter.putInt(pos, bitMask);		// BitMask
-		pos += UnsafeAdapter.INT_SIZE;
-		UnsafeAdapter.putInt(pos, enumIndex);	// EnumIndex
-		pos += UnsafeAdapter.INT_SIZE;
-		UnsafeAdapter.putInt(pos, memorySize);	// Mem Size
-		pos += UnsafeAdapter.INT_SIZE;				
-		UnsafeAdapter.putLong(pos,nameIndex);	// Name Index
-		pos += UnsafeAdapter.LONG_SIZE;
+	public void initializeHeader(int memorySize, long nameIndex, int bitMask, int enumIndex) {
+		HeaderOffsets.initializeHeader(address, memorySize, nameIndex, bitMask, enumIndex);
 	}
 	
 	/**
@@ -163,19 +148,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the datapoints
 	 */
 	public long[][] getDataPoints() {		
-		IDataMapper dataMapper = getDataMapper();
-		Map<T, TIntLongHashMap> dataMap = dataMapper.get(address);		
-		final long[][] datapoints = new long[dataMap.size()][];
-		int cnt = 0;
-		for(Map.Entry<T, TIntLongHashMap> entry: dataMap.entrySet()) {
-			long values[] = new long[entry.getKey().getSubMetricNames().length];
-			for(int i = 0; i < values.length; i++) {
-				values[i] = entry.getValue().get(i);
-			}
-			datapoints[cnt] = AbstractDataMapper.keyOrderedArray(entry.getValue());
-			cnt++;
-		}
-		return datapoints;
+		return getDataMapper().getDataPoints(address);
 	}
 	
 	public IDataMapper<T> getDataMapper() {
@@ -195,16 +168,17 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 */
 	@Override
 	public String toString() {
-		Map<T, TIntLongHashMap> dataMap = getDataMapper().get(address);
-		Class<T> t = (Class<T>) EnumCollectors.getInstance().type(getEnumIndex());
+		long[][] datapoints = getDataMapper().getDataPoints(address);
+		Set<T> enabled = (Set<T>) EnumCollectors.getInstance().enabledMembersForIndex(getEnumIndex(), getBitMask());
 		StringBuilder b = new StringBuilder("[").append(EnumCollectors.getInstance().type(getEnumIndex()).getSimpleName()).append("]");
 		b.append(" enumindex:").append(getEnumIndex());
 		b.append(" bitmask:").append(getBitMask());
 		b.append(" nameindex:").append(getNameIndex());
 		b.append(" memsize:").append(getMemSize());
-
-		for(Map.Entry<T, TIntLongHashMap> entry: dataMap.entrySet()) {
-			b.append("\n\t").append(entry.getKey().name()).append(":").append(Arrays.toString(AbstractDataMapper.keyOrderedArray(entry.getValue())));
+		int index = 0;
+		for(T t: enabled) {
+			b.append("\n\t").append(t.name()).append(":").append(Arrays.toString(datapoints[index]));
+			index++;
 		}
 		return b.toString();
 	}

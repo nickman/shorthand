@@ -5,8 +5,6 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicLong;
 
-import sun.misc.Unsafe;
-
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
@@ -23,21 +21,13 @@ public abstract class UnsafeArray {
 	public static final int DEFAULT_ALLOC_INCR = 128;
 	/** A marker placed in the {@link UnsafeArray#toFullString()} indicating where actual size elements terminate */
 	public static final String SIZE_MARKER = ">><<,";
-    /** The byte array offset */
-    public static final int BYTE_ARRAY_OFFSET;
-    /** The int array offset */
-    public static final int INT_ARRAY_OFFSET;
 
 	
 	/** The default capacity of an empty created UnsafeArray */
 	public static int DEFAULT_CAPACITY = 128;
 	
-	/** A gauge of the number of un-managed memory allocations */
-	private static final AtomicLong UNMANAGED_MEM_ALLOCATIONS = new AtomicLong(0L);
 	
 	
-    /** The unsafe instance */
-    protected static final Unsafe unsafe;
     
 	/** Indicates the array will be maintained in sorted order */
 	protected final boolean sorted;	
@@ -63,18 +53,6 @@ public abstract class UnsafeArray {
 	protected int size;
 	
 	
-    static {
-        try {
-            Field field = Unsafe.class.getDeclaredField("theUnsafe");
-            field.setAccessible(true);
-            unsafe = (Unsafe)field.get(null);
-            BYTE_ARRAY_OFFSET = unsafe.arrayBaseOffset(byte[].class);
-            INT_ARRAY_OFFSET = unsafe.arrayBaseOffset(int[].class);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to get the Unsafe instance", e);
-        }
-    }
-    
 
     
 
@@ -100,29 +78,18 @@ public abstract class UnsafeArray {
      * @return a pointer to the memory block allocated
      */
     protected static long allocateMemory(long size) {
-    	long address = unsafe.allocateMemory(size);
-    	UNMANAGED_MEM_ALLOCATIONS.incrementAndGet();
-    	return address;
+    	return UnsafeAdapter.allocateMemory(size);
     }
     
     /**
      * Frees the memory block pointed to by the passed address, decrementing the unmanaged counter
      * @param address The pointer to the memory block to free
-     * @return the number of unmanaged allocations remaining
      */
-    protected static long freeMemory(long address) {
-    	unsafe.freeMemory(address);
-    	return UNMANAGED_MEM_ALLOCATIONS.decrementAndGet();    	
+    protected static void freeMemory(long address) {
+    	UnsafeAdapter.freeMemory(address);    	
     }
 	
     
-    /**
-     * Returns the number of existing unmanaged memory allocations
-     * @return the number of existing unmanaged memory allocations
-     */
-    public static long getPointerCount() {
-    	return UNMANAGED_MEM_ALLOCATIONS.get();
-    }
 	
 	/**
 	 * Creates a new UnsafeArray
@@ -172,7 +139,7 @@ public abstract class UnsafeArray {
 		this.size = size;
 		this.capacity = capacity;
 		this.address = allocateMemory(capacity << slotSize);
-		unsafe.copyMemory(address, this.address, size << slotSize);
+		UnsafeAdapter.copyMemory(address, this.address, size << slotSize);
 		
 	}
 
@@ -195,7 +162,7 @@ public abstract class UnsafeArray {
 	protected void loadArray(Object data) {
 		Class<?> clazz = data.getClass().getComponentType();
 		if(!clazz.isPrimitive()) throw new RuntimeException("An array of [" + clazz.getName() + "]s cannot be loaded. Only primitives are currently supported", new Throwable());
-		long offset = unsafe.arrayBaseOffset(data.getClass()); 
+		long offset = UnsafeAdapter.arrayBaseOffset(data.getClass()); 
 		int length = Array.getLength(data);
 		
 		if(length>maxCapacity) {
@@ -306,7 +273,7 @@ public abstract class UnsafeArray {
 	    	}    			
     		capacity += newAlloc;
     	}
-    	address = unsafe.reallocateMemory(address, (capacity << slotSize) + (newAlloc << slotSize));
+    	address = UnsafeAdapter.reallocateMemory(address, (capacity << slotSize) + (newAlloc << slotSize));
     	return items;
     }
     
@@ -359,7 +326,7 @@ public abstract class UnsafeArray {
     	long srcOffset = (index << slotSize); 
     	long destOffset = ((index+1) << slotSize);
     	long bytes = numberOfSlotsToMove << slotSize;
-		unsafe.copyMemory(
+    	UnsafeAdapter.copyMemory(
 				(address + srcOffset),   	// src: the address of the first index we want to roll
 				(address + destOffset), 	// dest: the address of the slot after the one we want to roll
 				bytes						// bytes: the number of bytes in the entries that need to be rolled
@@ -397,7 +364,7 @@ public abstract class UnsafeArray {
     	long srcOffset = (newInd << slotSize); 
     	long destOffset = (index << slotSize);
     	long bytes = numberOfSlotsToMove << slotSize;
-		unsafe.copyMemory(
+    	UnsafeAdapter.copyMemory(
 				(address + srcOffset),   	// src: the address of the first index we want to roll
 				(address + destOffset), 	// dest: the address of the slot after the one we want to roll
 				bytes						// bytes: the number of bytes in the entries that need to be rolled
@@ -441,7 +408,7 @@ public abstract class UnsafeArray {
      */
     private void _shrink(int clear) {
     	capacity -= clear;
-    	address = unsafe.reallocateMemory(address, capacity << slotSize);
+    	address = UnsafeAdapter.reallocateMemory(address, capacity << slotSize);
     }
     
     
@@ -589,7 +556,7 @@ public abstract class UnsafeArray {
 	
 	public static int toInt(byte[] arr) {
 		int[] iarr = new int[1];
-		UnsafeAdapter.copyMemory(arr, INT_ARRAY_OFFSET, iarr, INT_ARRAY_OFFSET, 4);
+		UnsafeAdapter.copyMemory(arr, UnsafeAdapter.INT_ARRAY_OFFSET, iarr, UnsafeAdapter.INT_ARRAY_OFFSET, 4);
 		return iarr[0];
 		
 	}

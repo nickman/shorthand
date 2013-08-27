@@ -25,6 +25,7 @@ import javassist.NotFoundException;
 import com.heliosapm.shorthand.accumulator.CopiedAddressProcedure;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
+import com.heliosapm.shorthand.collectors.DataStruct;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.collectors.MethodInterceptor;
@@ -54,6 +55,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	private final CtClass stringClazz;
 	private final CtClass objectClazz;
 	private final CtClass objectArrClazz;
+	private final CtClass longArrArrClazz;
 	private final CtClass mapClazz;	
 	private final CtClass copiedAddressProcedureIface;
 	private final CtMethod dataMapperPutMethod;
@@ -100,6 +102,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 			cp = new ClassPool();
 			cp.appendSystemPath();
 			cp.appendClassPath(new ClassClassPath(getClass()));
+			longArrArrClazz = cp.get(long[][].class.getName());
 			stringClazz = cp.get(String.class.getName());
 			objectClazz = cp.get(Object.class.getName());
 			objectArrClazz = cp.get(Object[].class.getName());
@@ -107,8 +110,11 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 			cp.importPackage(MetricSnapshotAccumulator.class.getPackage().getName());			
 			cp.importPackage(EnumCollectors.class.getPackage().getName());
 			cp.importPackage(TIntLongHashMap.class.getPackage().getName());
+			cp.importPackage(HeaderOffsets.class.getPackage().getName());
 			cp.importPackage(CopiedAddressProcedure.class.getPackage().getName());
 			cp.importPackage("java.util");
+			cp.importPackage(HeaderOffsets.class.getPackage().getName());
+			
 			mapClazz = cp.get(Map.class.getName());
 			dataMapperIface = cp.get(IDataMapper.class.getName());
 			dataMapperSuper = cp.get(AbstractDataMapper.class.getName());
@@ -171,12 +177,16 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						CtMethod toStringMethod  = new CtMethod(dataMappertoStringMethod.getReturnType(), dataMappertoStringMethod.getName(), dataMappertoStringMethod.getParameterTypes(), clazz);
 						
 						CtMethod getDpsMethod = new CtMethod(dataMappergetDpMethod.getReturnType(), dataMappergetDpMethod.getName(), dataMappergetDpMethod.getParameterTypes(), clazz);
+						CtMethod resetMethod = new CtMethod(dataMapperResetMethod.getReturnType(), dataMapperResetMethod.getName(), dataMapperResetMethod.getParameterTypes(), clazz);
 						CtField offsetsField = new CtField(mapClazz, "offsets", clazz);
 						CtField bitMaskField = new CtField(CtClass.intType, "bitMask", clazz);
 						CtField enumIndexField = new CtField(CtClass.intType, "enumIndex", clazz);
+						CtField defaultValuesField = new CtField(longArrArrClazz, "resetValues", clazz);
+						
 						offsetsField.setModifiers(offsetsField.getModifiers() | Modifier.FINAL);
 						bitMaskField.setModifiers(offsetsField.getModifiers() | Modifier.FINAL);
 						enumIndexField.setModifiers(offsetsField.getModifiers() | Modifier.FINAL);
+						enumIndexField.setModifiers(defaultValuesField.getModifiers() | Modifier.FINAL);
 						
 						
 						CtConstructor ctCtor = new CtConstructor(new CtClass[]{CtClass.intType, CtClass.intType}, clazz);
@@ -184,13 +194,22 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						clazz.addField(offsetsField);
 						clazz.addField(enumIndexField);
 						clazz.addField(bitMaskField);
+						clazz.addField(defaultValuesField);
 						
 						clazz.addConstructor(ctCtor);
 						
 						clazz.addMethod(putMethod);
 						clazz.addMethod(toStringMethod);
-						clazz.addMethod(getDpsMethod);
-						ctCtor.setBody(String.format("{\n\tenumIndex = $1;\n\tbitMask = $2;\n\toffsets = %s.%s.getOffsets($2);\n}", enumCollectorType.getName(), enumCollectorType.getEnumConstants()[0].name()));
+						clazz.addMethod(getDpsMethod);						
+						clazz.addMethod(resetMethod);
+						
+						
+						
+						ctCtor.setBody(String.format("{\n\tenumIndex = $1;\n\tbitMask = $2;" + 
+								"\n\toffsets = %s.%s.getOffsets($2);" + 
+								"\n\tresetValues = ((ICollector)EnumCollectors.getInstance().ref($1)).getDefaultValues($2);" +  
+								"\n}",								
+								enumCollectorType.getName(), enumCollectorType.getEnumConstants()[0].name()));
 						
 						//EnumCollectors.getInstance().offsets($1, $2);\n}");  						
 						
@@ -206,9 +225,9 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						//============================================================
 						
 
-
-						final StringBuilder putSrc = new StringBuilder("{\n\tUnsafeAdapter.putByte($1+").append(HeaderOffsets.Touch.offset).append(", TOUCHED);");
+						final StringBuilder putSrc = new StringBuilder("{\n\tUnsafeAdapter.putByte($1+").append(HeaderOffsets.Touch.offset).append("L, TOUCHED);");
 						final StringBuilder getDpSrc = new StringBuilder("{\n\tlong[][] datapoints = new long[" + offsets.size() + "][0];\n\t");
+						final StringBuilder resetSrc = new StringBuilder("{\n\tMetricSnapshotAccumulator.HeaderOffsets.Touch.set($1, 0L);");
 
 						final StringBuilder toStringSrc = new StringBuilder(String.format("{ return \"CompiledDataMapper Collector [%s] BitMask[%s] [", enumCollectorType.getSimpleName(), bitMask));
 						if(!offsets.isEmpty()) {
@@ -233,18 +252,25 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 								// get datapoints source
 								// ======================									
 								int arrSize = collector.getDataStruct().size;
-								getDpSrc.append(String.format("\n\tdatapoints[%s] = UnsafeAdapter.getLongArray(($1 + %s), %s);", index, offset, arrSize));
+								getDpSrc.append(String.format("\n\tdatapoints[%s] = UnsafeAdapter.getLongArray(($1 + %sL), %s);", index, offset, arrSize));
+								// ======================
+								// reset source
+								// ======================	
+								resetSrc.append(String.format("\n\tUnsafeAdapter.putLongArray(($1 + %sL), resetValues[%s]);", offset, index));
+
 								
 								index++;
 							}
 						} 
 						getDpSrc.append("\n\treturn datapoints;}");
+						resetSrc.append("\n}");
 						putSrc.append("\n}");
 						toStringSrc.deleteCharAt(toStringSrc.length()-1).append("]\";}");
 						//log("Get Source:\n" + getByAddressSrc.toString());
 						//log("Put Source:\n" + putSrc.toString());
 						putMethod.setBody(putSrc.toString());
 						toStringMethod.setBody(toStringSrc.toString());
+						resetMethod.setBody(resetSrc.toString());
 						getDpsMethod.setBody(getDpSrc.toString());
 						clazz.setModifiers(clazz.getModifiers() & ~Modifier.ABSTRACT);
 						clazz.writeFile(System.getProperty("java.io.tmpdir") + File.separator + "js");

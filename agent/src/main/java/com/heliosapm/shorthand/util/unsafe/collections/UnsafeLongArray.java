@@ -28,23 +28,12 @@ public class UnsafeLongArray extends UnsafeArray {
     /** If the length of an array to be sorted is less than this constant, insertion sort is used in preference to Quicksort. */
     private static final int INSERTION_SORT_THRESHOLD = 47;    
 	// ==================================================================================
-    /** The memory offset for a long array */
-    public static final long LONG_ARRAY_OFFSET = unsafe.arrayBaseOffset(long[].class);
     /** The memory offset for a double array */
-    public static final long DOUBLE_ARRAY_OFFSET = unsafe.arrayBaseOffset(double[].class);
+    public static final long DOUBLE_ARRAY_OFFSET = UnsafeAdapter.arrayBaseOffset(double[].class);
     
     
     public static void main(String[] args) {
     	
-    	log("Long ArrOff:" +  unsafe.arrayBaseOffset(Long[].class));
-    	log("Long IScale:" +  unsafe.arrayIndexScale(Long[].class));
-    	log("long ArrOff:" +  unsafe.arrayBaseOffset(long[].class));
-    	log("long IScale:" +  unsafe.arrayIndexScale(long[].class));
-    	log("==========================");
-    	log("Double ArrOff:" +  unsafe.arrayBaseOffset(Double[].class));
-    	log("Double IScale:" +  unsafe.arrayIndexScale(Double[].class));
-    	log("double ArrOff:" +  unsafe.arrayBaseOffset(double[].class));
-    	log("double IScale:" +  unsafe.arrayIndexScale(double[].class));
     	
     	try {
 	    	UnsafeLongArray ula = UnsafeArrayBuilder.newBuilder().sorted(true).initialCapacity(5).fixed(true).buildLongArray();
@@ -160,7 +149,7 @@ public class UnsafeLongArray extends UnsafeArray {
 		if(len%8!=0) throw new RuntimeException("Mod check failed", new Throwable());
 		int arrsize = len/8;
 		long[] larr = new long[arrsize];
-		UnsafeAdapter.copyMemory(arr, BYTE_ARRAY_OFFSET, larr, LONG_ARRAY_OFFSET, arr.length);
+		UnsafeAdapter.copyMemory(arr, UnsafeAdapter.BYTE_ARRAY_OFFSET, larr, UnsafeAdapter.LONG_ARRAY_OFFSET, arr.length);
 		
 		return larr;
 
@@ -179,7 +168,7 @@ public class UnsafeLongArray extends UnsafeArray {
 		size = len/8;
 		freeMemory(address);
 		address = allocateMemory(len << 3);
-		UnsafeAdapter.copyMemory(arr, BYTE_ARRAY_OFFSET, null, address, arr.length);		
+		UnsafeAdapter.copyMemory(arr, UnsafeAdapter.BYTE_ARRAY_OFFSET, null, address, arr.length);		
 	}
 	
 	/**
@@ -191,7 +180,7 @@ public class UnsafeLongArray extends UnsafeArray {
 		if(arr.length>maxCapacity) throw new ArrayOverflowException("Passed array of length [" + arr.length + "] is too large for this UnsafeLongArray with a max capacity of [" + maxCapacity + "]", new Throwable());
 		freeMemory(address);
 		address = allocateMemory(arr.length << 3);
-		UnsafeAdapter.copyMemory(arr, LONG_ARRAY_OFFSET, null, address, arr.length << 3);
+		UnsafeAdapter.copyMemory(arr, UnsafeAdapter.LONG_ARRAY_OFFSET, null, address, arr.length << 3);
 		size = capacity = arr.length;
 		if(sorted) sort();
 	}
@@ -204,7 +193,7 @@ public class UnsafeLongArray extends UnsafeArray {
 		if(ula.size>maxCapacity) throw new ArrayOverflowException("Passed UnsafeLongArray of size [" + ula.size + "] is too large for this UnsafeLongArray with a max capacity of [" + maxCapacity + "]", new Throwable());
 		freeMemory(address);		
 		address = allocateMemory(ula.size << 3);
-		unsafe.copyMemory(ula.address, address, ula.size << 3);
+		UnsafeAdapter.copyMemory(ula.address, address, ula.size << 3);
 		size = capacity = ula.size;
 		if(sorted) sort();
 	}
@@ -313,7 +302,7 @@ public class UnsafeLongArray extends UnsafeArray {
     	long srcOffset = (index << slotSize); 
     	long destOffset = ((index+1) << slotSize);
     	long bytes = numberOfSlotsToMove << slotSize;
-		unsafe.copyMemory(
+    	UnsafeAdapter.copyMemory(
 				(address + srcOffset),   	// src: the address of the first index we want to roll
 				(address + destOffset), 	// dest: the address of the slot after the one we want to roll
 				bytes						// bytes: the number of bytes in the entries that need to be rolled
@@ -359,7 +348,7 @@ public class UnsafeLongArray extends UnsafeArray {
     		while(newSize > capacity) {
     			extend(false, vl);
     		}
-    		UnsafeAdapter.copyMemory(values, LONG_ARRAY_OFFSET, null, address + (size << 3), vl << 3);    		
+    		UnsafeAdapter.copyMemory(values, UnsafeAdapter.LONG_ARRAY_OFFSET, null, address + (size << 3), vl << 3);    		
         	size += vl;
     	}
     	if(sorted) sort();
@@ -372,13 +361,13 @@ public class UnsafeLongArray extends UnsafeArray {
      */
     protected byte[] getBytes() {
     	byte[] bytes = new byte[size*8];
-    	UnsafeAdapter.copyMemory(null, address, bytes, BYTE_ARRAY_OFFSET, size << 3);
+    	UnsafeAdapter.copyMemory(null, address, bytes, UnsafeAdapter.BYTE_ARRAY_OFFSET, size << 3);
     	return bytes;
     }
     
     protected byte[] getBytesReversed() {
     	byte[] bytes = new byte[size*8];
-    	int offset = BYTE_ARRAY_OFFSET + (size << 3);
+    	int offset = (int)UnsafeAdapter.BYTE_ARRAY_OFFSET + (size << 3);
     	for(int i = 0; i < size; i++) {
     		UnsafeAdapter.copyMemory(null, address, bytes, offset, 8);
     		offset -= 8;
@@ -407,7 +396,7 @@ public class UnsafeLongArray extends UnsafeArray {
     		while(newSize > capacity) {
     			extend(true, vl);
     		}
-    		UnsafeAdapter.copyMemory(values, LONG_ARRAY_OFFSET, null, address + (size << 3), howManyWillFit << 3);    		
+    		UnsafeAdapter.copyMemory(values, UnsafeAdapter.LONG_ARRAY_OFFSET, null, address + (size << 3), howManyWillFit << 3);    		
         	size = newSize;
     	}
     	if(sorted) sort();
@@ -571,7 +560,7 @@ public class UnsafeLongArray extends UnsafeArray {
      * @return the specified long
      */
     private long a(int index) {
-    	return unsafe.getLong(this.address + (index << 3));    	
+    	return UnsafeAdapter.getLong(this.address + (index << 3));    	
     }
     
     /**
@@ -580,7 +569,7 @@ public class UnsafeLongArray extends UnsafeArray {
      * @param value The long to set
      */
     private void a(int index, long value) {
-    	unsafe.putLong(this.address + (index << 3), value);
+    	UnsafeAdapter.putLong(this.address + (index << 3), value);
     }
     
     /**
@@ -590,7 +579,7 @@ public class UnsafeLongArray extends UnsafeArray {
      */
     public long get(int index) {
     	_check(); _check(index);
-    	return unsafe.getLong(this.address + (index << 3));    	
+    	return UnsafeAdapter.getLong(this.address + (index << 3));    	
     }
     
     /**
@@ -601,7 +590,7 @@ public class UnsafeLongArray extends UnsafeArray {
      */
     public UnsafeLongArray set(int index, long value) {
     	_check(); _check(index);
-    	unsafe.putLong(this.address + (index << 3), value);
+    	UnsafeAdapter.putLong(this.address + (index << 3), value);
     	return this;
     }
     
@@ -616,7 +605,7 @@ public class UnsafeLongArray extends UnsafeArray {
     public long[] getArray() {
     	_check();
     	long[] arr = new long[size];
-    	if(size>0) UnsafeAdapter.copyMemory(null, address, arr, LONG_ARRAY_OFFSET, size << 3);
+    	if(size>0) UnsafeAdapter.copyMemory(null, address, arr, UnsafeAdapter.LONG_ARRAY_OFFSET, size << 3);
     	return arr;
     }
     
@@ -628,7 +617,7 @@ public class UnsafeLongArray extends UnsafeArray {
     public long[] getAllocatedArray() {
     	_check();
     	long[] arr = new long[capacity];
-    	UnsafeAdapter.copyMemory(null, address, arr, LONG_ARRAY_OFFSET, capacity << 3);
+    	UnsafeAdapter.copyMemory(null, address, arr, UnsafeAdapter.LONG_ARRAY_OFFSET, capacity << 3);
     	return arr;
     }
     

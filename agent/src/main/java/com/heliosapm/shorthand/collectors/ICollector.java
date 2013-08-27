@@ -144,6 +144,13 @@ public interface ICollector<T extends Enum<? extends ICollector<T>>> {
 	public void resetMemSpace(long address, int bitmask);
 	
 	/**
+	 * Returns the default [reset] values for a collector's mem-space
+	 * @param bitMask The bitmask of all enabled metrics
+	 * @return an array of default values for each enabled metric
+	 */
+	public long[][] getDefaultValues(int bitMask);
+	
+	/**
 	 * Returns an array of pre-apply collectors, in the order in which they should be applied
 	 * @param bitmask The enabled bitmask
 	 * @return an array of collectors, possibly empty

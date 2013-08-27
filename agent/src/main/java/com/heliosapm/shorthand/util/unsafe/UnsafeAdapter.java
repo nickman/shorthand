@@ -3,12 +3,20 @@
  */
 package com.heliosapm.shorthand.util.unsafe;
 
+import gnu.trove.map.hash.TLongLongHashMap;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.security.ProtectionDomain;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import sun.misc.Unsafe;
+
+import com.heliosapm.shorthand.util.ConfigurationHelper;
+import com.heliosapm.shorthand.util.jmx.JMXHelper;
 
 /**
  * <p>Title: UnsafeAdapter</p>
@@ -18,7 +26,7 @@ import sun.misc.Unsafe;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.util.unsafe.UnsafeAdapter</code></p>
  */
-@SuppressWarnings({"javadoc"})
+@SuppressWarnings({"javadoc", "restriction"})
 public class UnsafeAdapter {
     /** The unsafe instance */    
 	public static final Unsafe UNSAFE;
@@ -56,9 +64,30 @@ public class UnsafeAdapter {
     /** System property indicating that Unsafe should be used */
     public static final String UNSAFE_MODE_PROP = "shorthand.unsafe";
     
+	/** System property to indicate that native memory allocations should be tracked */
+	public static final String TRACK_MEM_PROP = "shorthand.unsafe.trackmem";
+
+	/** The native memory tracking enablement default */
+	public static final boolean TRACK_MEM_DEFAULT = false;
+	
+	/** The configured native memory tracking enablement  */
+	private static final boolean trackMem;
+	
+	/** A set of the allocating/re-allocating callers */
+	private static final Set<String> allocators;
+	/** A set of the de-allocating callers */
+	private static final Set<String> deallocators;
+	
+	
+	/** A map of memory allocation sizes keyed by the address */
+	private static final TLongLongHashMap memoryAllocations;
     
+	/** The total native memory allocation */
+	private static final AtomicLong totalMemoryAllocated;
     
-    private UnsafeAdapter() {}
+    private UnsafeAdapter() {
+    	
+    }
     
     private static synchronized ByteBuffer getMemory() {
     	return allocatedMemory;
@@ -75,6 +104,129 @@ public class UnsafeAdapter {
     	}
     	allocatedMemory.flip();
     	return allocatedMemory;
+    }
+    
+    public static interface UnsafeMemoryMBean {
+    	/**
+    	 * Returns the total off-heap allocated memory in bytes
+    	 * @return the total off-heap allocated memory
+    	 */
+    	public long getTotalAllocatedMemory();
+    	
+    	/**
+    	 * Returns the total off-heap allocated memory in Kb
+    	 * @return the total off-heap allocated memory
+    	 */
+    	public long getTotalAllocatedMemoryKb();
+    	
+    	/**
+    	 * Returns the total off-heap allocated memory in Mb
+    	 * @return the total off-heap allocated memory
+    	 */
+    	public long getTotalAllocatedMemoryMb();
+    	
+    	
+    	
+    	/**
+    	 * Returns the total number of existing allocations
+    	 * @return the total number of existing allocations
+    	 */
+    	public int getTotalAllocationCount();
+    	
+    	/**
+    	 * Returns the distinct native memory de-allocating callers
+    	 * @return the distinct native memory de-allocating callers
+    	 */
+    	public Set<String> getDeallocators();
+    	
+    	/**
+    	 * Returns the distinct native memory allocating callers
+    	 * @return the distinct native memory allocating callers
+    	 */
+    	public Set<String> getAllocators();
+    	
+    	/**
+    	 * Returns the distinct native memory allocating callers with no de-allocating calls.
+    	 * @return the distinct native memory allocating callers with no de-allocating calls.
+    	 */
+    	public Set<String> getNonDeallocatingAllocators();
+    }
+    
+    public static class UnsafeMemory implements UnsafeMemoryMBean  {
+
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.util.unsafe.UnsafeAdapter.UnsafeMemoryMBean#getTotalAllocatedMemory()
+		 */
+		@Override
+		public long getTotalAllocatedMemory() {
+			if(!trackMem) return -1L;
+			return totalMemoryAllocated.get();
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.util.unsafe.UnsafeAdapter.UnsafeMemoryMBean#getTotalAllocationCount()
+		 */
+		@Override
+		public int getTotalAllocationCount() {
+			if(!trackMem) return -1;
+			return memoryAllocations.size();
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.util.unsafe.UnsafeAdapter.UnsafeMemoryMBean#getTotalAllocatedMemoryKb()
+		 */
+		@Override
+		public long getTotalAllocatedMemoryKb() {
+			if(!trackMem) return -1L;
+			long t = totalMemoryAllocated.get();
+			if(t<1) return 0L;
+			return t/1024;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.util.unsafe.UnsafeAdapter.UnsafeMemoryMBean#getTotalAllocatedMemoryMb()
+		 */
+		@Override
+		public long getTotalAllocatedMemoryMb() {
+			if(!trackMem) return -1L;
+			long t = totalMemoryAllocated.get();
+			if(t<1) return 0L;
+			return t/1024/1024;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.util.unsafe.UnsafeAdapter.UnsafeMemoryMBean#getDeallocators()
+		 */
+		@Override
+		public Set<String> getDeallocators() {
+			return deallocators;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.util.unsafe.UnsafeAdapter.UnsafeMemoryMBean#getAllocators()
+		 */
+		@Override
+		public Set<String> getAllocators() {			
+			return allocators;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.util.unsafe.UnsafeAdapter.UnsafeMemoryMBean#getNonDeallocatingAllocators()
+		 */
+		@Override
+		public Set<String> getNonDeallocatingAllocators() {
+			Set<String> allocs = new HashSet<String>(allocators);
+			allocs.removeAll(deallocators);
+			return allocs;			
+		}
+    	
     }
     
 
@@ -98,6 +250,21 @@ public class UnsafeAdapter {
             }
             FIVE_COPY = copyMemCount>1;
             FOUR_SET = setMemCount>1;
+        	trackMem = ConfigurationHelper.getBooleanSystemThenEnvProperty(TRACK_MEM_PROP, TRACK_MEM_DEFAULT);   
+        	if(trackMem) {
+        		memoryAllocations = new TLongLongHashMap(1024, 0.75f, 0L, 0L);
+        		totalMemoryAllocated = new AtomicLong(0L);
+        		deallocators = new HashSet<String>(1024);
+        		allocators = new HashSet<String>(1024);
+        		JMXHelper.registerMBean(new UnsafeMemory(), JMXHelper.objectName(UnsafeAdapter.class.getPackage().getName(), "service", UnsafeMemory.class.getSimpleName()));
+        	} else {
+        		totalMemoryAllocated = null;
+        		memoryAllocations = null;
+        		deallocators = null;
+        		allocators = null;
+
+        	}
+        	
         } catch (Exception e) {
             throw new AssertionError(e);
         }
@@ -168,15 +335,54 @@ public class UnsafeAdapter {
 	 * @see sun.misc.Unsafe#allocateMemory(long)
 	 */
 	public static long allocateMemory(long size) {
-		if(!UNSAFE_MODE) {
-			throw new IllegalArgumentException("Invalid memory size request [" + size + "]");
-//			long address = addressFactory.incrementAndGet();
-//			ByteBuffer bb = ByteBuffer.allocateDirect((int)size);
-//			memorySegments.put(address, bb);
-//			return address;
+		long address = UNSAFE.allocateMemory(size);
+		if(trackMem) {
+			synchronized(totalMemoryAllocated) {
+				memoryAllocations.put(address, size);
+				totalMemoryAllocated.addAndGet(size);
+				allocators.add(sun.reflect.Reflection.getCallerClass(3).getName());
+			}
 		}
-		return UNSAFE.allocateMemory(size);
+		return address;
 	}
+	
+	/**
+	 * Frees the memory allocated at the passed address
+	 * @param address The address of the memory to free
+	 * @see sun.misc.Unsafe#freeMemory(long)
+	 */
+	public static void freeMemory(long address) {
+		if(trackMem) {
+			synchronized(totalMemoryAllocated) {
+				long size = memoryAllocations.remove(address);				
+				totalMemoryAllocated.addAndGet(-1L * size);
+				deallocators.add(sun.reflect.Reflection.getCallerClass(3).getName());
+			}
+		}		
+		UNSAFE.freeMemory(address);
+	}
+	
+	/**
+	 * Resizes a new block of native memory, to the given size in bytes. 
+	 * @param The address of the existing allocation
+	 * @param bytes The size of the new allocation i n bytes
+	 * @return The address of the new allocation
+	 * @see sun.misc.Unsafe#reallocateMemory(long, long)
+	 */
+	public static long reallocateMemory(long address, long bytes) {
+		long newAddress = UNSAFE.reallocateMemory(address, bytes);
+		if(trackMem) {
+			synchronized(totalMemoryAllocated) {
+				long size = memoryAllocations.remove(address);				
+				totalMemoryAllocated.addAndGet(-1L * size);
+				memoryAllocations.put(newAddress, bytes);
+				totalMemoryAllocated.addAndGet(bytes);
+				allocators.add(sun.reflect.Reflection.getCallerClass(3).getName());
+			}			
+		}
+		return newAddress;
+	}	
+	
 
 	/**
 	 * Report the offset of the first element in the storage allocation of a 
@@ -354,13 +560,6 @@ public class UnsafeAdapter {
 		return UNSAFE.fieldOffset(arg0);
 	}
 
-	/**
-	 * @param arg0
-	 * @see sun.misc.Unsafe#freeMemory(long)
-	 */
-	public static void freeMemory(long arg0) {
-		UNSAFE.freeMemory(arg0);
-	}
 
 	/**
 	 * @param arg0
@@ -632,6 +831,16 @@ public class UnsafeAdapter {
 		long[] arr = new long[size];
 		UNSAFE.copyMemory(null, address, arr, LONG_ARRAY_OFFSET, size << 3);
 		return arr;
+	}
+	
+	/**
+	 * Writes a long array to the specified address
+	 * @param address The address to write to
+	 * @param values The long array to write
+	 */
+	public static void putLongArray(long address, long[] values) {
+		if(values==null || values.length==0) return;
+		UNSAFE.copyMemory(values, LONG_ARRAY_OFFSET, null, address, values.length << 3);
 	}
 
 	/**
@@ -1173,15 +1382,7 @@ public class UnsafeAdapter {
 		UNSAFE.putShortVolatile(arg0, arg1, arg2);
 	}
 
-	/**
-	 * @param arg0
-	 * @param arg1
-	 * @return
-	 * @see sun.misc.Unsafe#reallocateMemory(long, long)
-	 */
-	public static long reallocateMemory(long arg0, long arg1) {
-		return UNSAFE.reallocateMemory(arg0, arg1);
-	}
+
 
 	/**
 	 * @param arg0

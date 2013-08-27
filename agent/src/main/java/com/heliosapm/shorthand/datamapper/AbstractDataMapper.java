@@ -65,15 +65,11 @@ public abstract class AbstractDataMapper<T extends Enum<T> & ICollector<T>> impl
 		HeaderOffsets.Touch.set(address, 0);
 		int enumIndex = (int)HeaderOffsets.EnumIndex.get(address);
 		int bitMask = (int)HeaderOffsets.BitMask.get(address);
-		TObjectLongHashMap<T> offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(enumIndex, bitMask);
-		offsets.forEachEntry(new TObjectLongProcedure<ICollector<?>>() {
-			@Override
-			public boolean execute(ICollector<?> collector, long offset) {
-				DataStruct ds = collector.getDataStruct();
-				UnsafeAdapter.copyMemory(ds.defaultValues, ds.type.addressOffset, null, address+offset, ds.byteSize);
-				return true;
-			}			
-		});
+		Map<T, Long> offsets = (Map<T, Long>) EnumCollectors.getInstance().offsets(enumIndex, bitMask);
+		for(Map.Entry<T, Long> entry: offsets.entrySet()) {
+			DataStruct ds = entry.getKey().getDataStruct();
+			UnsafeAdapter.copyMemory(ds.defaultValues, ds.type.addressOffset, null, address+entry.getValue(), ds.byteSize);			
+		}
 	}
 
 	/**
