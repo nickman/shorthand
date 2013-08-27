@@ -628,7 +628,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		int tierAddressCount = nameIndexEx.readInt();
 		int actualCount = EnumCollectors.getInstance().type(memSpaceAccessor.getEnumIndex()).getEnumConstants().length;
 		if(tierAddressCount != actualCount) {
-			loge("Invalid name index entry for tier address count. Enum says [%s] Count was [%s]", tierAddressCount, actualCount);
+			loge("Invalid name index entry for tier address count. Enum says [%s] Count was [%s]", actualCount, tierAddressCount);
 		}
 		long[] tierAddresses = readLongArray(nameIndexEx, tierAddressCount);
 		Excerpt ex = tier1Data.createExcerpt();

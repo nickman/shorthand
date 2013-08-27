@@ -6,10 +6,10 @@ package com.heliosapm.shorthand.collectors;
 
 import gnu.trove.map.hash.TObjectLongHashMap;
 
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
@@ -71,14 +71,8 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	 * @param bitMask The bitmask
 	 * @return a map of offsets keyed by the enum collector member
 	 */
-	public TObjectLongHashMap<T> offsets(int enumIndex, int bitMask) {
-		final String key = String.format("%s/%s", type(enumIndex).getName(), bitMask);
-		TObjectLongHashMap<T> _offsets = offsets.get(key);
-		if(_offsets==null) {
-			_offsets = ref(enumIndex).getOffsets(bitMask);
-			offsets.put(key, _offsets);
-		}
-		return _offsets;
+	public Map<T, Long> offsets(int enumIndex, int bitMask) {
+		return ref(enumIndex).getOffsets(bitMask);
 	}
 	
 	/**
@@ -94,7 +88,7 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 		final String key = String.format("%s/%s", type(enumIndex).getName(), bitMask);
 		IDataMapper<T> dataMapper = dataMappers.get(key);
 		if(dataMapper==null) {
-			dataMapper = DataMapperBuilder.getInstance().getIDataMapper(type(enumIndex).getName(), bitMask);
+			dataMapper = (IDataMapper<T>) DataMapperBuilder.getInstance().getIDataMapper(type(enumIndex).getName(), bitMask);
 		}
 		return dataMapper;
 	}
@@ -266,7 +260,7 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	 * @param bitMask The bitmask
 	 * @return a map of offsets keyed by the enum collector member 
 	 */
-	public TObjectLongHashMap<T> offsets(Class<T> enumType, int bitMask) {
+	public Map<T, Long> offsets(Class<T> enumType, int bitMask) {
 		return offsets(enumType.getName(), bitMask);
 	}
 	
@@ -276,7 +270,7 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	 * @param bitMask The bitmask
 	 * @return a map of offsets keyed by the enum collector member 
 	 */
-	public TObjectLongHashMap<T> offsets(T t, int bitMask) {
+	public Map<T, Long> offsets(T t, int bitMask) {
 		return offsets(t.getDeclaringClass().getName(), bitMask);
 	}
 	
@@ -287,9 +281,9 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	 * @param bitMask The bitmask
 	 * @return a map of offsets keyed by the enum collector member 
 	 */
-	public TObjectLongHashMap<T> offsets(String className, int bitMask) {
+	public Map<T, Long> offsets(String className, int bitMask) {
 		Set<T> enabled = enabledMembersForName(className, bitMask);
-		TObjectLongHashMap<T> offsets = new TObjectLongHashMap<T>(enabled.size(), 0.2f);
+		Map<T, Long> offsets = new EnumMap(enabled.iterator().next().getDeclaringClass());
 		long offset = MetricSnapshotAccumulator.HEADER_SIZE;
 		for(T t: enabled) {
 			offsets.put(t, offset);

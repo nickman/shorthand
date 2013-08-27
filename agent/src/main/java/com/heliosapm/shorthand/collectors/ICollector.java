@@ -4,8 +4,7 @@
  */
 package com.heliosapm.shorthand.collectors;
 
-import gnu.trove.map.hash.TObjectLongHashMap;
-
+import java.util.Map;
 import java.util.Set;
 
 import com.heliosapm.shorthand.collectors.measurers.Measurer;
@@ -177,7 +176,7 @@ public interface ICollector<T extends Enum<? extends ICollector<T>>> {
 	 * @param bitMask The bitmask to get offsets for
 	 * @return a map of offsets keyed by the associated collector
 	 */
-	public TObjectLongHashMap<T> getOffsets(int bitMask);
+	public Map<T, Long> getOffsets(int bitMask);
 
 	
 		

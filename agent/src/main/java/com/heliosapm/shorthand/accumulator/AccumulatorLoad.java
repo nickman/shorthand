@@ -30,7 +30,7 @@ public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionH
 	public static final int WARMUP_LOOPS = 1600;
 	public static final int RUN_LOOPS = 1000000;
 	public static final long LOOP_RUN_TIME = 1000 * 60 * 15;
-	public static final int METRIC_COUNT = 1000;
+	public static final int METRIC_COUNT = 100;
 //	public static final int SLEEP_TIME = 10;
 	public static final int BIT_MASK = MethodInterceptor.allMetricsMask & ~MethodInterceptor.USER_CPU.baseMask;
 	//public static final int BIT_MASK = MethodInterceptor.defaultMetricsMask;
@@ -53,8 +53,9 @@ public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionH
 		String[] metricNames = new String[metricCount];
 		String[] warmupMetricNames = new String[metricCount];
 		//Iterator<Object> iter = System.getProperties().keySet().iterator();
-		for(int i = 0; i < metricCount; i++) { metricNames[i] = UUID.randomUUID().toString();  }
-		for(int i = 0; i < metricCount; i++) { warmupMetricNames[i] = UUID.randomUUID().toString(); }
+		for(int i = 0; i < metricCount; i++) { metricNames[i] = new UUID(RANDOM.nextLong(), RANDOM.nextLong()).toString();  }
+		//warmupMetricNames = metricNames;
+		for(int i = 0; i < metricCount; i++) { warmupMetricNames[i] = new UUID(RANDOM.nextLong(), RANDOM.nextLong()).toString();  }
 		CollectorSet<MethodInterceptor> cs = new CollectorSet<MethodInterceptor>(MethodInterceptor.class, bitMask);
 		log("Data Mapper [%s]", cs.getDataMapper().getClass().getName());
 		accumulator = MetricSnapshotAccumulator.getInstance();

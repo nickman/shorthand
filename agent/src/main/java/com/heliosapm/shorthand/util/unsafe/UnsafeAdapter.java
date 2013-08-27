@@ -613,12 +613,25 @@ public class UnsafeAdapter {
 	}
 
 	/**
-	 * @param arg0
-	 * @return
+	 * Returns the long at the passed address
+	 * @param address The address to read from
+	 * @return the long value
 	 * @see sun.misc.Unsafe#getLong(long)
 	 */
-	public static long getLong(long arg0) {
-		return UNSAFE.getLong(arg0);
+	public static long getLong(long address) {
+		return UNSAFE.getLong(address);
+	}
+	
+	/**
+	 * Reads a series of longs starting at the passed address and returns them as an array
+	 * @param address The address to read from
+	 * @param size The number of longs to read
+	 * @return the read longs as an array
+	 */
+	public static long[] getLongArray(long address, int size) {
+		long[] arr = new long[size];
+		UNSAFE.copyMemory(null, address, arr, LONG_ARRAY_OFFSET, size << 3);
+		return arr;
 	}
 
 	/**

@@ -52,7 +52,7 @@ public abstract class AbstractDataMapper<T extends Enum<T> & ICollector<T>> impl
 	 * @return the mem-space body offsets for each enabled metric
 	 */
 	@Override
-	public abstract TObjectLongHashMap<T> getOffsets();
+	public abstract Map<T, Long> getOffsets();
 
 	
 	
@@ -127,34 +127,6 @@ public abstract class AbstractDataMapper<T extends Enum<T> & ICollector<T>> impl
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.datamapper.IDataMapper#get(long)
-	 */
-	@Override
-	public Map<T, TIntLongHashMap> get(final long address) {
-		int enumIndex = (int)HeaderOffsets.EnumIndex.get(address);
-		int bitMask = (int)HeaderOffsets.BitMask.get(address);
-		TObjectLongHashMap<T> offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(enumIndex, bitMask);
-		Class<T> enumClass = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
-		Set<T> enabled = (Set<T>) EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitMask);
-		final Map<T, TIntLongHashMap> map = new EnumMap<T, TIntLongHashMap>(enumClass);		
-		offsets.forEachEntry(new TObjectLongProcedure<T>() {
-			@Override
-			public boolean execute(T collector, long offset) {				
-				long[] values = new long[collector.getDataStruct().size];
-				UnsafeAdapter.copyMemory(null, address + offset, values, UnsafeAdapter.LONG_ARRAY_OFFSET, values.length*8);					
-				TIntLongHashMap vmap = new TIntLongHashMap();															
-				for(int i = 0; i < values.length; i++) {
-					vmap.put(i, values[i]);
-				}
-				map.put(collector, vmap);
-				return true;					
-			}
-		});
-		return map;
-	}
-	
-	/**
-	 * {@inheritDoc}
 	 * @see com.heliosapm.shorthand.datamapper.IDataMapper#preFlush(long)
 	 */
 	@Override
@@ -165,7 +137,7 @@ public abstract class AbstractDataMapper<T extends Enum<T> & ICollector<T>> impl
 	}
 	
 	/**
-	 * Returns the long values of the passed map in ascewnding order of the keys
+	 * Returns the long values of the passed map in ascending order of the keys
 	 * @param map The map to get the values from
 	 * @return an array of the map's values
 	 */
@@ -178,6 +150,7 @@ public abstract class AbstractDataMapper<T extends Enum<T> & ICollector<T>> impl
 		}
 		return values;
 	}
+	
 	
 	
 

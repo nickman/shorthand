@@ -13,13 +13,14 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.collectors.measurers.AbstractDeltaMeasurer;
@@ -398,9 +399,9 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	 * @return a map of offsets keyed by the associated method interceptor
 	 */
 	@Override
-	public TObjectLongHashMap<MethodInterceptor> getOffsets(int bitMask) {
+	public Map<MethodInterceptor, Long> getOffsets(int bitMask) {
 		final Set<MethodInterceptor> icollectors = getEnabledCollectors(bitMask);
-		final TObjectLongHashMap<MethodInterceptor> offsets = new TObjectLongHashMap<MethodInterceptor>(icollectors.size(), 0.2f);
+		final Map<MethodInterceptor, Long> offsets = new EnumMap(MethodInterceptor.class);
 		long offset = 0;
 		for(MethodInterceptor t: icollectors) {
 			offsets.put(t, offset + MetricSnapshotAccumulator.HEADER_SIZE);
@@ -469,7 +470,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	@Override
 	public void preFlush(long address, int bitMask) {
 		if(!INVOCATION_COUNT.isEnabled(bitMask)) return;
-		TObjectLongHashMap<MethodInterceptor> offsets =  getOffsets(bitMask);
+		Map<MethodInterceptor, Long> offsets =  getOffsets(bitMask);
 		long invCount = UnsafeAdapter.getLong(address + offsets.get(INVOCATION_COUNT));
 		if(invCount<1) return;
 		long offset = address + MetricSnapshotAccumulator.HeaderOffsets.HEADER_SIZE;
