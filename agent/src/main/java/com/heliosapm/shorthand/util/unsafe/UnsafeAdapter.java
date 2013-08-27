@@ -842,6 +842,30 @@ public class UnsafeAdapter {
 		if(values==null || values.length==0) return;
 		UNSAFE.copyMemory(values, LONG_ARRAY_OFFSET, null, address, values.length << 3);
 	}
+	
+	/**
+	 * Writes an int array to the specified address
+	 * @param address The address to write to
+	 * @param values The int array to write
+	 */
+	public static void putIntArray(long address, int[] values) {
+		if(values==null || values.length==0) return;
+		UNSAFE.copyMemory(values, INT_ARRAY_OFFSET, null, address, values.length << 2);
+	}	
+	
+	/**
+	 * Reads a series of ints starting at the passed address and returns them as an array
+	 * @param address The address to read from
+	 * @param size The number of ints to read
+	 * @return the read ints as an array
+	 */
+	public static int[] getIntArray(long address, int size) {
+		int[] arr = new int[size];
+		UNSAFE.copyMemory(null, address, arr, INT_ARRAY_OFFSET, size << 2);
+		return arr;
+	}
+	
+	
 
 	/**
 	 * @param arg0

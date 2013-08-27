@@ -40,6 +40,7 @@ import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 
 import com.heliosapm.shorthand.accumulator.AccumulatorThreadStats;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
+import com.heliosapm.shorthand.accumulator.MemSpaceAccessorTest;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.accumulator.PeriodClock;
@@ -212,13 +213,17 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		long count = 0;
 		long start = System.currentTimeMillis();
 //		store.dump();
-		for(Object o: store.SNAPSHOT_INDEX.keySet()) {
+		IMetric metric = null;
+		for(Object o: store.UNLOADED_INDEX.keySet()) {
 			String name = o.toString();
-			IMetric metric = store.getMetric(name);
+			metric = store.getMetric(name);			
 			if(metric==null) continue;
 			count++;
-			log(metric.toString());
+			if(count%100==0) {
+				log("Loaded [%s] IMetrics", count);
+			}
 		}
+		log(metric.toString());
 		long elapsed = System.currentTimeMillis()-start;
 		log("Dump of [%s] metrics complete in [%s] ms.", count, elapsed);		
 	}
@@ -229,47 +234,28 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public IMetric<T> getMetric(String name) {
-		log("Fetching metric name from Index, Size: [%s]", SNAPSHOT_INDEX.size());
-		Long lock = SNAPSHOT_INDEX.get(name);
-		if(lock==null) return null;
-		long index = -1, address = -1;
-		if(lock>0) {
-			address = lock(lock);
-			index = MetricSnapshotAccumulator.HeaderOffsets.NameIndex.get(address);
-			unlock(lock);
-		} else {
-			index = Math.abs(lock);
-		}
-		Excerpt nex = nameIndex.createExcerpt();
-		Excerpt dex = this.tier1Data.createExcerpt();
-		nex.index(index);
-		nex.skipBytes(2);
-		Class<T> type = (Class<T>) EnumCollectors.getInstance().type(nex.readInt());
-		T[] collectors = type.getEnumConstants();
-		int bitMask = nex.readInt();
-		nex.readByteString(); nex.readLong();
-		long start = nex.readLong(), end = nex.readLong();
-		log("CHRONICLE READ PERIOD WITH: [%s]  to  [%s]", new Date(start), new Date(end));
-		int dpIndexSize = nex.readInt();
-		
-		Map<T, IMetricDataPoint<T>> dataPoints = new LinkedHashMap<T, IMetricDataPoint<T>>(dpIndexSize);
-		//SimpleMetric(String name, long startTime, long endTime, Map<T, IMetricDataPoint<T>> dataPoints) ;
-		SimpleMetric<T> simpleMetric = new SimpleMetric<T>(name, type, start, end, dataPoints); 
-		for(int i = 0; i < dpIndexSize; i++) {
-			long dIndex = nex.readLong();
-			if(dIndex < 1L) continue;
-			dataPoints.put(collectors[i], getTier1DataEntry(dex, collectors[i] , dIndex));
-			dex.index(dIndex);
-			dex.skipBytes(10);
-			int ord = dex.readInt();
-			int subCount = dex.readInt();
-			String[] subNames = type.getEnumConstants()[ord].getSubMetricNames();			
-			long[] subValues = new long[subCount];
-			for(int x = 0; x < subCount; x++) {
-				subValues[x] = dex.readLong();
+		Long address = SNAPSHOT_INDEX.get(name);
+		if(address==null) {
+			address = UNLOADED_INDEX.get(name);
+			if(address==null) {
+				return null;
 			}
 		}
-		return simpleMetric;
+		long nameIndex = -1;
+		if(address<0) {
+			nameIndex = (address * -1L);
+		} else {
+			long ref = lock(address);
+			nameIndex = MemSpaceAccessor.get(ref).getNameIndex();
+			unlock(address);
+		}
+		
+		Excerpt nameEx = this.nameIndex.createExcerpt();
+		Excerpt dataEx = this.tier1Data.createExcerpt();
+		DirectMetric dm = new DirectMetric(nameIndex, nameEx, dataEx);
+		nameEx.close();
+		dataEx.close();
+		return dm;
 	}
 	
 	/**
@@ -775,8 +761,11 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			// =========================================================================
 			// Phase 3 Flush / Purge Stale Mem-Spaces
 			// =========================================================================
-			
+			if(!untouched.isEmpty()) {
+				log("\n\t==============================\n\tClearing [%s] Untouched Mem-Spaces\n\t==============================", untouched.size());
+			}
 
+			untouched.clear();
 			
 
 		} catch (Exception ex) {
