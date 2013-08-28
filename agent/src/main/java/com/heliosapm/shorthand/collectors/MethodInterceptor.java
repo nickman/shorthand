@@ -21,8 +21,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
+import com.heliosapm.shorthand.accumulator.HeaderOffset;
 import com.heliosapm.shorthand.collectors.measurers.AbstractDeltaMeasurer;
 import com.heliosapm.shorthand.collectors.measurers.DefaultMeasurer;
 import com.heliosapm.shorthand.collectors.measurers.DelegatingMeasurer;
@@ -230,7 +229,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 				total += mi.ds.byteSize;
 			}
 		}
-		return total + HeaderOffsets.HEADER_SIZE;
+		return total + HeaderOffset.HEADER_SIZE;
 	}
 	
 	/**
@@ -404,7 +403,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 		final Map<MethodInterceptor, Long> offsets = new EnumMap(MethodInterceptor.class);
 		long offset = 0;
 		for(MethodInterceptor t: icollectors) {
-			offsets.put(t, offset + HeaderOffsets.HEADER_SIZE);
+			offsets.put(t, offset + HeaderOffset.HEADER_SIZE);
 			offset += t.getDataStruct().byteSize;
 		}
 		return offsets;
@@ -473,7 +472,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 		Map<MethodInterceptor, Long> offsets =  getOffsets(bitMask);
 		long invCount = UnsafeAdapter.getLong(address + offsets.get(INVOCATION_COUNT));
 		if(invCount<1) return;
-		long offset = address + MetricSnapshotAccumulator.HeaderOffsets.HEADER_SIZE;
+		long offset = address + HeaderOffset.HEADER_SIZE;
 		for(MethodInterceptor mi: getEnabledCollectors(bitMask)) {
 			if(mi.getDataStruct().size!=3) {
 				offset += UnsafeAdapter.LONG_SIZE;				
@@ -491,7 +490,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	 */
 	@Override
 	public void resetMemSpace(long address, int bitmask) {
-		long offset = address + MetricSnapshotAccumulator.HeaderOffsets.HEADER_SIZE;
+		long offset = address + HeaderOffset.HEADER_SIZE;
 		for(MethodInterceptor mi: getEnabledCollectors(bitmask)) {
 			UnsafeAdapter.putLongs(offset, (long[])mi.getDataStruct().defaultValues);
 			offset += (UnsafeAdapter.LONG_SIZE * mi.getDataStruct().size); 

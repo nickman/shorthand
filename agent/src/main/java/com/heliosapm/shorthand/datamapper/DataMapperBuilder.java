@@ -23,8 +23,8 @@ import javassist.Modifier;
 import javassist.NotFoundException;
 
 import com.heliosapm.shorthand.accumulator.CopiedAddressProcedure;
+import com.heliosapm.shorthand.accumulator.HeaderOffset;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.collectors.DataStruct;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
@@ -110,10 +110,10 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 			cp.importPackage(MetricSnapshotAccumulator.class.getPackage().getName());			
 			cp.importPackage(EnumCollectors.class.getPackage().getName());
 			cp.importPackage(TIntLongHashMap.class.getPackage().getName());
-			cp.importPackage(HeaderOffsets.class.getPackage().getName());
+			cp.importPackage(HeaderOffset.class.getPackage().getName());
 			cp.importPackage(CopiedAddressProcedure.class.getPackage().getName());
 			cp.importPackage("java.util");
-			cp.importPackage(HeaderOffsets.class.getPackage().getName());
+			cp.importPackage(HeaderOffset.class.getPackage().getName());
 			
 			mapClazz = cp.get(Map.class.getName());
 			dataMapperIface = cp.get(IDataMapper.class.getName());
@@ -225,7 +225,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						//============================================================
 						
 
-						final StringBuilder putSrc = new StringBuilder("{\n\tUnsafeAdapter.putByte($1+").append(HeaderOffsets.Touch.offset).append("L, TOUCHED);");
+						final StringBuilder putSrc = new StringBuilder("{\n\tUnsafeAdapter.putByte($1+").append(HeaderOffset.Touch.offset).append("L, TOUCHED);");
 						final StringBuilder getDpSrc = new StringBuilder("{\n\tlong[][] datapoints = new long[" + offsets.size() + "][0];\n\t");
 						final StringBuilder resetSrc = new StringBuilder("{\n\tMetricSnapshotAccumulator.HeaderOffsets.Touch.set($1, 0L);");
 

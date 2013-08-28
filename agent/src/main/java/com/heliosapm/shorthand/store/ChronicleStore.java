@@ -39,10 +39,9 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 
 import com.heliosapm.shorthand.accumulator.AccumulatorThreadStats;
+import com.heliosapm.shorthand.accumulator.HeaderOffset;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessorTest;
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.accumulator.PeriodClock;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
@@ -826,10 +825,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			// Copy the dirty mem-space to create a new period mem-space
 			// [CHECK: if the metric sub-space is still at the reset value, skip this]
 			//=======================================================			
-			long memSize = MetricSnapshotAccumulator.HeaderOffsets.MemSize.get(dirtyAddress);
-			int enumIndex = (int)MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.get(dirtyAddress);
+			long memSize = HeaderOffset.MemSize.get(dirtyAddress);
+			int enumIndex = (int)HeaderOffset.EnumIndex.get(dirtyAddress);
 			long newAddress = UnsafeAdapter.allocateMemory(memSize);
-			int bitMask = (int)HeaderOffsets.BitMask.get(dirtyAddress);
+			int bitMask = (int)HeaderOffset.BitMask.get(dirtyAddress);
 			UnsafeAdapter.copyMemory(dirtyAddress, newAddress, memSize);
 			//=====================================
 			// Get the reference collector for this mem-space
@@ -851,7 +850,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			// by setting the mem size to -1L
 			// then we can unlock.
 			//=====================================			
-			HeaderOffsets.MemSize.set(dirtyAddress, -1L);
+			HeaderOffset.MemSize.set(dirtyAddress, -1L);
 //			log("Marked buffer for [%s] as invalid", entry.getKey());
 			pendingDeallocates.put(dirtyAddress, Boolean.TRUE);
 			allocationTransfers.put(dirtyAddress, (Long)newAddress);

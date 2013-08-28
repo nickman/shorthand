@@ -77,7 +77,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 * @param address the address of the memory space to free
 	 */
 	private void freeMemory(long address) {
-//		long size = UnsafeAdapter.getLong(address + HeaderOffsets.MemSize.offset);
+//		long size = UnsafeAdapter.getLong(address + HeaderOffset.MemSize.offset);
 		UnsafeAdapter.freeMemory(address);
 //		unsafeMemoryAllocated.addAndGet(size*-1);
 	}
@@ -146,8 +146,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 		
 	}
 	
-	/** The reset and untouched flag value */
-	public static final byte UNTOUCHED = 0; 
 	
 	/** The size of the accumulator lock */
 	public static final int LOCK_SIZE = SIZE_OF_LONG;
@@ -167,110 +165,6 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	
 	
 
-	
-	/**
-	 * <p>Title: HeaderOffsets</p>
-	 * <p>Description: Enumeration of memory space header elements and their relative offsets</p> 
-	 * <p>Company: Helios Development Group LLC</p>
-	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
-	 * <p><code>com.heliosapm.shorthand.accumulator.HeaderOffsets</code></p>
-	 */
-	public static enum HeaderOffsets {
-		/** The touch flag */
-		Touch(0, SIZE_OF_BYTE),									// At offset 0 		
-		/** The metric bitmask */
-		BitMask(Touch.size + Touch.offset, SIZE_OF_INT),		// At offset 1
-		/** The enum index */
-		EnumIndex(BitMask.size + BitMask.offset, SIZE_OF_INT),	// At offset 5
-		/** The total memory size of this allocation */
-		MemSize(EnumIndex.size + EnumIndex.offset, SIZE_OF_INT),// At offset 9
-		/** The name index */
-		NameIndex(MemSize.size + MemSize.offset, SIZE_OF_LONG); // At offset 13
-		
-		// body starts at offset 21
-		
-		private HeaderOffsets(int offset, int size) {
-			this.offset = offset;
-			this.size = size;			
-		}
-		
-		public static void main(String[] args) {
-			log("Header Offsets");
-			for(HeaderOffsets off: HeaderOffsets.values()) {
-				log(String.format("[%s] Offset:%s  Size:%s", off.name(), off.offset, off.size));
-			}
-			log("Total Header Size:" + HEADER_SIZE);
-		}
-		
-		/**
-		 * Initializes the header of the memory space allocated for a new metric
-		 * @param address The address of the memory space
-		 * @param memorySize The amount of memory allocated
-		 * @param nameIndex The name index of the new metric
-		 * @param bitMask The enabled bitmask of the new metric
-		 */
-		public static void initializeHeader(long address, int memorySize, long nameIndex, int bitMask, int enumIndex) {		
-			long pos = address;
-			UnsafeAdapter.putByte(address, UNTOUCHED);   	// Touch Flag
-			pos += SIZE_OF_BYTE;
-			UnsafeAdapter.putInt(pos, bitMask);				// BitMask
-			pos += SIZE_OF_INT;
-			UnsafeAdapter.putInt(pos, enumIndex);			// EnumIndex
-			pos += SIZE_OF_INT;
-			UnsafeAdapter.putInt(pos, memorySize);			// Mem Size
-			pos += SIZE_OF_INT;				
-			UnsafeAdapter.putLong(pos,nameIndex);			// Name Index
-			pos += SIZE_OF_LONG;
-			assert pos==HEADER_SIZE;
-		}		
-				
-		
-		/** The length of the header in bytes */
-		public static final int HEADER_SIZE;
-		
-		static {
-			int offset = 0;
-			for(HeaderOffsets off: HeaderOffsets.values()) {
-				offset += off.size;
-			}
-			HEADER_SIZE = offset;
-		}
-		
-		/** The offset of this header element */
-		public final int offset;
-		/** The size of this header element */
-		public final int size;
-		
-		
-		/**
-		 * Return the header value at the passed address
-		 * @param address The address
-		 * @return the value as a long (it may be an int)
-		 */
-		public long get(long address) {
-			if(size==1) {
-				return UnsafeAdapter.getByte(address + offset);
-			} else if(size==4) {
-				return UnsafeAdapter.getInt(address + offset);
-			}
-			return UnsafeAdapter.getLong(address + offset);
-		}
-		
-		/**
-		 * Sets the value of this header at the passed address
-		 * @param address The starting address for these headers
-		 * @param value The value to set the header to
-		 */
-		public void set(long address, long value) {
-			if(size==1) {
-				UnsafeAdapter.putByte(address + offset, (byte)value);
-			} else if(size==4) {
-				UnsafeAdapter.putInt(address + offset, (int)value);
-			} else {
-				UnsafeAdapter.putLong(address + offset, value);
-			}
-		}
-	}
 	
 	/**
 	 * Returns the index code for the passed collector

@@ -33,7 +33,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;

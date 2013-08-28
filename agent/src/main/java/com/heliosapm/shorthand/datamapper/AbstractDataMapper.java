@@ -15,8 +15,7 @@ import java.util.Map;
 import java.util.Set;
 
 import com.heliosapm.shorthand.accumulator.CopiedAddressProcedure;
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
+import com.heliosapm.shorthand.accumulator.HeaderOffset;
 import com.heliosapm.shorthand.collectors.DataStruct;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
@@ -62,9 +61,9 @@ public abstract class AbstractDataMapper<T extends Enum<T> & ICollector<T>> impl
 	 */
 	@Override
 	public void reset(final long address) {
-		HeaderOffsets.Touch.set(address, 0);
-		int enumIndex = (int)HeaderOffsets.EnumIndex.get(address);
-		int bitMask = (int)HeaderOffsets.BitMask.get(address);
+		HeaderOffset.Touch.set(address, 0);
+		int enumIndex = (int)HeaderOffset.EnumIndex.get(address);
+		int bitMask = (int)HeaderOffset.BitMask.get(address);
 		Map<T, Long> offsets = (Map<T, Long>) EnumCollectors.getInstance().offsets(enumIndex, bitMask);
 		for(Map.Entry<T, Long> entry: offsets.entrySet()) {
 			DataStruct ds = entry.getKey().getDataStruct();
@@ -78,9 +77,9 @@ public abstract class AbstractDataMapper<T extends Enum<T> & ICollector<T>> impl
 	 */
 	@Override
 	public void put(final long address, final long[] data) {
-		HeaderOffsets.Touch.set(address, 1);
-		int enumIndex = (int)HeaderOffsets.EnumIndex.get(address);
-		int bitMask = (int)HeaderOffsets.BitMask.get(address);
+		HeaderOffset.Touch.set(address, 1);
+		int enumIndex = (int)HeaderOffset.EnumIndex.get(address);
+		int bitMask = (int)HeaderOffset.BitMask.get(address);
 		TObjectLongHashMap<T> offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(enumIndex, bitMask);
 		if(offsets.isEmpty()) return;				
 		offsets.forEachEntry(new TObjectLongProcedure<ICollector<?>>() {
@@ -100,8 +99,8 @@ public abstract class AbstractDataMapper<T extends Enum<T> & ICollector<T>> impl
 	 */
 	@Override
 	public void prePut(long address, long[] data) {
-		int enumIndex = (int)HeaderOffsets.EnumIndex.get(address);
-		int bitMask = (int)HeaderOffsets.BitMask.get(address);
+		int enumIndex = (int)HeaderOffset.EnumIndex.get(address);
+		int bitMask = (int)HeaderOffset.BitMask.get(address);
 		TObjectLongHashMap<T> offsets = (TObjectLongHashMap<T>) EnumCollectors.getInstance().offsets(enumIndex, bitMask);
 
 		if(offsets.isEmpty()) return;
@@ -127,8 +126,8 @@ public abstract class AbstractDataMapper<T extends Enum<T> & ICollector<T>> impl
 	 */
 	@Override
 	public void preFlush(long address) {
-		int enumIndex = UnsafeAdapter.getInt(address + MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.offset); 
-		int bitmask = UnsafeAdapter.getInt(address + MetricSnapshotAccumulator.HeaderOffsets.BitMask.offset);
+		int enumIndex = UnsafeAdapter.getInt(address + HeaderOffset.EnumIndex.offset); 
+		int bitmask = UnsafeAdapter.getInt(address + HeaderOffset.BitMask.offset);
 		EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitmask).iterator().next().preFlush(address, bitmask);
 	}
 	

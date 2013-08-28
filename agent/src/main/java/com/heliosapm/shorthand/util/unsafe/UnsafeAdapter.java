@@ -42,18 +42,18 @@ public class UnsafeAdapter {
     /** Indicates if the 4 param set memory is supported */
     public static final boolean FOUR_SET;
     /** The size of a <b><code>byte</code></b>  */
-    public final static long BYTE_SIZE = 1;
+    public final static int BYTE_SIZE = 1;
 
     /** The size of an <b><code>int</code></b>  */
-    public final static long INT_SIZE = 4;
+    public final static int INT_SIZE = 4;
     /** The size of an <b><code>int[]</code></b> array offset */
-    public final static long INT_ARRAY_OFFSET;
+    public final static int INT_ARRAY_OFFSET;
     /** The size of a <b><code>long</code></b>  */
-    public final static long LONG_SIZE = 8;    
+    public final static int LONG_SIZE = 8;    
     /** The size of a <b><code>long[]</code></b> array offset */
-    public final static long LONG_ARRAY_OFFSET;
+    public final static int LONG_ARRAY_OFFSET;
     /** The size of a <b><code>byte[]</code></b> array offset */
-    public final static long BYTE_ARRAY_OFFSET;
+    public final static int BYTE_ARRAY_OFFSET;
     
     /** A map of SAFE memory segments */
     private static ByteBuffer allocatedMemory;

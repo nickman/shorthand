@@ -16,8 +16,8 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
+import com.heliosapm.shorthand.accumulator.HeaderOffset;
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
 
@@ -285,7 +285,7 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	public Map<T, Long> offsets(String className, int bitMask) {
 		Set<T> enabled = enabledMembersForName(className, bitMask);
 		Map<T, Long> offsets = new EnumMap(enabled.iterator().next().getDeclaringClass());
-		long offset = HeaderOffsets.HEADER_SIZE;
+		long offset = HeaderOffset.HEADER_SIZE;
 		for(T t: enabled) {
 			offsets.put(t, offset);
 			offset += t.getDataStruct().byteSize;

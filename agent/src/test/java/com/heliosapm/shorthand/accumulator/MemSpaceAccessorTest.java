@@ -34,7 +34,6 @@ import org.junit.Test;
 
 import test.com.heliosapm.shorthand.BaseTest;
 
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.MethodInterceptor;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
@@ -61,7 +60,7 @@ public class MemSpaceAccessorTest extends BaseTest {
 		int bitMask = MethodInterceptor.defaultMetricsMask;
 		int memsize = MethodInterceptor.getTotalAllocation(bitMask);
 		log("Memory to be allocated:%s", memsize);
-		long actualSize = HeaderOffsets.HEADER_SIZE;
+		long actualSize = HeaderOffset.HEADER_SIZE;
 		for(Object o: EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitMask)) {
 			MethodInterceptor mi = (MethodInterceptor)o;
 			actualSize += mi.getDataStruct().byteSize;			
@@ -91,7 +90,7 @@ public class MemSpaceAccessorTest extends BaseTest {
 			Assert.assertEquals("Name Index", 17L, msa.getNameIndex());
 			Assert.assertEquals("Bit Mask", bitMask, msa.getBitMask());
 			Assert.assertEquals("Enum Index", enumIndex, msa.getEnumIndex());			
-			log("Header Size:%s", HeaderOffsets.HEADER_SIZE);
+			log("Header Size:%s", HeaderOffset.HEADER_SIZE);
 			//======================================================================
 			// Reset/Initialize the mem-space body
 			//======================================================================

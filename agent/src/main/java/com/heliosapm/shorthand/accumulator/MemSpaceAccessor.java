@@ -27,7 +27,6 @@ package com.heliosapm.shorthand.accumulator;
 import java.util.Arrays;
 import java.util.Set;
 
-import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator.HeaderOffsets;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.datamapper.AbstractDataMapper;
@@ -88,7 +87,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @param enumIndex The enum collector index
 	 */
 	public void initializeHeader(int memorySize, long nameIndex, int bitMask, int enumIndex) {
-		HeaderOffsets.initializeHeader(address, memorySize, nameIndex, bitMask, enumIndex);
+		HeaderOffset.initializeHeader(address, memorySize, nameIndex, bitMask, enumIndex);
 	}
 	
 	/**
@@ -96,7 +95,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return true if this mem-space has been touched since the last reset, false otherwise
 	 */
 	public boolean isTouched() {
-		return UnsafeAdapter.getByte(address + HeaderOffsets.Touch.offset)>0;
+		return UnsafeAdapter.getByte(address + HeaderOffset.Touch.offset)>0;
 	}
 	
 	public long copy() {
@@ -116,7 +115,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the bitmask
 	 */
 	public int getBitMask() {
-		return (int)MetricSnapshotAccumulator.HeaderOffsets.BitMask.get(address);
+		return (int)HeaderOffset.BitMask.get(address);
 	}
 
 	/**
@@ -124,7 +123,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the collector enum index
 	 */
 	public int getEnumIndex() {
-		return (int)MetricSnapshotAccumulator.HeaderOffsets.EnumIndex.get(address);
+		return (int)HeaderOffset.EnumIndex.get(address);
 	}
 	
 	/**
@@ -132,7 +131,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the size of the memory space allocated
 	 */
 	public int getMemSize() {
-		return (int)MetricSnapshotAccumulator.HeaderOffsets.MemSize.get(address);
+		return (int)HeaderOffset.MemSize.get(address);
 	}
 	
 	/**
@@ -140,7 +139,7 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return the index of the metric in the store name index
 	 */
 	public long getNameIndex() {
-		return MetricSnapshotAccumulator.HeaderOffsets.NameIndex.get(address);
+		return HeaderOffset.NameIndex.get(address);
 	}
 	
 	/**
