@@ -98,7 +98,7 @@ public abstract class AbstractStore<T extends Enum<T> & ICollector<T>> implement
 					long nameIndex;
 					boolean unloaded = false;
 					if(address==null) {
-						nameIndex = newMetricName(metricName, (T) collectorSet.getReferenceCollector(), collectorSet.getBitMask());
+						nameIndex = newMetricName(metricName, collectorSet.getEnumIndex(), collectorSet.getBitMask());
 					} else {
 						nameIndex = address * -1;
 						unloaded = true;

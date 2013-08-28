@@ -27,12 +27,13 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 	private final Set<T> icollectors;
 	/** The bitmask of the enabled metrics */
 	private final int bitMask;
+	/** The enum collector index */
+	private final int enumIndex;
+	
 	/** The total memory allocation required for this collector set */
 	private final long totalAllocation;
 	/** The data mapper that will execute the memory space updates */
 	private final IDataMapper dataMapper;
-	/** Indicates if the data mapper is compiled or the default */
-	private final boolean compiledDataMapper;
 	/**
 	 * Returns the enabled collectors 
 	 * @return the icollectors
@@ -72,7 +73,7 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 		this.bitMask = bitMask;
 		totalAllocation = t.getAllocationFor(bitMask);
 		dataMapper = DataMapperBuilder.getInstance().getIDataMapper(t.getDeclaringClass().getName(), bitMask);
-		compiledDataMapper = !dataMapper.getClass().equals(AbstractDataMapper.class);
+		enumIndex = dataMapper.getEnumIndex();
 	}
 	
 	/**
@@ -139,13 +140,22 @@ public class CollectorSet<T extends Enum<T> & ICollector<T>>  {
 	}
 
 	/**
-	 * Returns 
+	 * Returns the enabled metric bit mask
 	 * @return the bitMask
 	 */
 	public int getBitMask() {
 		return bitMask;
 	}
 
+	/**
+	 * Returns the enum collector index
+	 * @return the enumIndex
+	 */
+	public int getEnumIndex() {
+		return enumIndex;
+	}
+	
+	
 	/**
 	 * Returns 
 	 * @return the totalAllocation

@@ -227,7 +227,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 
 						final StringBuilder putSrc = new StringBuilder("{\n\tUnsafeAdapter.putByte($1+").append(HeaderOffset.Touch.offset).append("L, TOUCHED);");
 						final StringBuilder getDpSrc = new StringBuilder("{\n\tlong[][] datapoints = new long[" + offsets.size() + "][0];\n\t");
-						final StringBuilder resetSrc = new StringBuilder("{\n\tMetricSnapshotAccumulator.HeaderOffsets.Touch.set($1, 0L);");
+						final StringBuilder resetSrc = new StringBuilder("{\n\tHeaderOffset.Touch.set($1, 0L);");
 
 						final StringBuilder toStringSrc = new StringBuilder(String.format("{ return \"CompiledDataMapper Collector [%s] BitMask[%s] [", enumCollectorType.getSimpleName(), bitMask));
 						if(!offsets.isEmpty()) {

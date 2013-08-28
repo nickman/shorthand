@@ -181,6 +181,11 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	private final NonBlockingHashMapLong<Boolean> pendingDeallocates = new NonBlockingHashMapLong<Boolean>(CORES, false);
 	/** A map of new allocation addresses keyed by the prior deallocated address */
 	private final NonBlockingHashMapLong<Long> allocationTransfers = new NonBlockingHashMapLong<Long>(1024, false);
+	/** A sliding window of period update times in ns. */
+	protected final ConcurrentLongSlidingWindow periodUpdateTimes = new ConcurrentLongSlidingWindow(100);
+	/** A sliding window of new metric creation times in ns. */
+	protected final ConcurrentLongSlidingWindow newMetricTimes = new ConcurrentLongSlidingWindow(100); 
+	
 	
 	/** This store's JMX ObjectName */
 	public static final ObjectName OBJECT_NAME = JMXHelper.objectName("com.heliosapm.shorthand.store:service=Store,type=Chronicle");
@@ -528,55 +533,14 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#newMetricName(java.lang.String, java.lang.Enum, int)
+	 * @see com.heliosapm.shorthand.store.IStore#newMetricName(java.lang.String, int, int)
 	 */
 	@Override
-	public long newMetricName(String metricName, T collector, int bitMask) {
-		int enumIndex = getEnum(collector);		
-		int nameLength = metricName.getBytes().length;		
-		int tier1AddressCount = collector.getDeclaringClass().getEnumConstants().length;
-		int tier1AddressSize = tier1AddressCount << 3;
-		long now = System.currentTimeMillis();
-		int estSize = 	NAME_ENTRY_SIZE + 						// the known part of the total length
-						nameLength + 							// the number of bytes in the metric name
-						tier1AddressSize;						// the number of bytes for the tier addresses for each sub-metric			
-		
-		try {
-			nameIndexEx.startExcerpt(estSize);
-			nameIndexEx.writeByte(0);				// the lock
-			nameIndexEx.writeByte(0);				// the delete indicator
-			nameIndexEx.writeInt(enumIndex);		// the enum index (i.e. which enum it is)
-			nameIndexEx.writeInt(bitMask);			// the enabled bitmask
-			nameIndexEx.writeBytes(metricName);		// the metric name bytes
-			nameIndexEx.writeLong(now);				// the creation timestamp
-			nameIndexEx.writeLong(now);				// the period start time.
-			nameIndexEx.writeLong(now);				// the period end time.
-			nameIndexEx.writeInt(tier1AddressCount);// (int) the number of tier addresses
-			final int pos = nameIndexEx.position(); 
-			for(int i = 0; i < tier1AddressCount; i++) {
-				nameIndexEx.writeLong(-3L);
-			}
-			nameIndexEx.finish();
-			long nindex = nameIndexEx.index();
-			nameIndexEx.index(nindex);
-			int offset = pos;
-			for(ICollector<?> t: collector.collectors()) {
-				if(t.isEnabled(bitMask)) {
-					//log("Creating New Tier 1 Entry for [%s]: [%s]  Data Points: [%s]", metricName, t.name(), t.getDataStruct().size);
-					nameIndexEx.writeLong(offset,
-						newTier1Entry(nindex, t.ordinal(), t.getDataStruct().size)
-					);
-					
-				}
-				offset += UnsafeAdapter.LONG_SIZE;
-			}
-			nameIndexEx.finish();
-			addedMetricNames.add(metricName);
-			return nindex;
-		} catch (Exception ex) {
-			loge("Failed to write new metric name [%s]", ex, metricName);
-			throw new RuntimeException(ex);
-		}
+	public long newMetricName(String metricName, int enumIndex, int bitMask) {
+		final long start = System.nanoTime();
+		long index = ChronicleOffset.writeNewNameIndex(enumIndex, bitMask, metricName);
+		newMetricTimes.insert(System.nanoTime()-start);		
+		return index;
 	}
 	
 	/**
@@ -599,81 +563,22 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	
 	
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#updatePeriod(com.heliosapm.shorthand.accumulator.MemSpaceAccessor, long, long)
+	 */
 	@Override
-	public void updatePeriod(MemSpaceAccessor<T> memSpaceAccessor, long periodStart, long periodEnd) {
+	public void updatePeriod(MemSpaceAccessor<T> msa, long periodStart, long periodEnd) {
 		final long start = System.nanoTime();
-		long address = memSpaceAccessor.getNameIndex();
-		//if(address<0) address = address*-1;
-		nameIndexEx.index(address);
-		// skip to the name
-		nameIndexEx.position(CR_TS_INDEX);
-		// read the name
-		nameIndexEx.readByteString();
-		// skip the creation date
-		nameIndexEx.skip(UnsafeAdapter.LONG_SIZE);
-		// write the period start and end
-		nameIndexEx.writeLong(periodStart);
-		nameIndexEx.writeLong(periodEnd);
-		// read the number of tier addresses
-		int tierAddressCount = nameIndexEx.readInt();
-		int actualCount = EnumCollectors.getInstance().type(memSpaceAccessor.getEnumIndex()).getEnumConstants().length;
-		if(tierAddressCount != actualCount) {
-			loge("Invalid name index entry for tier address count. Enum says [%s] Count was [%s]", actualCount, tierAddressCount);
-		}
-		long[] tierAddresses = readLongArray(nameIndexEx, tierAddressCount);
-		Excerpt ex = tier1Data.createExcerpt();
-		if(!updateSlots(ex, tierAddresses, memSpaceAccessor.getDataPoints())) {
-			loge("Slot update failed:\n%s", memSpaceAccessor);
-		}
-		ex.close();
-		nameIndexEx.finish();
-		final long elapsed = System.nanoTime()-start;
-		
+		ChronicleOffset.updatePeriod(msa, periodStart, periodEnd);
+		periodUpdateTimes.insert(System.nanoTime()-start);		
 	}
 	
 	
 
 	
 	
-	/**
-	 * Updates the live tier for a flush
-	 * @param ex The excerpt to write with
-	 * @param indexes The indexes to write to
-	 * @param values The values to write
-	 */
-	public boolean updateSlots(Excerpt ex, long[] indexes, long[][] values) {
-		try {
-			int vindex = 0;
-			for(int i = 0; i < indexes.length; i++) {
-				long index = indexes[i];
-				if(index < 1) continue;
-				ex.index(index);
-				ex.position(TIER_1_SIZE);
-				
-//				ex.position(TIER_1_SIZE-4);
-//				int slots = ex.readInt();
-//				if(slots!=values[vindex].length) {
-//					loge("Invalid slot update. Slot count is [%s] but values array length is [%s]", slots, values[vindex].length);
-//					return;
-//				}    /---------------10------------20/
-				int t = ex.remaining() + ex.position();
-				writeLongArray(ex, values[vindex]);
-				if(ex.position()>t) {
-					loge("!!  ERROR  !! Overwriting slot size. t [%s]  p [%s]", t, ex.position());
-					return false;
-				}
-//				for(long value: values[vindex]) {
-//					ex.writeLong(value);
-//				}
-				ex.finish();
-				vindex++;
-			}
-			return true;
-		} catch (Exception x) {
-			x.printStackTrace(System.err);
-			return false;
-		}
-	}
+
 	
 	/**
 	 * Writes the entire content of a long array to the current offset in the passed excerpt

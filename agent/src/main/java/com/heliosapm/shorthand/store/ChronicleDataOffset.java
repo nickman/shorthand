@@ -65,10 +65,10 @@ public enum ChronicleDataOffset {
 	public static final int HEADER_SIZE;
 	
 	/** The chronicle store */
-	private final ChronicleStore<?> chronicleStore  = ChronicleStore.getInstance();
+	private static final ChronicleStore<?> chronicleStore  = ChronicleStore.getInstance();
 
 	/** The data index chronicle */
-	private final IndexedChronicle chronicle = chronicleStore.tier1Data;
+	private static final IndexedChronicle chronicle = chronicleStore.tier1Data;
 	
 
 	static {
@@ -154,7 +154,7 @@ public enum ChronicleDataOffset {
 	 * @param index The index of the target data index entry
 	 * @return the data points (e.g. Count, or Min,Max,Avg)
 	 */
-	public long[] getDataPoints(long index) {
+	public static long[] getDataPoints(long index) {
 		return getDataPoints(index, null);
 	}
 	
@@ -165,7 +165,7 @@ public enum ChronicleDataOffset {
 	 * @param ex The excerpt to read from. If null, one will be created and closed
 	 * @return the data points (e.g. Count, or Min,Max,Avg)
 	 */
-	public long[] getDataPoints(long index, Excerpt ex) {
+	public static long[] getDataPoints(long index, Excerpt ex) {
 		final boolean closeEx = ex==null;
 		if(ex==null) {
 			ex = chronicle.createExcerpt();
@@ -179,6 +179,8 @@ public enum ChronicleDataOffset {
 			if(closeEx) ex.close();
 		}				
 	}
+	
+
 	
 	/**
 	 * Updates the datapoints in a data index

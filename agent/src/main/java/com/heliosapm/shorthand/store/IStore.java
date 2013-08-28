@@ -85,11 +85,11 @@ public interface IStore<T extends Enum<T> & ICollector<T>> {
 	/**
 	 * Adds a new metric name and returns the new metric name index
 	 * @param metricName The metric name
-	 * @param collector An enum member of the collector set
+	 * @param enumIndex The enum collector index
 	 * @param bitMask The enabled bitmask
 	 * @return the new name index id
 	 */
-	public long newMetricName(String metricName, T collector, int bitMask);
+	public long newMetricName(String metricName, int enumIndex, int bitMask);
 	
 	/**
 	 * Updates the name index and live tier of the store

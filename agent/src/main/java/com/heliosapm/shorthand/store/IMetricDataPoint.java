@@ -37,10 +37,10 @@ import gnu.trove.map.hash.TObjectLongHashMap;
 
 public interface IMetricDataPoint<T> {
 	/**
-	 * Returns the collector instance
-	 * @return the collector instance
+	 * Returns the collector instance name
+	 * @return the collector instance name
 	 */
-	public T getCollector();
+	public String getCollectorName();
 	/**
 	 * Returns the metric short name
 	 * @return the metric short name
@@ -51,10 +51,17 @@ public interface IMetricDataPoint<T> {
 	 * @return the metric unit
 	 */
 	public String getUnit();
+	
 	/**
-	 * Returns a map of the period data points for this metric and collector keyed by the sub-metric name
-	 * @return a map of the period data points
+	 * Returns the sub metric names
+	 * @return the sub metric names
 	 */
-	public TObjectLongHashMap<String> getDataPoints();
+	public String[] getSubNames();
+	
+	/**
+	 * Returns a the period data points for this metric and collector 
+	 * @return an array of the period data points
+	 */
+	public long[] getDataPoints();
 
 }

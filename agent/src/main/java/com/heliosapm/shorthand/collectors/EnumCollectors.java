@@ -130,6 +130,16 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 		Class<T> ct = typeForName(className);
 		return ct.getEnumConstants()[0];
 	}
+	
+	/**
+	 * Returns the enum collector member for the passed indexes
+	 * @param enumIndex The enum collector index
+	 * @param memberIndex The member index 
+	 * @return the enum collector member 
+	 */
+	public T memberForIndex(int enumIndex, int memberIndex) {
+		return indexByIndex.get(enumIndex).getEnumConstants()[memberIndex];
+	}
 
 	/**
 	 * Returns the reference enum collector instance for the passed index

@@ -24,7 +24,9 @@
  */
 package com.heliosapm.shorthand.store;
 
+import java.util.Arrays;
 import java.util.Date;
+import java.util.EnumMap;
 import java.util.Map;
 
 import com.heliosapm.shorthand.collectors.EnumCollectors;
@@ -59,21 +61,21 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 		int bytesForHeader = walkForSize(nameIndexEx);
 		address = UnsafeAdapter.allocateMemory(bytesForHeader);
 		long directPos = address;
-		nameIndexEx.position(2); 	// skip the the lock byte and the deleted indicator byte
 		
-		UnsafeAdapter.putInt(directPos, nameIndexEx.readInt());		// the enum index  (0)
+		UnsafeAdapter.putInt(directPos, (int)ChronicleOffset.EnumIndex.get(this.nameIndex, nameIndexEx));		// the enum index  (0)
 		directPos += UnsafeAdapter.INT_SIZE;
-		UnsafeAdapter.putInt(directPos, nameIndexEx.readInt());		// the bitmask 	(4)
+		UnsafeAdapter.putInt(directPos, (int)ChronicleOffset.BitMask.get(this.nameIndex, nameIndexEx));		// the bitmask 	(4)
 		directPos += UnsafeAdapter.INT_SIZE;
 
-		byte[] metricName = nameIndexEx.readByteString().getBytes();// read the name		
+		byte[] metricName = ChronicleOffset.getName(this.nameIndex, nameIndexEx).getBytes();		
 
 		
-		UnsafeAdapter.putLong(directPos, nameIndexEx.readLong());		// the create timestamp (8)
+		
+		UnsafeAdapter.putLong(directPos, ChronicleOffset.CreateTime.get(this.nameIndex, nameIndexEx));		// the create timestamp (8)
 		directPos += UnsafeAdapter.LONG_SIZE;
-		UnsafeAdapter.putLong(directPos, nameIndexEx.readLong());		// the period start timestamp  (16)
+		UnsafeAdapter.putLong(directPos, ChronicleOffset.PeriodStart.get(this.nameIndex, nameIndexEx));		// the period start timestamp (8)
 		directPos += UnsafeAdapter.LONG_SIZE;		
-		UnsafeAdapter.putLong(directPos, nameIndexEx.readLong());		// the period end timestamp  (24)
+		UnsafeAdapter.putLong(directPos, ChronicleOffset.PeriodEnd.get(this.nameIndex, nameIndexEx));		// the period end timestamp (8)
 		directPos += UnsafeAdapter.LONG_SIZE;
 		
 		UnsafeAdapter.putInt(directPos, metricName.length);			// the size of the name		(32)
@@ -87,6 +89,13 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 //		for(int i = 0; i < tier1AddressCount; i++) {
 //			nameIndexEx.writeLong(-3L);
 //		}
+		
+		
+		
+	}
+	
+	public static void log(String fmt, Object...args) {
+		System.out.println(String.format(fmt, args));
 	}
 	
 	/** The known portion length of a name index entry */
@@ -236,8 +245,17 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 	 */
 	@Override
 	public Map<T, IMetricDataPoint<T>> getMetricDataPoints() {
-		// TODO Auto-generated method stub
-		return null;
+		Map<T, IMetricDataPoint<T>> dataMap = new EnumMap<T, IMetricDataPoint<T>>((Class<T>) EnumCollectors.getInstance().type(getEnumIndex()));
+		long[] dataIndexes = ChronicleOffset.getTier1Indexes(this.nameIndex);
+		int dIndex = 0;
+		int bitMask = getBitMask();
+		for(ICollector<?> collector: EnumCollectors.getInstance().allMembersForIndex(getEnumIndex())) {
+			if(collector.isEnabled(bitMask)) {
+				dataMap.put((T) collector, new DirectMetricDataPoint(collector, ChronicleDataOffset.getDataPoints(dataIndexes[dIndex])));
+			}
+			dIndex++;
+		}
+		return dataMap;
 	}
 
 }
