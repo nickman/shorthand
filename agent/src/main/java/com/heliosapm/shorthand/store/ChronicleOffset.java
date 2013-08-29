@@ -333,12 +333,13 @@ public enum ChronicleOffset {
 	public static long writeNewNameIndex(int enumIndex, int bitMask, String metricName, Excerpt ex) {
 		final boolean closeEx = ex==null;
 		long[] periods = PeriodClock.getInstance().getCurrentPeriod();
-		Excerpt dataEx = ChronicleStore.getInstance().tier1Data.createExcerpt();
+		Excerpt dataEx = chronicleStore.tier1Data.createExcerpt();
 		if(ex==null) {
 			ex = ChronicleStore.getInstance().nameIndex.createExcerpt();			
 		}
 		try {
 			Class<Enum<?>> clazz = (Class<Enum<?>>) EnumCollectors.getInstance().type(enumIndex);
+			chronicleStore.getEnum(clazz.getName());
 			ICollector<?>[] collectors = (ICollector<?>[]) clazz.getEnumConstants();
 			int dataIndexCount = collectors.length;
 			ex.startExcerpt(HEADER_SIZE + metricName.getBytes().length + 1 + (dataIndexCount << 3));
@@ -365,6 +366,7 @@ public enum ChronicleOffset {
 				long key = -1;
 				if(collector.isEnabled(bitMask)) {
 					key = ChronicleDataOffset.writeNewDataIndex(nameIndex, collector.ordinal(), defaultValues[dvIndex], dataEx);
+					dvIndex++;
 				} else {
 					key = collector.ordinal() * -1L;
 				}

@@ -112,6 +112,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			synchronized(lock) {
 				if(instance==null) {
 					instance = new ChronicleStore();
+					instance.loadSnapshotNameIndex();
 				}
 			}
 		}
@@ -213,7 +214,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	
 	public static void main(String[] args) {
 		log("Dumping Shorthand DB");
-		ChronicleStore store = new ChronicleStore();
+		ChronicleStore store = ChronicleStore.getInstance();
 		long count = 0;
 		long start = System.currentTimeMillis();
 //		store.dump();
@@ -221,13 +222,17 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		for(Object o: store.UNLOADED_INDEX.keySet()) {
 			String name = o.toString();
 			metric = store.getMetric(name);			
-			if(metric==null) continue;
+			if(metric==null) continue;			
 			count++;
-			if(count%100==0) {
-				log("Loaded [%s] IMetrics", count);
-			}
+//			if(count%100==0) {
+//				log("Loaded [%s] IMetrics", count);
+//			}
 		}
-		log(metric.toString());
+		if(metric!=null) {
+			log(metric.toString());
+		}
+
+		
 		long elapsed = System.currentTimeMillis()-start;
 		log("Dump of [%s] metrics complete in [%s] ms.", count, elapsed);		
 	}
@@ -262,29 +267,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		return dm;
 	}
 	
-	/**
-	 * Returns a map of the data point values keyed by the submetric name
-	 * @param ex The excerpt to read with. Optional. If null, will create a new tier1 exceprpt and close it on completion.
-	 * @param collector The collector for which datapoints are being retrieved
-	 * @param index The index of the tier1 entry
-	 * @return a map of the data point values keyed by the submetric name
-	 */
-	public IMetricDataPoint<T> getTier1DataEntry(Excerpt ex, T collector, long index) {
-		final boolean hasEx = ex!=null;
-		try {
-			if(!hasEx) ex = this.tier1Data.createExcerpt();
-			ex.index(index);
-			ex.position(TIER_1_SIZE);
-			String[] subNames = collector.getSubMetricNames();
-			TObjectLongHashMap<String> map = new TObjectLongHashMap<String>(subNames.length, 0.1f);		
-			for(int i = 0; i < subNames.length; i++) {
-				map.put(subNames[i], ex.readLong());
-			}
-			return new SimpleMetricDataPoint<T>(collector, map);
-		} finally {
-			if(!hasEx) ex.close(); 
-		}
-	}
 	
 	public void dump() {
 		Excerpt dx = tier1Data.createExcerpt();
@@ -393,8 +375,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			tier1Data.multiThreaded(true);
 			tier1Data.useUnsafe(true);
 			writeZeroRec(tier1Data);
-			log(printChronicleDetails(tier1Data));
-			loadSnapshotNameIndex();
+			log(printChronicleDetails(tier1Data));			
 			notificationBroadcaterSupport = new NotificationBroadcasterSupport(notificationProcessors, NOTIFS); 
 			JMXHelper.registerMBean(this, OBJECT_NAME);			
 		} catch (Exception ex) {
@@ -438,6 +419,35 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		log("Loaded [%s] Collector Enums into Cache\n\t", loaded);		
 	}
 	
+	/**
+	 * Looks up the enum collector index for the passed class name, creating the cache entry if not present
+	 * @param collectorClassName The name of the enum collector class
+	 * @return the enum chronicle index
+	 */
+	protected int getEnum(String collectorClassName) {
+		Class<T> collectorClass = (Class<T>) EnumCollectors.getInstance().typeForName(collectorClassName);
+		int index = ENUM_CACHE.get(collectorClass);
+		if(index==-1) {
+			synchronized(ENUM_CACHE) {
+				index = ENUM_CACHE.get(collectorClass);
+				if(index==-1) {
+					String name = collectorClass.getName();
+					enumIndexEx.startExcerpt(name.length()+2);
+					enumIndexEx.writeBytes(name);
+					enumIndexEx.finish();		
+					index = (int)enumIndexEx.index();
+					ENUM_CACHE.put(collectorClass, index);
+				}
+			}
+		}
+		return index;
+	}
+	
+	/**
+	 * Looks up the enum collector index for the passed enum collector member instance, creating the cache entry if not present
+	 * @param collector An enum collector member instance
+	 * @return the enum chronicle index
+	 */
 	protected int getEnum(T collector) {
 		int index = ENUM_CACHE.get(collector.getDeclaringClass());
 		if(index==-1) {
@@ -499,13 +509,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		log("Loading NameIndex....");
 		long index = 1;
 		while(nameIndexEx.index(index)) {
-			nameIndexEx.position(0);
-			nameIndexEx.readByte();  							// the lock
 			byte deleted = nameIndexEx.readByte(); 
-			if(deleted==0) {  									// check the deleted flag
-				int enumIndex = nameIndexEx.readInt();			// the enum index
-				nameIndexEx.position(NAME_OFFSET);				// jump to the metric name
-				String name = nameIndexEx.readByteString();		// the metric name
+			if(deleted==0) {  															// check the deleted flag
+				int enumIndex = (int)ChronicleOffset.EnumIndex.get(index, nameIndexEx);	// the enum index
+				String name = ChronicleOffset.getName(index, nameIndexEx);				// the metric name
 				if(!ENUM_CACHE.containsValue(enumIndex)) {
 					loge("Warning: MetricName [%s] had unrecognized enum index [%s]", name, enumIndex);
 					markNameIndexDeleted(nameIndexEx.index());
@@ -513,7 +520,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				if(UNLOADED_INDEX.put(name, (index * -1L))!=null) {
 					log("WARNING:  Duplicate name [" + name + "] at index [" + index + "]");
 				} else {
-					//log("Loaded [" + name + "]");
+//					log("Loaded [" + name + "]");
 				}
 			}
 			index++;

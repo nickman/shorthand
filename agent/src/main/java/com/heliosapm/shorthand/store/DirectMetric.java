@@ -59,7 +59,7 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 		this.nameIndex = nameIndex;
 		nameIndexEx.index(nameIndex);
 		int bytesForHeader = walkForSize(nameIndexEx);
-		address = UnsafeAdapter.allocateMemory(bytesForHeader);
+		address = UnsafeAdapter.allocateMemory(bytesForHeader+100);
 		long directPos = address;
 		
 		UnsafeAdapter.putInt(directPos, (int)ChronicleOffset.EnumIndex.get(this.nameIndex, nameIndexEx));		// the enum index  (0)
@@ -220,8 +220,14 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 		return UnsafeAdapter.getInt(address + UnsafeAdapter.INT_SIZE);
 	}
 	
-	public void finalize() throws Throwable {
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#finalize()
+	 */
+	@Override
+	protected void finalize() throws Throwable {
 		UnsafeAdapter.freeMemory(address);
+		log("DM Freed [%s]", address);
 		super.finalize();
 	}
 	
@@ -231,7 +237,18 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 		b.append("\n\t").append("Collector:").append(getCollectorTypeName());
 		b.append("\n\t").append("Period Start:").append(getPeriodStartDate());
 		b.append("\n\t").append("Period End:").append(getPeriodEndDate());
-		
+		b.append("\n\t").append("Data Points:");
+		for(Map.Entry<T, IMetricDataPoint<T>> entry: getMetricDataPoints().entrySet()) {
+			T t = entry.getKey();
+			b.append("\n\t\t").append(t.name()).append(" (").append(t.getUnit()).append(") ");
+			long[] dataPoints = entry.getValue().getDataPoints();
+			String[] names = t.getSubMetricNames();
+//			for(int i = 0; i < names.length; i++) {			
+			for(int i = 0; i < dataPoints.length; i++) {
+				b.append(names[i]).append(": ").append(dataPoints[i]).append(", ");
+			}
+			b.deleteCharAt(b.length()-1); b.deleteCharAt(b.length()-1);
+		}
 		
 		return b.toString();
 	}
@@ -251,7 +268,7 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 		int bitMask = getBitMask();
 		for(ICollector<?> collector: EnumCollectors.getInstance().allMembersForIndex(getEnumIndex())) {
 			if(collector.isEnabled(bitMask)) {
-				dataMap.put((T) collector, new DirectMetricDataPoint(collector, ChronicleDataOffset.getDataPoints(dataIndexes[dIndex])));
+				dataMap.put((T) collector, new DirectMetricDataPoint(getEnumIndex(), getBitMask(), collector.ordinal(), dataIndexes[dIndex]));
 			}
 			dIndex++;
 		}

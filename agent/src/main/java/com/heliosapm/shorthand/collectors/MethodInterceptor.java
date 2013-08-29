@@ -130,13 +130,13 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	
 	public static void main(String[] args) {
 		for(MethodInterceptor mi: MethodInterceptor.values()) {
-			log(mi.name() + " DataStruct:" + mi.ds.dump());
+			log(mi.name() + " (" + mi.ordinal() + "/" + mi.baseMask + ")  DataStruct:" + mi.ds.dump());
 		}
 		log("Default BitMask:" + defaultMetricsMask);
 		log("All BitMask:" + allMetricsMask);
 		log("Item Count:" + values().length);
 		
-		TObjectLongHashMap<MethodInterceptor> offsets = (TObjectLongHashMap<MethodInterceptor>) EnumCollectors.getInstance().offsets(MethodInterceptor.class.getName(), allMetricsMask);
+		Map<MethodInterceptor, Long> offsets = (Map<MethodInterceptor, Long>) EnumCollectors.getInstance().offsets(MethodInterceptor.class.getName(), allMetricsMask);
 		log("Offsets:" + offsets.size());
 		for(MethodInterceptor mi: offsets.keySet()) {
 			log("\t" + mi.name() + " : " + offsets.get(mi));

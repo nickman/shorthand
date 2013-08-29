@@ -186,14 +186,15 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 			LongSlidingWindow arr = new ConcurrentLongSlidingWindow(LOOPS, pivotedValues[mi.ordinal()]);
 			long totalInvocations = new ConcurrentLongSlidingWindow(LOOPS, pivotedValues[MethodInterceptor.INVOCATION_COUNT.ordinal()]).sum();
 			IMetricDataPoint<MethodInterceptor> mdp = dataPoints.get(mi);
-			Assert.assertEquals("Unexpected collector", mi, mdp.getCollector());			
-			TObjectLongHashMap<String> dp = mdp.getDataPoints();			
+			Assert.assertEquals("Unexpected collector", mi.name(), mdp.getCollectorName());			
+			long[] metricDataPoints = mdp.getDataPoints();
+			String[] subMetricNames = mdp.getSubNames();
 			if(mi.getDataStruct().size==1) {
-				Assert.assertEquals("Unexpected period total", arr.sum(), dp.get(mi.getSubMetricNames()[0]));
+				Assert.assertEquals("Unexpected period total", arr.sum(), metricDataPoints[0]);
 			} else {
 				for(int i = 0; i < mi.getDataStruct().size; i++) {
-					String subMetricName = mi.getSubMetricNames()[i];
-					long storeValue = dp.get(subMetricName);
+					String subMetricName = subMetricNames[i];
+					long storeValue = metricDataPoints[i];
 					switch(i) {
 						case 0:
 							Assert.assertEquals("Unexpected sub metric name for index [" + i + "]", "Min", subMetricName);

@@ -28,8 +28,6 @@ import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
-import gnu.trove.map.hash.TObjectLongHashMap;
-
 /**
  * <p>Title: DirectMetricDataPoint</p>
  * <p>Description: </p> 
@@ -54,10 +52,10 @@ public class DirectMetricDataPoint<T extends Enum<T> & ICollector<T>> implements
 	
 	/**
 	 * Creates a new DirectMetricDataPoint
-	 * @param enumIndex
-	 * @param bitMask
-	 * @param ordinal
-	 * @param dataIndex
+	 * @param enumIndex The enum collector index
+	 * @param bitMask The enabled metric bitmask
+	 * @param ordinal The enum collector member instance ordinal
+	 * @param dataIndex The index of the target data chronicle entry
 	 */
 	public DirectMetricDataPoint(int enumIndex, int bitMask, int ordinal, long dataIndex) {
 		address = UnsafeAdapter.allocateMemory((3 << 2) + UnsafeAdapter.LONG_SIZE);
@@ -86,10 +84,17 @@ public class DirectMetricDataPoint<T extends Enum<T> & ICollector<T>> implements
 	 * {@inheritDoc}
 	 * @see java.lang.Object#finalize()
 	 */
+	@Override
 	protected void finalize() throws Throwable {
 		UnsafeAdapter.freeMemory(address);
+		log("DMDP Freed [%s]", address);
 		super.finalize();
 	}
+	
+	public static void log(String fmt, Object...args) {
+		System.out.println(String.format(fmt, args));
+	}
+
 
 	/**
 	 * {@inheritDoc}
