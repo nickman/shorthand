@@ -228,14 +228,15 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 //				log("Loaded [%s] IMetrics", count);
 //			}
 		}
+		long elapsed = System.currentTimeMillis()-start;
 		if(metric!=null) {
 			log(metric.toString());
 		}
-		System.gc(); System.gc();
+		System.gc();
 		try { Thread.sleep(1000); } catch (Exception ex) {}
 
 		
-		long elapsed = System.currentTimeMillis()-start;
+		
 		log("Dump of [%s] metrics complete in [%s] ms.", count, elapsed);		
 	}
 	
