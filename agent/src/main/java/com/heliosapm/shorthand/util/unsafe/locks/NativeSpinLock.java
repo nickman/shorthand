@@ -4,6 +4,7 @@ package com.heliosapm.shorthand.util.unsafe.locks;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.heliosapm.shorthand.util.ref.RunnableReferenceQueue;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
@@ -82,20 +83,13 @@ public class NativeSpinLock {
 	 */
 	public NativeSpinLock(boolean readYield, boolean writeYield) {
 		address = UnsafeAdapter.allocateMemory(UnsafeAdapter.LONG_SIZE);
+		RunnableReferenceQueue.getInstance().buildPhantomReference(this, address);
 		readLock = readYield ? new NativeYieldingSpinLock(address, this) : new NativeNonYieldingSpinLock(address, this); 
 		writeLock = writeYield ? new NativeYieldingSpinLock(address, this) : new NativeNonYieldingSpinLock(address, this);
 		UnsafeAdapter.putLong(address, UNLOCKED);
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see java.lang.Object#finalize()
-	 */
-	@Override
-	protected void finalize() throws Throwable {
-		UnsafeAdapter.freeMemory(address);
-		super.finalize();
-	}
+
 
 	/**
 	 * Returns the read lock

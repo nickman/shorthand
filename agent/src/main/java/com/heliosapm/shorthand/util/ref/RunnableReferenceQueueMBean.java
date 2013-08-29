@@ -34,16 +34,18 @@ package com.heliosapm.shorthand.util.ref;
 
 public interface RunnableReferenceQueueMBean {
 	
-	/**
-	 * Returns the approximate length of the ref queue
-	 * @return the approximate length of the ref queue
-	 */
-	public long getRefQueueSize();
+
 	/**
 	 * Returns the cleaner work queue depth
 	 * @return the cleaner work queue depth
 	 */
 	public int getWorkQueueDepth();
+	
+	/**
+	 * Returns the number of uncleared references
+	 * @return the number of uncleared references
+	 */
+	public int getUnclearedReferenceCount();
 	
 	/**
 	 * Returns the cleaner work queue remaining capacity

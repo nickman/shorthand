@@ -207,13 +207,7 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 * @param collectedValues The collected values
 	 */
 	public void snap(String metricName, CollectorSet<T> collectorSet, long...collectedValues) {
-		long address = store.getMetricAddress(metricName, collectorSet);		
-		try {
-			long ref = store.lock(address);
-			collectorSet.put(ref, collectedValues);				
-		} finally {
-			store.unlock(address);
-		}
+		store.doSnap(metricName, collectorSet, collectedValues);
 	}
 	
 	

@@ -71,6 +71,24 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	}
 	
 	/**
+	 * Indicates if this mem-space has been invalidated
+	 * @return true if this mem-space has been invalidated, false otherwise
+	 */
+	public boolean isInvalidated() {
+		return UnsafeAdapter.getLong(address + UnsafeAdapter.LONG_SIZE)==-1L;
+	}
+	
+	/**
+	 * Deletes the mem-space associated to this accessor.
+	 * SHOULD ONLY BE CALLED ON AN INVALIDATED ACCESSOR !!.
+	 */
+	public void delete() {
+		UnsafeAdapter.freeMemory(address);
+		address = -1L;
+	}
+	
+
+	/**
 	 * Sets the address for the current thread
 	 * @param address The address of the memspace to access
 	 * @return a MemSpaceAccessor set to the passed address for the current thread

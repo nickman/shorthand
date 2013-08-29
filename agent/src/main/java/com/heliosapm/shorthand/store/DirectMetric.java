@@ -30,6 +30,7 @@ import java.util.Map;
 
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.util.ref.RunnableReferenceQueue;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 import com.higherfrequencytrading.chronicle.Excerpt;
 
@@ -59,6 +60,7 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 		nameIndexEx.index(nameIndex);
 		int bytesForHeader = getMemAllocation(nameIndex, nameIndexEx);
 		address = UnsafeAdapter.allocateMemory(bytesForHeader);
+		RunnableReferenceQueue.getInstance().buildPhantomReference(this, address);
 		long directPos = address;
 		
 		UnsafeAdapter.putInt(directPos, (int)ChronicleOffset.EnumIndex.get(this.nameIndex, nameIndexEx));		// the enum index  (0)
@@ -205,16 +207,7 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 	public int getBitMask() {
 		return UnsafeAdapter.getInt(address + UnsafeAdapter.INT_SIZE);
 	}
-	
-	/**
-	 * {@inheritDoc}
-	 * @see java.lang.Object#finalize()
-	 */
-	@Override
-	protected void finalize() throws Throwable {
-		UnsafeAdapter.freeMemory(address);
-		super.finalize();
-	}
+
 	
 	
 	public String toString() {

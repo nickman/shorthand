@@ -24,10 +24,17 @@
  */
 package com.heliosapm.shorthand.util.ref;
 
-import java.lang.ref.WeakReference;
-import java.util.Set;
-import java.util.concurrent.CopyOnWriteArraySet;
+import java.io.File;
+import java.lang.ref.PhantomReference;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+
+import com.heliosapm.shorthand.util.jmx.JMXHelper;
+import com.heliosapm.shorthand.util.ref.RunnableReferenceQueue.DeallocatingPhantomReference;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
@@ -39,36 +46,49 @@ import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
  */
 
 public class MySlabbedClass {
-	private static final Set<WeakReference<MySlabbedClass>> phantomRefs = new CopyOnWriteArraySet<WeakReference<MySlabbedClass>>();
 	
 	/** The address to the memory allocated for this instance */
 	private final long address;
 	
+	
 	private MySlabbedClass() {
 		address = UnsafeAdapter.allocateMemory(100);
+		RunnableReferenceQueue.getInstance().buildPhantomReference(this, address);		
 	}
 
-	public static MySlabbedClass newInstance() {
-		final MySlabbedClass instance = new MySlabbedClass();
-		phantomRefs.add(RunnableReferenceQueue.getInstance().buildWeakReference(instance, new Runnable(){
-			public void run() {
-				UnsafeAdapter.freeMemory(instance.address);
-				phantomRefs.remove(this);
-			}
-		}));
-		return instance;
-	}
 
+	private static final int HEAPDUMP = 100000;
 	
 	public static void main(String[] args) {
 		log("Slabbed Memory Deallocation Test");
-		for(int i = 0; i < 10000; i++) {
-			if(i%10==0) {
-				log("Created [%s]  Phantoms: [%s]", i, phantomRefs.size());
+		for(File f: new File(System.getProperty("java.io.tmpdir")).listFiles()) {
+			if(f.getName().contains("SlabHeapDump")) f.delete();
+		}
+		for(int i = 0; i < 10000000; i++) {
+			if(i%10000==0) {
+				log("Created [%s]  Uncleared: %s", i, RunnableReferenceQueue.getInstance().getUnclearedReferenceCount());
 				System.gc();
+				try { Thread.sleep(500); } catch (Exception ex) {}				
 			}
-			MySlabbedClass instance = MySlabbedClass.newInstance();
-			try { Thread.sleep(500); } catch (Exception ex) {}
+			if(i!=0 && i%HEAPDUMP==0) {
+				heapDump(i/HEAPDUMP);
+			}
+			MySlabbedClass instance = new MySlabbedClass();		
+			instance = null;
+		}
+	}
+	
+	private static final ObjectName HOTSPOT = JMXHelper.objectName("com.sun.management:type=HotSpotDiagnostic");
+	private static final MBeanServer SERVER = JMXHelper.getHeliosMBeanServer();
+	private static final String[] SIG = new String[]{String.class.getName(), Boolean.TYPE.getName()}; 
+	
+	private static void heapDump(int seq) {
+		try {
+			String fileName = System.getProperty("java.io.tmpdir") + "SlabHeapDump" + seq + ".dmp";			
+			SERVER.invoke(HOTSPOT, "dumpHeap", new Object[]{fileName, true}, SIG);
+			log("Dumped heap to: " + fileName);
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
 		}
 	}
 	

@@ -144,8 +144,8 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 		final long[][] values = getDataSamples(LOOPS, ITEM_COUNT+2, MethodInterceptor.INVOCATION_COUNT.ordinal());
 		long startTime = System.nanoTime();
 		long periodTime = System.currentTimeMillis();
-		long lock = STORE.getMetricAddress(metricName, cs);
-		long address = STORE.lock(lock);
+		
+		
 		for(int i = 0; i < LOOPS; i++) {
 //			values[i] = new long[ITEM_COUNT+2];
 //			for(int x = 0; x < ITEM_COUNT; x++) {
@@ -155,12 +155,13 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 			values[i][ITEM_COUNT+1] = 0;
 //			values[i][MethodInterceptor.INVOCATION_COUNT.ordinal()] = nextPosInt(9)+1;
 			testValues.put(periodTime + (i*1000), values[i]);	
-			cs.put(address, values[i]);
+			
+			STORE.doSnap(metricName, cs, values[i]);
 		}		
 		
-		MemSpaceAccessor msa = MemSpaceAccessor.get(address);
+
 		//log("MSA:%s", Arrays.deepToString(msa.getDataPoints()));
-		STORE.unlock(lock);
+		
 		long endTime = System.nanoTime()-startTime;
 		log("Completed [%s] snaps in [%s] ns for an average of [%s] ns. per snap", LOOPS, endTime, endTime/LOOPS);
 		completionBarrier.reset();

@@ -26,6 +26,7 @@ package com.heliosapm.shorthand.store;
 
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.util.ref.RunnableReferenceQueue;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
@@ -59,6 +60,7 @@ public class DirectMetricDataPoint<T extends Enum<T> & ICollector<T>> implements
 	 */
 	public DirectMetricDataPoint(int enumIndex, int bitMask, int ordinal, long dataIndex) {
 		address = UnsafeAdapter.allocateMemory((3 << 2) + UnsafeAdapter.LONG_SIZE);
+		RunnableReferenceQueue.getInstance().buildPhantomReference(this, address);
 		UnsafeAdapter.putIntArray(address, new int[]{enumIndex, bitMask, ordinal});
 		UnsafeAdapter.putLong(address + INDEX_OFFSET, dataIndex);
 	}
@@ -79,17 +81,9 @@ public class DirectMetricDataPoint<T extends Enum<T> & ICollector<T>> implements
 		return UnsafeAdapter.getLong(address + INDEX_OFFSET);
 	}
 	
-	/**
-	 * <p>Releases the memory allocated for this guy</p>
-	 * {@inheritDoc}
-	 * @see java.lang.Object#finalize()
-	 */
-	@Override
-	protected void finalize() throws Throwable {
-		UnsafeAdapter.freeMemory(address);
-		super.finalize();
-	}
+
 	
+	@SuppressWarnings("javadoc")
 	public static void log(String fmt, Object...args) {
 		System.out.println(String.format(fmt, args));
 	}

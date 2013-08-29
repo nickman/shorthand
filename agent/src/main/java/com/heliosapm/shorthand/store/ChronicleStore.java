@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.nio.ByteOrder;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -43,6 +44,7 @@ import com.heliosapm.shorthand.accumulator.HeaderOffset;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessorTest;
 import com.heliosapm.shorthand.accumulator.PeriodClock;
+import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
@@ -50,6 +52,7 @@ import com.heliosapm.shorthand.util.OrderedShutdownService;
 import com.heliosapm.shorthand.util.StringHelper;
 import com.heliosapm.shorthand.util.ThreadRenamer;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
+import com.heliosapm.shorthand.util.ref.RunnableReferenceQueue;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 import com.heliosapm.shorthand.util.unsafe.collections.ConcurrentLongSlidingWindow;
 import com.heliosapm.shorthand.util.unsafe.collections.ConcurrentLongSortedSet;
@@ -68,11 +71,23 @@ import com.higherfrequencytrading.chronicle.impl.IntIndexedChronicle;
  * @param <T> The collector set type
  */
 
-public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractStore<T> implements ChronicleStoreMBean, NotificationBroadcaster,  RejectedExecutionHandler, Thread.UncaughtExceptionHandler, ThreadFactory {
+public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore<T>, ChronicleStoreMBean, NotificationBroadcaster,  RejectedExecutionHandler, Thread.UncaughtExceptionHandler, ThreadFactory {
 	/** The default directory */
 	public static final String DEFAULT_DIRECTORY = String.format("%s%sshorthand", System.getProperty("java.io.tmpdir"), File.separator);
 	/** System property name to override the default directory */
 	public static final String CHRONICLE_DIR_PROP = "shorthand.store.chronicle.dir";
+	
+	/** The index of metric name to slab id to find the snapshot */
+	protected final NonBlockingHashMap<String, Long> SNAPSHOT_INDEX;
+	/** The index of metric name to chronicle index for unloaded metrics */
+	protected final NonBlockingHashMap<String, Long> UNLOADED_INDEX;
+	
+	/** Indicates if the mem-spaces should be padded */
+	protected boolean padCache = true;
+    /** The system prop name to indicate if mem-spaces should be padded to the next largest pow(2) */
+    public static final String USE_POW2_ALLOC_PROP = "shorthand.memspace.padcache";
+	
+	
 	
 	/** JMX notification type for a period end event */
 	public static final String NOTIF_PERIOD_END = "shorthand.store.period.end";
@@ -180,8 +195,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	protected final ConcurrentLongSlidingWindow secondPhaseFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(PeriodClock.PERIOD_PROP, 15000));
 	/** A map of addresses pending de-allocation */
 	private final NonBlockingHashMapLong<Boolean> pendingDeallocates = new NonBlockingHashMapLong<Boolean>(CORES, false);
-	/** A map of new allocation addresses keyed by the prior deallocated address */
-	private final NonBlockingHashMapLong<Long> allocationTransfers = new NonBlockingHashMapLong<Long>(1024, false);
 	/** A sliding window of period update times in ns. */
 	protected final ConcurrentLongSlidingWindow periodUpdateTimes = new ConcurrentLongSlidingWindow(100);
 	/** A sliding window of new metric creation times in ns. */
@@ -198,17 +211,18 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	protected final AtomicLong releaseCount = new AtomicLong(0L);
 	
 	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#clear()
+	 * Clears the store 
 	 */
-	@Override
 	public void clear() {
 		SNAPSHOT_INDEX.clear();
+		UNLOADED_INDEX.clear();
 		nameIndex.clear();
 		tier1Data.clear();
 		writeZeroRec(nameIndex);
 		writeZeroRec(tier1Data);
 	}
+	
+	
 	
 
 	
@@ -360,6 +374,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		if(!dataDir.isDirectory()) {
 			throw new IllegalArgumentException("The directory [" + dataDirectory + "] is not valid");
 		}
+		SNAPSHOT_INDEX = new NonBlockingHashMap<String, Long>(1024);
+		UNLOADED_INDEX = new NonBlockingHashMap<String, Long>(1024);
+		padCache = System.getProperty(USE_POW2_ALLOC_PROP, "true").toLowerCase().trim().equals("true");
+		
 		try {
 			enumIndex = getIntChronicle(ENUM_INDEX);
 			enumIndex.useUnsafe(true);				
@@ -398,6 +416,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				}
 			});
 		globalLockAddress = UnsafeAdapter.allocateMemory(UnsafeAdapter.LONG_SIZE);
+		RunnableReferenceQueue.getInstance().buildPhantomReference(this, globalLockAddress);
 		UnsafeAdapter.putLong(globalLockAddress, UNLOCKED);
 		
 		
@@ -585,7 +604,35 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	}
 	
 	
-
+	/**
+     * Finds the next positive power of 2 for the passed value
+     * @param value the value to find the next power of 2 for
+     * @return the next power of 2
+     */
+    public static int findNextPositivePowerOfTwo(final int value) {
+		return 1 << (32 - Integer.numberOfLeadingZeros(value - 1));
+	}	
+    
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#getMetricCacheSize()
+	 */
+	@Override
+	public int getMetricCacheSize() {
+		return SNAPSHOT_INDEX.size();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#getMetricCacheKeys()
+	 */
+	@Override
+	public Set<String> getMetricCacheKeys() {
+		Set<String> allKeys = new HashSet<String>(SNAPSHOT_INDEX.size() + UNLOADED_INDEX.size());
+		allKeys.addAll(SNAPSHOT_INDEX.keySet());
+		allKeys.addAll(UNLOADED_INDEX.keySet());
+		return allKeys;
+	}    
 	
 	
 
@@ -614,7 +661,74 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		}
 		return values;
 	}
+	
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#getMetricAddress(java.lang.String, com.heliosapm.shorthand.collectors.CollectorSet)
+	 */
+	@Override
+	public long[] getMetricAddress(String metricName, CollectorSet<T> collectorSet) {
+		long[] metricRef = new long[2];
+		Long address = SNAPSHOT_INDEX.get(metricName);
+		if(address==null) address = UNLOADED_INDEX.get(metricName);
+		if(address==null || address <0) {
+			synchronized(SNAPSHOT_INDEX) {
+				address = SNAPSHOT_INDEX.get(metricName);
+				if(address==null || address <0) {
+					int requestedMem = (int)(collectorSet.getTotalAllocation());
+					int memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
+					long nameIndex;
+					boolean unloaded = false;
+					if(address==null) {
+						nameIndex = newMetricName(metricName, collectorSet.getEnumIndex(), collectorSet.getBitMask());
+					} else {
+						nameIndex = address * -1;
+						unloaded = true;
+					}
+					address = UnsafeAdapter.allocateMemory(memSize);
+					metricRef[1] = address;
+					MemSpaceAccessor.get(address).initializeHeader(memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
+					MemSpaceAccessor.get(address).reset();
+					long memSpaceRef = UnsafeAdapter.allocateMemory(UnsafeAdapter.LONG_SIZE * 2);
+					metricRef[0] = memSpaceRef; 
+					UnsafeAdapter.putLong(memSpaceRef, 0);
+					UnsafeAdapter.putLong(memSpaceRef + UnsafeAdapter.LONG_SIZE, address);
+					SNAPSHOT_INDEX.put(metricName, memSpaceRef);
+					if(unloaded) UNLOADED_INDEX.remove(metricName);					
+				}
+			}
+		} else {
+			// CHECK FOR INVALIDATED HERE.
+			
+			metricRef[0] = address;
+			metricRef[1] = UnsafeAdapter.getLong(address + UnsafeAdapter.LONG_SIZE);
+			if(metricRef[1]==-1L) {
+				SNAPSHOT_INDEX.remove(metricName);
+				return getMetricAddress(metricName, collectorSet);
+			}
+			lock(address);
+			return metricRef;
+		}
+		lock(metricRef[0]);
+		return metricRef;
+	}
+	
+	public void doSnap(String metricName, CollectorSet<T> collectorSet, long...collectedValues) {
+		Long address = SNAPSHOT_INDEX.get(metricName);
+		if(address==null) address = UNLOADED_INDEX.get(metricName);
+		if(address==null || address <0) {
+			synchronized(SNAPSHOT_INDEX) {
+				address = SNAPSHOT_INDEX.get(metricName);
+				if(address==null || address <0) {
+					
+				}
+			}
+		}
+				}
+	}
+		
+	protected final NonBlockingHashMapLong<String> untouched = new NonBlockingHashMapLong<String>();
 
 	/**
 	 * {@inheritDoc}
@@ -624,7 +738,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	public void flush(long priorStartTime, long priorEndTime) {
 		log("Flushing Index Size: [%s]", SNAPSHOT_INDEX.size());
 		LongSortedSet dirtyKeys = null;
-		LongSortedSet untouched = null;
+		
 		long bufferCount = 0;
 		try {
 //			long address = -1L;
@@ -636,7 +750,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			// =========================================================================
 			final long startTime = System.nanoTime();
 			dirtyKeys = new LongSortedSet(SNAPSHOT_INDEX.size());
-			untouched = new LongSortedSet(); 
 			//TLongHashSet dirtyKeys = new TLongHashSet(SNAPSHOT_INDEX.size()); 			
 						
 			for(String metricName: SNAPSHOT_INDEX.keySet()) {
@@ -644,8 +757,14 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 				// =========================================================================
 				long ref = lockNoYield(address);
 				msa.setAddress(ref);
+				if(msa.isInvalidated()) {
+					log("Clearing Invalid Metric Ref [%s]", metricName);
+					SNAPSHOT_INDEX.remove(metricName);
+					msa.delete();
+					continue;
+				}
 				if(!msa.isTouched()) {
-					untouched.add(address);
+					untouched.put(address, metricName);
 					unlock(address);					
 					continue;					
 				}
@@ -676,32 +795,31 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			// Phase 3 Flush / Purge Stale Mem-Spaces
 			// =========================================================================
 			if(!untouched.isEmpty()) {
-				log("\n\t==============================\n\tClearing [%s] Untouched Mem-Spaces\n\t==============================", untouched.size());
-				for(int i = 0; i < untouched.size(); i++) {
-					long address = untouched.get(i);
+				log("\n\t==============================\n\tClearing [%s] Stale Mem-Spaces\n\t==============================", untouched.size());
+				final long stage3start = System.nanoTime();
+				for(long address: untouched.keySet()) {
+					String metricName  = untouched.get(address);
 					long ref = lockNoYield(address);
-					
-					if(ref>0) {
-						msa.setAddress(ref);						
-						long nameIndex = msa.getNameIndex();
-						String name = ChronicleOffset.getName(nameIndex);
-						msa.setAddress(-1L);
-						UnsafeAdapter.freeMemory(ref);
-						UnsafeAdapter.putLong(address + UnsafeAdapter.LONG_SIZE, -1L);
-						UNLOADED_INDEX.put(name, nameIndex * -1L);
-					}
+					msa.setAddress(ref);						
+					long nameIndex = msa.getNameIndex();
+					msa.setAddress(-1L);
+					UnsafeAdapter.freeMemory(ref);
+					UnsafeAdapter.putLong(address + UnsafeAdapter.LONG_SIZE, -1L);
+					UNLOADED_INDEX.put(metricName, nameIndex * -1L);
+					unlock(address);
+					untouched.remove(address);
 				}
+				long stage3elapsed = System.nanoTime()-stage3start;
+				log(StringHelper.reportTimes("Third Phase Flush Elapsed Time", stage3elapsed));
+				
 			}
-
-			untouched.clear();
-			
-
+//			untouched.clear();
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		} finally {
 			//globalUnlock();
 			if(dirtyKeys!=null) dirtyKeys.destroy();
-			if(untouched!=null) untouched.destroy();
+//			if(untouched!=null) untouched.destroy();
 			
 		}		
 	}
@@ -729,75 +847,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			sendNotification(n);
 		}
 	}
-	/**
-	 * Captures all the current mem-spaces during a flush, copies and resets the copy and inserts the new reset copy back into the snapshot index.
-	 * @return A map of the dirty buffers to be flushed into the store
-	 */
-	protected NonBlockingHashMap<String, Long> dirtyBuffers() {		
-		NonBlockingHashMap<String, Long> dirty = new NonBlockingHashMap<String, Long>(SNAPSHOT_INDEX.size());
-		allocationTransfers.clear();
-		for(Map.Entry<String, Long> entry: SNAPSHOT_INDEX.entrySet()) {			
-			long dirtyAddress = entry.getValue();			
-			// ==================================================
-			// FIXME
-			// Do we need to check for invalidated memspaces ?
-			// ==================================================
-			//=======================================================
-			// Lock the dirty mem-space and put into the dirty map
-			// If the address is unassigned (<0) the continue
-			//=======================================================
-			if(dirtyAddress<1) continue;
-			lockNoYield(dirtyAddress);
-			dirty.put(entry.getKey(), dirtyAddress);
-			
-			//=======================================================
-			// Copy the dirty mem-space to create a new period mem-space
-			// [CHECK: if the metric sub-space is still at the reset value, skip this]
-			//=======================================================			
-			long memSize = HeaderOffset.MemSize.get(dirtyAddress);
-			int enumIndex = (int)HeaderOffset.EnumIndex.get(dirtyAddress);
-			long newAddress = UnsafeAdapter.allocateMemory(memSize);
-			int bitMask = (int)HeaderOffset.BitMask.get(dirtyAddress);
-			UnsafeAdapter.copyMemory(dirtyAddress, newAddress, memSize);
-			//=====================================
-			// Get the reference collector for this mem-space
-			//=====================================			
-			T refCollector = (T) EnumCollectors.getInstance().ref(enumIndex);
-			//=====================================
-			// Reset/Prepare the new mem-space
-			//=====================================			
-			refCollector.resetMemSpace(newAddress, bitMask);
-			//=====================================
-			// Insert new mem-space back into index
-			// and that's it for the new space
-			//=====================================			
-			entry.setValue(newAddress);
-			//=====================================
-			// There may be a worker thread spinning
-			// on the lock of the dirty address right
-			// now so we need to mark it as invalid
-			// by setting the mem size to -1L
-			// then we can unlock.
-			//=====================================			
-			HeaderOffset.MemSize.set(dirtyAddress, -1L);
-//			log("Marked buffer for [%s] as invalid", entry.getKey());
-			pendingDeallocates.put(dirtyAddress, Boolean.TRUE);
-			allocationTransfers.put(dirtyAddress, (Long)newAddress);
-			unlock(dirtyAddress);
-			// Any spinner will now grab this lock
-		}
-		return dirty;
-	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#getTransferAddress(long)
-	 */
-	@Override
-	public Long getTransferAddress(long oldAddress) {
-		return allocationTransfers.get(oldAddress);
-	}
-	
+
 	 
 	
 	/**
@@ -1207,8 +1258,21 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 	 */
 	@Override
 	public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-		loge("Rejected execution for [%s]", r);
-		
+		loge("Rejected execution for [%s]", r);	
 	}
+	
+	@SuppressWarnings("javadoc")
+	public static void log(String fmt, Object...msgs) {
+		System.out.println(String.format("[ChronicleStore]" + fmt, msgs));
+	}
+	@SuppressWarnings("javadoc")
+	public static void loge(String fmt, Throwable t, Object...msgs) {
+		System.err.println(String.format("[ChronicleStore]" + fmt, msgs));
+		if(t!=null) t.printStackTrace(System.err);
+	}
+	@SuppressWarnings("javadoc")
+	public static void loge(String fmt, Object...msgs) {
+		loge(fmt, null, msgs);
+	}		
 
 }

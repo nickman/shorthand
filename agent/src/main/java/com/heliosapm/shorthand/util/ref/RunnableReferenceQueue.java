@@ -30,9 +30,7 @@ import java.lang.ref.PhantomReference;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
-import java.lang.reflect.Field;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -44,6 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
+import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
  * <p>Title: RunnableReferenceQueue</p>
@@ -60,7 +59,13 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 	private static final Object lock = new Object();
 	
 	/** The reference queue that weak references are enqueued into */
-	private static final ReferenceQueue<Object> refQueue = new ReferenceQueue<Object>(); 
+	private final ReferenceQueue<Object> refQueue = new ReferenceQueue<Object>(); 
+	/** A map of references */
+	private final Map<DeallocatingPhantomReference<?>, DeallocatingPhantomReference<?>> refMap = new ConcurrentHashMap<DeallocatingPhantomReference<?>, DeallocatingPhantomReference<?>>();
+	 
+	
+
+	
 	/** The thread pool work queue */
 	private final BlockingQueue<Runnable> blockinqQueue = new LinkedBlockingQueue<Runnable>(); 
 	/** A thread pool executor to run the actual callbacks */
@@ -77,8 +82,6 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 	/** A serial number factory for worker threads */
 	private final AtomicInteger serial = new AtomicInteger(0);
 	
-	/** The field storing the length of the ref queue so we can peek on it */
-	private final Field refQueueLengthField;
 	
 	/** The number of processors available to the JVM */
 	public static final int CORES = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
@@ -98,32 +101,19 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 		return instance;
 	}
 	
-	/**
-	 * Returns the approximate length of the ref queue
-	 * @return the approximate length of the ref queue
-	 */
-	public long getRefQueueSize() {
-		return _refQSize();
-	}
 	
-	private long _refQSize() {
-		try {
-			return refQueueLengthField.getLong(refQueue);
-		} catch (Exception ex) {
-			return -1L;
-		}
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.util.ref.RunnableReferenceQueueMBean#getUnclearedReferenceCount()
+	 */
+	public int getUnclearedReferenceCount() {
+		return refMap.size();
 	}
 	
 	/**
 	 * Creates a new RunnableReferenceQueue
 	 */
 	private RunnableReferenceQueue() {
-		try {
-			refQueueLengthField = ReferenceQueue.class.getDeclaredField("queueLength");
-			refQueueLengthField.setAccessible(true);
-		} catch (Exception ex) {
-			throw new RuntimeException(ex);
-		}
 		this.setDaemon(true);
 		this.setName("RunnableReferenceQueueThread");
 		this.start();
@@ -131,38 +121,11 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 		
 	}
 	
-	public static void main(String[] args) {
-		log("RunnableReferenceQueue Test");
-		final Map<Long, WeakReference<byte[]>> m = new ConcurrentHashMap<Long, WeakReference<byte[]>>();
-		//final Map<Long, Long> m = new ConcurrentHashMap<Long, Long>();
-		Random r = new Random();		
-		int loopCount = 10000;
-		while(true) {
-			for(int i = 0; i < loopCount; i++) {
-				byte[] bytes = new byte[1000];
-				final long key = r.nextLong();
-				r.nextBytes(bytes);			
-//				m.put(key, key);
-				m.put(key, RunnableReferenceQueue.getInstance().buildWeakReference(bytes, new Runnable(){
-					@Override
-					public void run() {
-						m.remove(key);
-					}
-				}));
-//				RunnableReferenceQueue.getInstance().buildWeakReference(bytes, new Runnable(){
-//					@Override
-//					public void run() {
-//						m.remove(key);
-//					}
-//				});
-			}			
-			log("M size:" + m.size());
-			try { Thread.currentThread().join(1000); } catch (Exception x) {}
-		}
-	}
+
 	
-	public static void log(Object msg) {
-		System.out.println(msg);
+	@SuppressWarnings("javadoc")
+	public static void log(String format, Object...args) {
+		System.out.println(String.format(format, args));
 	}
 	
 	/**
@@ -174,11 +137,12 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 		while(true) {
 			try {
 				Reference<?> ref = refQueue.remove();
-				if(ref instanceof RunnableWeakReference) {
-					executor.submit((RunnableWeakReference<?>)ref);
+				//log("Clearing Ref: [%s]", ref);
+				if(ref instanceof DeallocatingPhantomReference) {
+					executor.submit((DeallocatingPhantomReference<?>)ref);
 					submittedCallbacks.incrementAndGet();
-				}				
-			} catch (Throwable t) {}
+				}
+			} catch (Throwable t) {/* No Op */}
 		}
 	}
 	
@@ -276,9 +240,10 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 		return submittedCallbacks.get();
 	}
 	
+
 	/**
 	 * {@inheritDoc}
-	 * @see org.helios.apmrouter.ref.RunnableReferenceQueueMBean#getPendingCallbacks()
+	 * @see com.heliosapm.shorthand.util.ref.RunnableReferenceQueueMBean#getPendingCallbacks()
 	 */
 	@Override
 	public long getPendingCallbacks() {		
@@ -315,40 +280,43 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 	public Thread newThread(final Runnable r) {
 		Thread t = new Thread(r, "RunnableReferenceQueueWorkerThread#" + serial.incrementAndGet());
 		t.setDaemon(true);
+		t.setPriority(MAX_PRIORITY);
 		return t;
 	}
 	
 	
 	/**
-	 * Creates a new WeakReference for the passed referent and runnable callback
+	 * Creates a new PhantomReference for the passed referent and runnable callback
 	 * @param t The reference
-	 * @param r The on enqueue runnable callback
-	 * @return a weak reference
+	 * @param address The address to free when the reference becomes phantom-reachable
+	 * @return a phantom reference
 	 */
-	public <T> WeakReference<T> buildWeakReference(T t, Runnable r) {
-		return new RunnableWeakReference<T>(t, r); 
+	public <T> PhantomReference<T> buildPhantomReference(T t, long address) {
+		return new DeallocatingPhantomReference<T>(t, address);
 	}
 
 	
 	/**
-	 * <p>Title: RunnableWeakReference</p>
+	 * <p>Title: DeallocatingPhantomReference</p>
 	 * <p>Description: A {@link WeakReference} extension that holds an enqueue runnable</p> 
 	 * <p>Company: Helios Development Group LLC</p>
 	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
-	 * <p><code>com.heliosapm.shorthand.util.ref.RunnableReferenceQueue.RunnableWeakReference</code></p>
+	 * <p><code>com.heliosapm.shorthand.util.ref.RunnableReferenceQueue.DeallocatingPhantomReference</code></p>
+	 * @param <T> The referent type
 	 */
-	private class RunnableWeakReference<T> extends WeakReference<T> implements Runnable {
-		/** The callback runnable */
-		private final Runnable runnable;
+	public class DeallocatingPhantomReference<T> extends PhantomReference<T> implements Runnable {
+		/** The address to deallocate */
+		private final long address;
 		
 		/**
-		 * Creates a new RunnableWeakReference
+		 * Creates a new DeallocatingPhantomReference
 		 * @param referent The referent
-		 * @param runnable The callback runnable
+		 * @param address The address to free
 		 */
-		public RunnableWeakReference(T referent, Runnable runnable) {
+		public DeallocatingPhantomReference(T referent, final long address) {
 			super(referent, refQueue);
-			this.runnable = runnable;			
+			refMap.put(this, this);
+			this.address = address;
 		}
 		
 		/**
@@ -356,14 +324,10 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 		 * @see java.lang.Runnable#run()
 		 */
 		@Override
-		public void run() {
-			try {
-				if(runnable!=null) {
-					runnable.run();
-				}
-			} finally {
-				completedCallbacks.incrementAndGet();				
-			}
+		public void run() {			
+			UnsafeAdapter.freeMemory(address);
+			refMap.remove(this);
+			completedCallbacks.incrementAndGet();				
 		}
 		
 	}
