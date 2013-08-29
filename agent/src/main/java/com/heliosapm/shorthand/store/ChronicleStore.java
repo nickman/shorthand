@@ -677,6 +677,20 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 			// =========================================================================
 			if(!untouched.isEmpty()) {
 				log("\n\t==============================\n\tClearing [%s] Untouched Mem-Spaces\n\t==============================", untouched.size());
+				for(int i = 0; i < untouched.size(); i++) {
+					long address = untouched.get(i);
+					long ref = lockNoYield(address);
+					
+					if(ref>0) {
+						msa.setAddress(ref);						
+						long nameIndex = msa.getNameIndex();
+						String name = ChronicleOffset.getName(nameIndex);
+						msa.setAddress(-1L);
+						UnsafeAdapter.freeMemory(ref);
+						UnsafeAdapter.putLong(address + UnsafeAdapter.LONG_SIZE, -1L);
+						UNLOADED_INDEX.put(name, nameIndex * -1L);
+					}
+				}
 			}
 
 			untouched.clear();
