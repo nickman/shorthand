@@ -87,7 +87,6 @@ public class DirectMetricDataPoint<T extends Enum<T> & ICollector<T>> implements
 	@Override
 	protected void finalize() throws Throwable {
 		UnsafeAdapter.freeMemory(address);
-		log("DMDP Freed [%s]", address);
 		super.finalize();
 	}
 	

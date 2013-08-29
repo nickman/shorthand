@@ -58,8 +58,8 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 	public DirectMetric(long nameIndex, Excerpt nameIndexEx, Excerpt dataPointsEx) {
 		this.nameIndex = nameIndex;
 		nameIndexEx.index(nameIndex);
-		int bytesForHeader = walkForSize(nameIndexEx);
-		address = UnsafeAdapter.allocateMemory(bytesForHeader+100);
+		int bytesForHeader = getMemAllocation(nameIndex, nameIndexEx);
+		address = UnsafeAdapter.allocateMemory(bytesForHeader);
 		long directPos = address;
 		
 		UnsafeAdapter.putInt(directPos, (int)ChronicleOffset.EnumIndex.get(this.nameIndex, nameIndexEx));		// the enum index  (0)
@@ -80,52 +80,39 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 		
 		UnsafeAdapter.putInt(directPos, metricName.length);			// the size of the name		(32)
 		directPos += UnsafeAdapter.INT_SIZE;
-		UnsafeAdapter.copyMemory(metricName, UnsafeAdapter.BYTE_ARRAY_OFFSET, null, directPos, metricName.length);  // write the name bytes  (36)
-//		directPos += metricName.length;
-		
-		
-//		nameIndexEx.writeInt(tier1AddressCount);// (int) the number of tier addresses
-//		final int pos = nameIndexEx.position(); 
-//		for(int i = 0; i < tier1AddressCount; i++) {
-//			nameIndexEx.writeLong(-3L);
-//		}
-		
-		
-		
+		UnsafeAdapter.copyMemory(metricName, UnsafeAdapter.BYTE_ARRAY_OFFSET, null, directPos, metricName.length);  // write the name bytes  (36)		
 	}
+	
+	/** The size of the known part of the memory allocation */
+	public static final int FIXED_SIZE;
+	
+	static {
+		int fs = 0;
+		fs += UnsafeAdapter.INT_SIZE;			// (int) the enum index
+		fs += UnsafeAdapter.INT_SIZE;			// (int) the enabled bit mask
+		fs += UnsafeAdapter.LONG_SIZE;			// (long) the metric creation time
+		fs += UnsafeAdapter.LONG_SIZE;			// (long) the period start time
+		fs += UnsafeAdapter.LONG_SIZE;			// (long) the period end time
+		fs += UnsafeAdapter.INT_SIZE;			// (int) the size of the metric name
+		FIXED_SIZE = fs;
+	}
+	
+	/**
+	 * Calculates the total memory required to allocate this metric
+	 * @param nameIndex The name index of the metric
+	 * @param nameIndexEx The excerpt to read from
+	 * @return the number of bytes required
+	 */
+	private int getMemAllocation(long nameIndex, Excerpt nameIndexEx) {		
+		return FIXED_SIZE + (int)ChronicleOffset.NameSize.get(nameIndex, nameIndexEx);
+	}
+	
 	
 	public static void log(String fmt, Object...args) {
 		System.out.println(String.format(fmt, args));
 	}
 	
-	/** The known portion length of a name index entry */
-	public static final int NAME_ENTRY_SIZE = 
-			4 + 				// (int) collector enum index
-			4 + 				// (int) the enabled bitmask
-			4 +					// (int) the number of bytes in te metric name
-			8 + 				// (long) the created timestamp
-			8 + 				// (long) the period start time
-			8;	 				// (long) the period end time
-
-	/** The position to jump to when reading the name */
-	public static final int NAME_START_POS =
-			1 + 				// (byte)) The lock byte
-			1 + 				// (byte)) The deleted indicator byte
-			4 + 				// (int) collector enum index
-			4; 					// (int) the enabled bitmask
-
 	
-	
-	private int walkForSize(Excerpt nameIndexEx) {		
-		nameIndexEx.position(NAME_START_POS);
-		String name = nameIndexEx.readByteString();	// read the metric name
-		return 
-				name.getBytes().length + 			// the byte count of the name
-				NAME_ENTRY_SIZE; 					// the known size of the rest of the allocation
-		
-		
-		
-	}
 	
 	
 	/**
@@ -227,7 +214,6 @@ public class DirectMetric<T extends Enum<T> & ICollector<T>> implements IMetric<
 	@Override
 	protected void finalize() throws Throwable {
 		UnsafeAdapter.freeMemory(address);
-		log("DM Freed [%s]", address);
 		super.finalize();
 	}
 	

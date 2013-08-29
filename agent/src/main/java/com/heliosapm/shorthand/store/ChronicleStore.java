@@ -231,6 +231,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> extends AbstractS
 		if(metric!=null) {
 			log(metric.toString());
 		}
+		System.gc(); System.gc();
+		try { Thread.sleep(1000); } catch (Exception ex) {}
 
 		
 		long elapsed = System.currentTimeMillis()-start;
