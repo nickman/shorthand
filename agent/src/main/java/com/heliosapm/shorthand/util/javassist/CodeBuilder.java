@@ -46,6 +46,14 @@ public class CodeBuilder implements CharSequence, Appendable {
 	}
 	
 	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#toString()
+	 */
+	public String toString() {
+		return source.toString();
+	}
+	
+	/**
 	 * Creates a new CodeBuilder
 	 * @param initial The initial string builder to start with
 	 * 
@@ -69,7 +77,7 @@ public class CodeBuilder implements CharSequence, Appendable {
 	 * @param args The arguments to populate the format template
 	 * @return this builder
 	 */
-	public CodeBuilder append(CharSequence format, Object...args) {
+	public CodeBuilder appendFmt(CharSequence format, Object...args) {
 		source.append(String.format(format.toString(), args));
 		return this;
 	}

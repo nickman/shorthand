@@ -180,6 +180,28 @@ public enum ChronicleDataOffset {
 		}				
 	}
 	
+	
+	/**
+	 * Returns the data point for the data index entry at the passed address and the passed sub metric index
+	 * @param index The index of the target data index entry
+	 * @param subIndex the index of the data points array
+	 * @param ex The excerpt to read from. If null, one will be created and closed
+	 * @return the data points (e.g. Count, or Min,Max,Avg)
+	 */
+	public static long getDataPoint(long index, int subIndex, Excerpt ex) {
+		return getDataPoints(index, ex)[subIndex];
+	}
+	
+	/**
+	 * Returns the data point for the data index entry at the passed address and the passed sub metric index
+	 * @param index The index of the target data index entry
+	 * @param subIndex the index of the data points array
+	 * @return the data points (e.g. Count, or Min,Max,Avg)
+	 */
+	public static long getDataPoint(long index, int subIndex) {
+		return getDataPoint(index, subIndex, null);
+	}
+	
 
 	
 	/**

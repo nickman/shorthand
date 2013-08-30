@@ -62,6 +62,24 @@ public class PublishedMetric implements PublishedMetricMBean, MBeanRegistration 
 	}
 	
 	/**
+	 * Returns the active metric data indexes
+	 * @return the active metric data indexes
+	 */
+	protected long[] getDataIndexes() {
+		if(nameEx==null) throw new RuntimeException("Cannot invoke getDataIndexes until MBean has bene published");
+		long[] indexes = ChronicleOffset.getTier1Indexes(nameIndex, nameEx);
+		long[] activeIndexes = new long[EnumCollectors.getInstance().enabledMembersForIndex(getEnumIndex(), getBitMask()).size()];
+		int index = 0;
+		for(long v: indexes) {
+			if(v>0) {
+				activeIndexes[index] = v;
+				index++;
+			}			
+		}
+		return activeIndexes;
+	}
+	
+	/**
 	 * {@inheritDoc}
 	 * @see javax.management.MBeanRegistration#preRegister(javax.management.MBeanServer, javax.management.ObjectName)
 	 */

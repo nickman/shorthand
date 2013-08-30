@@ -31,9 +31,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import javassist.ClassClassPath;
 import javassist.ClassPool;
 import javassist.CtClass;
+import javassist.CtConstructor;
+import javassist.CtField;
+import javassist.CtMethod;
+import javassist.CtNewConstructor;
 
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.collectors.MethodInterceptor;
 import com.heliosapm.shorthand.store.ChronicleStore;
 import com.heliosapm.shorthand.util.StringHelper;
 import com.heliosapm.shorthand.util.javassist.CodeBuilder;
@@ -68,6 +73,8 @@ public class MetricMBeanBuilder {
 	private final CtClass stringClazz;
 	/** The object ct-class */
 	private final CtClass objectClazz;
+	/** The long array ct-class */
+	private final CtClass longArrClazz;
 
 
 	
@@ -93,6 +100,7 @@ public class MetricMBeanBuilder {
 			cp.appendClassPath(new ClassClassPath(PublishedMetric.class));
 			stringClazz = cp.get(String.class.getName());
 			objectClazz = cp.get(Object.class.getName());
+			longArrClazz = cp.get(long[].class.getName());
 			pmSuper = cp.get(PublishedMetric.class.getName());
 			pmIface = cp.get(PublishedMetricMBean.class.getName());
 			cp.importPackage(PublishedMetric.class.getPackage().getName());
@@ -111,6 +119,8 @@ public class MetricMBeanBuilder {
 					ctor = mbeanClasses.get(key);
 					if(ctor==null) {
 						Class<? extends PublishedMetric> clazz = generateClass(enumIndex, bitMask);
+						ctor = clazz.getDeclaredConstructor(long.class);
+						mbeanClasses.put(key, ctor);
 					}
 				}
 			}			
@@ -118,40 +128,62 @@ public class MetricMBeanBuilder {
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to create PublishedMBean class for [" + enumIndex + "/" + bitMask + "]", ex);
 		}
-		
-
 	}
-		
+	
+	public static void main(String[] args) {
+		log("MetricMBeanBuilder------");
+		ChronicleStore.getInstance();
+		EnumCollectors.getInstance().typeForName(MethodInterceptor.class.getName());
+		MetricMBeanBuilder.getInstance().getPublishedMetricInstance(1, 4095, 87);
+	}
+	
+	private static final CtClass[] EMPTY_SIG = {};
 
 	private Class<? extends PublishedMetric> generateClass(int enumIndex, int bitMask) {
-		CodeBuilder ifaceCode = new CodeBuilder();
-		CodeBuilder implCode = new CodeBuilder();
-		String collectorName = EnumCollectors.getInstance().type(enumIndex).getName();
-		
-		CtClass clazz = cp.makeClass("PublishedMetric_" + collectorName + "_" + bitMask, pmSuper);
-		CtClass clazzIface = cp.makeInterface("PublishedMetric_" + collectorName + "_" + bitMask + "MBean", pmIface);
-		for(ICollector<?> collector: EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitMask)) {
-			String[] subNames = collector.getSubMetricNames();
-			if(subNames.length==1) {
-				ifaceCode.clear().append("\n\tpublic long get%s();", StringHelper.initCap(collector.getShortName()));
-				implCode.clear().append("\n\tpublic long get%s() {", StringHelper.initCap(collector.getShortName()));
-			} else {
-				for(String subMetricName: subNames) {
-					ifaceCode.clear().append("public long get%s%s();", StringHelper.initCap(collector.getShortName()), subMetricName);
-					implCode.clear().append("\n\tpublic long get%s%s() {", StringHelper.initCap(collector.getShortName()), subMetricName);
+		try {
+			CodeBuilder implCode = new CodeBuilder();
+			String collectorName = EnumCollectors.getInstance().type(enumIndex).getName();
+			
+			CtClass clazz = cp.makeClass("PublishedMetric_" + collectorName + "_" + bitMask, pmSuper);		
+			CtClass clazzIface = cp.makeInterface("PublishedMetric_" + collectorName + "_" + bitMask + "MBean", pmIface);
+			clazz.addField(new CtField(longArrClazz, "dataIndexes", clazz));
+			CtConstructor ctor = CtNewConstructor.copy(pmSuper.getDeclaredConstructor(new CtClass[]{CtClass.longType}), clazz, null);
+			clazz.addConstructor(ctor);
+			ctor.setBody("{ super($1); }");
+			int dataIndex = 0;
+			String methodName = null;
+			for(ICollector<?> collector: EnumCollectors.getInstance().enabledMembersForIndex(enumIndex, bitMask)) {
+				String[] subNames = collector.getSubMetricNames();				
+				if(subNames.length==1) {
+					methodName = String.format("get%s",  StringHelper.initCap(collector.getShortName()));									
+					implCode.clear().appendFmt("{return ChronicleDataOffset.getDataPoint(dataIndexes[%s], 0, dataEx);}", dataIndex);
+					log("[%s]  %s", methodName, implCode);
+					clazzIface.addMethod(new CtMethod(CtClass.longType, methodName, EMPTY_SIG, clazzIface));
+					CtMethod implGetter = new CtMethod(CtClass.longType, methodName, EMPTY_SIG, clazz);
+					clazz.addMethod(implGetter);
+					implGetter.setBody(implCode.toString());					
+				} else {
+					int dataPointIndex = 0;
+					for(String subMetricName: subNames) {
+						methodName = String.format("get%s%s",  StringHelper.initCap(collector.getShortName()), subMetricName);
+						implCode.clear().appendFmt("{return ChronicleDataOffset.getDataPoint(dataIndexes[%s], %s, dataEx);}", dataIndex, dataPointIndex);
+						log("[%s]  %s", methodName, implCode);
+						clazzIface.addMethod(new CtMethod(CtClass.longType, methodName, EMPTY_SIG, clazzIface));
+						CtMethod implGetter = new CtMethod(CtClass.longType, methodName, EMPTY_SIG, clazz);
+						clazz.addMethod(implGetter);
+						implGetter.setBody(implCode.toString());					
+						dataPointIndex++;
+					}
 				}
+				dataIndex++;				
+				 
 			}
+			clazz.addInterface(clazzIface);
+			clazzIface.toClass();
+			return clazz.toClass();
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to build published metric class for [" + enumIndex + "/" + bitMask + "]", ex);
 		}
-		
-		
-		
-		
-		clazz.addInterface(clazzIface);
-		
-
-		
-		
-		return null;
 	}
 	
 
@@ -162,16 +194,7 @@ public class MetricMBeanBuilder {
 	
 	@SuppressWarnings("javadoc")
 	public static void log(String fmt, Object...msgs) {
-		System.out.println(String.format("[ChronicleStore]" + fmt, msgs));
+		System.out.println(String.format(fmt, msgs));
 	}
-	@SuppressWarnings("javadoc")
-	public static void loge(String fmt, Throwable t, Object...msgs) {
-		System.err.println(String.format("[ChronicleStore]" + fmt, msgs));
-		if(t!=null) t.printStackTrace(System.err);
-	}
-	@SuppressWarnings("javadoc")
-	public static void loge(String fmt, Object...msgs) {
-		loge(fmt, null, msgs);
-	}	
 
 }
