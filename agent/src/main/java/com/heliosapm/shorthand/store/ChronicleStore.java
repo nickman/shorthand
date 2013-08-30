@@ -182,9 +182,16 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 
 	
 	/** A sliding window of first phase flush elapsed times in ns. */
-	protected final ConcurrentLongSlidingWindow firstPhaseFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.PERIOD_PROP, 15000)); 
+	protected final ConcurrentLongSlidingWindow dirtyBufferCopyTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.PERIOD_PROP, 15000)); 
 	/** A sliding window of second phase flush elapsed times in ns. */
-	protected final ConcurrentLongSlidingWindow secondPhaseFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.PERIOD_PROP, 15000));
+	protected final ConcurrentLongSlidingWindow dirtyBufferWriteTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.PERIOD_PROP, 15000));
+	/** A sliding window of third phase flush elapsed times in ns. */
+	protected final ConcurrentLongSlidingWindow staleBufferClearTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.PERIOD_PROP, 15000));
+	/** A sliding window of total flush elapsed times in ns. */
+	protected final ConcurrentLongSlidingWindow totalFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.PERIOD_PROP, 15000));
+	/** A sliding window of the number of flushed dirty buffers in the last flush */
+	protected final ConcurrentLongSlidingWindow totalBuffersFlushed = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.PERIOD_PROP, 15000));
+	
 	/** A map of addresses pending de-allocation */
 	private final NonBlockingHashMapLong<Boolean> pendingDeallocates = new NonBlockingHashMapLong<Boolean>(CORES, false);
 	/** A sliding window of period update times in ns. */
@@ -773,9 +780,11 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			MemSpaceAccessor<T> msa = MemSpaceAccessor.get(-1L);
 			// =========================================================================
 			// Phase 1 Flush
-			// =========================================================================
-			final long startTime = System.nanoTime();
+			// =========================================================================			
+			final long now = System.currentTimeMillis();
+			final long stalePeriod = PeriodClock.getInstance().stalePeriodMs;
 			dirtyKeys = new LongSortedSet(SNAPSHOT_INDEX.size());
+			final long startTime = System.nanoTime();
 			for(String metricName: SNAPSHOT_INDEX.keySet()) {
 				long address = SNAPSHOT_INDEX.get(metricName);
 				// =========================================================================
@@ -790,8 +799,12 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					continue;
 				}
 				if(!msa.isTouched()) {
-					//log("Pending stale for Metric Ref [%s]", metricName);
-					untouched.put(address, metricName);
+					if(msa.isStale(now, stalePeriod)) {
+						//log("Pending stale for Metric Ref [%s]", metricName);
+						untouched.put(address, metricName);
+					} else {
+						unlock(address);
+					}
 					bufferCount--;	
 					continue;					
 				}
@@ -799,12 +812,13 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 				UnsafeAdapter.putLong(address + UnsafeAdapter.LONG_SIZE, msa.copy());
 				unlock(address);
 			}
-			long elapsed = System.nanoTime()-startTime;
-			this.firstPhaseFlushTimes.insert(elapsed);
-			log(StringHelper.reportTimes("First Phase Flush [" + bufferCount + "], Elapsed Time", elapsed));
+			long stage1Elapsed = System.nanoTime()-startTime;
+			dirtyBufferCopyTimes.insert(stage1Elapsed);			
+			log(StringHelper.reportTimes("First Phase Flush [" + bufferCount + "], Elapsed Time", stage1Elapsed));
 			// =========================================================================
 			// Phase 2 Flush
 			// =========================================================================
+			final long stage2start = System.nanoTime();
 			for(int i = 0; i < dirtyKeys.size(); i++) {
 				long address = dirtyKeys.get(i);
 				msa.setAddress(address);
@@ -813,11 +827,12 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 				UnsafeAdapter.freeMemory(address);
 			}
 			dirtyKeys.clear();
+			totalBuffersFlushed.insert(bufferCount);
 			closedPeriodNotif(priorStartTime, priorEndTime);
 			newMetricNotifs();
-			elapsed = System.nanoTime()-startTime;
-			secondPhaseFlushTimes.insert(elapsed);			
-			log(StringHelper.reportTimes("Second Phase Flush Elapsed Time", elapsed));
+			long stage2Elapsed = System.nanoTime()-stage2start;
+			dirtyBufferWriteTimes.insert(stage2Elapsed);			
+			log(StringHelper.reportTimes("Second Phase Flush Elapsed Time", stage2Elapsed));
 			// =========================================================================
 			// Phase 3 Flush / Purge Stale Mem-Spaces
 			// =========================================================================
@@ -836,11 +851,14 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					unlock(address);
 					untouched.remove(address);
 				}
-				long stage3elapsed = System.nanoTime()-stage3start;
-				log(StringHelper.reportTimes("Third Phase Flush Elapsed Time", stage3elapsed));
+				long stage3Elapsed = System.nanoTime()-stage3start;
+				staleBufferClearTimes.insert(stage3Elapsed);
+				log(StringHelper.reportTimes("Third Phase Flush Elapsed Time", stage3Elapsed));
 				
 			}
-//			untouched.clear();
+			long elapsed = System.nanoTime()-startTime;
+			totalFlushTimes.insert(elapsed);
+			log(StringHelper.reportTimes("Total Flush Elapsed Time", elapsed));
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		} finally {
@@ -965,38 +983,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	public long getMetricDataPointSize() {
 		return tier1Data.sizeInBytes();
 	}
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFirstPhaseLastFlushElapsedNs()
-	 */
-	@Override
-	public long getFirstPhaseLastFlushElapsedNs() {
-		return firstPhaseFlushTimes.getFirst();
-	}
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFirstPhaseLastFlushElapsedMs()
-	 */
-	@Override
-	public long getFirstPhaseLastFlushElapsedMs() {		
-		return TimeUnit.MILLISECONDS.convert(firstPhaseFlushTimes.getFirst(), TimeUnit.NANOSECONDS);
-	}
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFirstPhaseAverageFlushElapsedNs()
-	 */
-	@Override
-	public long getFirstPhaseAverageFlushElapsedNs() {
-		return firstPhaseFlushTimes.avg();		
-	}
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFirstPhaseAverageFlushElapsedMs()
-	 */
-	@Override
-	public long getFirstPhaseAverageFlushElapsedMs() {
-		return TimeUnit.MILLISECONDS.convert(firstPhaseFlushTimes.avg(), TimeUnit.NANOSECONDS);		
-	}
 	
 	/**
 	 * Locks the passed address reference. Yield spins while waiting for the lock.
@@ -1085,41 +1071,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		}
 	}
 
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getSecondPhaseLastFlushElapsedNs()
-	 */
-	@Override
-	public long getSecondPhaseLastFlushElapsedNs() {		
-		return secondPhaseFlushTimes.getFirst();
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getSecondPhaseLastFlushElapsedMs()
-	 */
-	@Override
-	public long getSecondPhaseLastFlushElapsedMs() {
-		return TimeUnit.MILLISECONDS.convert(secondPhaseFlushTimes.getFirst(), TimeUnit.NANOSECONDS);
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getSecondPhaseAverageFlushElapsedNs()
-	 */
-	@Override
-	public long getSecondPhaseAverageFlushElapsedNs() {
-		return secondPhaseFlushTimes.avg();
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getSecondPhaseAverageFlushElapsedMs()
-	 */
-	@Override
-	public long getSecondPhaseAverageFlushElapsedMs() {
-		return TimeUnit.MILLISECONDS.convert(secondPhaseFlushTimes.avg(), TimeUnit.NANOSECONDS);
-	}
 	
 	/**
 	 * {@inheritDoc}
@@ -1247,6 +1198,97 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	@SuppressWarnings("javadoc")
 	public static void loge(String fmt, Object...msgs) {
 		loge(fmt, null, msgs);
-	}		
+	}
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getDirtyBuffersWrittenLast()
+	 */
+	@Override
+	public long getDirtyBuffersWrittenLast() {
+		return totalBuffersFlushed.getFirst();		
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getDirtyBuffersWrittenAverage()
+	 */
+	@Override
+	public long getDirtyBuffersWrittenAverage() {
+		return totalBuffersFlushed.avg();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFlushLastTime()
+	 */
+	@Override
+	public long getFlushLastTime() {		
+		return TimeUnit.MILLISECONDS.convert(totalFlushTimes.getFirst(), TimeUnit.NANOSECONDS);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getFlushAverageTime()
+	 */
+	@Override
+	public long getFlushAverageTime() {		
+		return TimeUnit.MILLISECONDS.convert(totalFlushTimes.avg(), TimeUnit.NANOSECONDS);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getStaleBufferCleanLastTime()
+	 */
+	@Override
+	public long getStaleBufferCleanLastTime() {		
+		return TimeUnit.MILLISECONDS.convert(staleBufferClearTimes.getFirst(), TimeUnit.NANOSECONDS);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getStaleBufferCleanAverageTime()
+	 */
+	@Override
+	public long getStaleBufferCleanAverageTime() {
+		return TimeUnit.MILLISECONDS.convert(staleBufferClearTimes.avg(), TimeUnit.NANOSECONDS);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getDirtyBufferWriteLastTime()
+	 */
+	@Override
+	public long getDirtyBufferWriteLastTime() {
+		return TimeUnit.MILLISECONDS.convert(dirtyBufferWriteTimes.getFirst(), TimeUnit.NANOSECONDS);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getDirtyBufferWriteAverageTime()
+	 */
+	@Override
+	public long getDirtyBufferWriteAverageTime() {
+		return TimeUnit.MILLISECONDS.convert(dirtyBufferWriteTimes.avg(), TimeUnit.NANOSECONDS);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getDirtyBufferCopyLastTime()
+	 */
+	@Override
+	public long getDirtyBufferCopyLastTime() {
+		return TimeUnit.MILLISECONDS.convert(dirtyBufferCopyTimes.getFirst(), TimeUnit.NANOSECONDS);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getDirtyBufferCopyAverageTime()
+	 */
+	@Override
+	public long getDirtyBufferCopyAverageTime() {
+		return TimeUnit.MILLISECONDS.convert(dirtyBufferCopyTimes.avg(), TimeUnit.NANOSECONDS);
+	}
 
 }

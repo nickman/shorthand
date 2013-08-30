@@ -4,6 +4,7 @@
  */
 package com.heliosapm.shorthand.store;
 
+
 /**
  * <p>Title: ChronicleStoreMBean</p>
  * <p>Description: Management and monitoring interface for {@link ChronicleStore}</p> 
@@ -39,54 +40,69 @@ public interface ChronicleStoreMBean {
 	 * @return the size of the metric data point chronicle in bytes
 	 */
 	public long getMetricDataPointSize();
+
+	/**
+	 * Returns the number of written dirty buffers in the last flush
+	 * @return the number of written dirty buffers in the last flush
+	 */
+	public long getDirtyBuffersWrittenLast();
 	
 	/**
-	 * Returns the elapsed time of the last first phase flush in ns.
-	 * @return the elapsed time of the last first phase flush in ns.
+	 * Returns the rolling average number of written dirty buffers during flushes
+	 * @return the rolling average number of written dirty buffers during flushes
 	 */
-	public long getFirstPhaseLastFlushElapsedNs();
+	public long getDirtyBuffersWrittenAverage();
+
+	/**
+	 * Returns the total elapsed time of the last flush in ms.
+	 * @return the total elapsed time of the last flush in ms.
+	 */
+	public long getFlushLastTime();
 	
 	/**
-	 * Returns the elapsed time of the first phase last flush in ms.
-	 * @return the elapsed time of the first phase last flush in ms.
+	 * Returns the rolling average total elapsed time of the last flush in ms.
+	 * @return the rolling average total elapsed time of the last flush in ms.
 	 */
-	public long getFirstPhaseLastFlushElapsedMs();
+	public long getFlushAverageTime();
+
+	/**
+	 * Returns the elapsed time of the last stale buffer cleanup in ms.
+	 * @return the elapsed time of the last stale buffer cleanup in ms.
+	 */
+	public long getStaleBufferCleanLastTime();
 	
 	/**
-	 * Returns the rolling average of first phase flush times in ns.
-	 * @return the rolling average of first phase flush times in ns.
+	 * Returns the rolling average elapsed time of the stale buffer cleanup in ms.
+	 * @return the rolling average elapsed time of the stale buffer cleanup in ms.
 	 */
-	public long getFirstPhaseAverageFlushElapsedNs();
+	public long getStaleBufferCleanAverageTime();
+	
 	
 	/**
-	 * Returns the rolling average of first phase flush times in ms.
-	 * @return the rolling average of first phase flush times in ms.
+	 * Returns the elapsed time of the last flush dirty buffer write in ms.
+	 * @return the elapsed time of the last flush dirty buffer write in ms.
 	 */
-	public long getFirstPhaseAverageFlushElapsedMs();
+	public long getDirtyBufferWriteLastTime();
 	
 	/**
-	 * Returns the elapsed time of the last second phase flush in ns.
-	 * @return the elapsed time of the last second phase flush in ns.
+	 * Returns the rolling average elapsed time of the flush dirty buffer write in ms.
+	 * @return the rolling average elapsed time of the flush dirty buffer write in ms.
 	 */
-	public long getSecondPhaseLastFlushElapsedNs();
+	public long getDirtyBufferWriteAverageTime();
+
 	
 	/**
-	 * Returns the elapsed time of the second phase last flush in ms.
-	 * @return the elapsed time of the second phase last flush in ms.
+	 * Returns the elapsed time of the last flush dirty buffer copy in ms.
+	 * @return the elapsed time of the last flush dirty buffer copy in ms.
 	 */
-	public long getSecondPhaseLastFlushElapsedMs();
+	public long getDirtyBufferCopyLastTime();
 	
 	/**
-	 * Returns the rolling average of second phase flush times in ns.
-	 * @return the rolling average of second phase flush times in ns.
+	 * Returns the rolling average elapsed time of the flush dirty buffer copy in ms.
+	 * @return the rolling average elapsed time of the flush dirty buffer copy in ms.
 	 */
-	public long getSecondPhaseAverageFlushElapsedNs();
+	public long getDirtyBufferCopyAverageTime();
 	
-	/**
-	 * Returns the rolling average of second phase flush times in ms.
-	 * @return the rolling average of second phase flush times in ms.
-	 */
-	public long getSecondPhaseAverageFlushElapsedMs();
 	
 	/**
 	 * Get and clear the current count of reprobes on the pending deallocate map

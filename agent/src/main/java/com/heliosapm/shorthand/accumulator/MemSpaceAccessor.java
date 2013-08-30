@@ -31,6 +31,7 @@ import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.datamapper.AbstractDataMapper;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
+import com.heliosapm.shorthand.store.ChronicleOffset;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
@@ -114,6 +115,17 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 */
 	public boolean isTouched() {
 		return UnsafeAdapter.getByte(address + HeaderOffset.Touch.offset)>0;
+	}
+	
+	/**
+	 * Determines if this metric is stale, meaning it has not been touched in a period
+	 * greater than the stale period.
+	 * @param now The current time
+	 * @param staleTime The stale period
+	 * @return true if the metric is stale, false otherwise
+	 */
+	public boolean isStale(long now, long staleTime) {
+		return (now-ChronicleOffset.PeriodEnd.get(getNameIndex()) > staleTime);
 	}
 	
 	/**
