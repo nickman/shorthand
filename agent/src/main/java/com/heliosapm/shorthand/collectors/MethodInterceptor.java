@@ -5,7 +5,6 @@
 package com.heliosapm.shorthand.collectors;
 
 import gnu.trove.map.hash.TIntObjectHashMap;
-import gnu.trove.map.hash.TObjectLongHashMap;
 import gnu.trove.set.hash.TIntHashSet;
 
 import java.lang.management.CompilationMXBean;
@@ -232,6 +231,32 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 		return total + HeaderOffset.HEADER_SIZE;
 	}
 	
+	
+	/**
+	 * Returns an array of the MethodInterceptor names enabled for the passed bit mask
+	 * @param bitMask the enabled metric bit mask
+	 * @return an array of MethodInterceptor names
+	 */
+	public static String[] enabledNames(int bitMask) {
+		Set<MethodInterceptor> enabled = enabledCollectors(bitMask);
+		String[] names = new String[enabled.size()];
+		int cnt = 0;
+		for(MethodInterceptor mi: enabled) {
+			names[cnt] = mi.name();
+			cnt++;
+		}
+		return names;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.collectors.ICollector#getEnabledNames(int)
+	 */
+	@Override
+	public String[] getEnabledNames(int bitMask) {
+		return enabledNames(bitMask);
+	}
+	
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.shorthand.collectors.ICollector#getAllocationFor(int)
@@ -242,19 +267,27 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	}
 	
 	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.collectors.ICollector#getEnabledCollectors(int)
+	 * Returns a set of the MethodInterceptors enabled for the passed bit mask
+	 * @param bitMask the enabled metric bit mask
+	 * @return a set of MethodInterceptors
 	 */
-	@Override
-	public Set<MethodInterceptor> getEnabledCollectors(int bitMask) {
-		Set<MethodInterceptor> enabled = EnumSet.noneOf(MethodInterceptor.class);
-		
+	public static Set<MethodInterceptor> enabledCollectors(int bitMask) {
+		Set<MethodInterceptor> enabled = EnumSet.noneOf(MethodInterceptor.class);		
 		for(MethodInterceptor mi: MethodInterceptor.values()) {
 			if(mi.isEnabled(bitMask)) {
 				enabled.add(mi);
 			}
 		}
-		return enabled;
+		return enabled;		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.collectors.ICollector#getEnabledCollectors(int)
+	 */
+	@Override
+	public Set<MethodInterceptor> getEnabledCollectors(int bitMask) {
+		return enabledCollectors(bitMask);
 	}
 	
 	/**

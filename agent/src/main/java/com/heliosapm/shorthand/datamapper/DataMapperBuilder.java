@@ -113,7 +113,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 			cp.importPackage(HeaderOffset.class.getPackage().getName());
 			cp.importPackage(CopiedAddressProcedure.class.getPackage().getName());
 			cp.importPackage("java.util");
-			cp.importPackage(HeaderOffset.class.getPackage().getName());
+			
 			
 			mapClazz = cp.get(Map.class.getName());
 			dataMapperIface = cp.get(IDataMapper.class.getName());

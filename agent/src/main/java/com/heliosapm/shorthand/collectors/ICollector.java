@@ -184,6 +184,13 @@ public interface ICollector<T extends Enum<? extends ICollector<T>>> {
 	 * @return a map of offsets keyed by the associated collector
 	 */
 	public Map<T, Long> getOffsets(int bitMask);
+	
+	/**
+	 * Returns an array of the MethodInterceptor names enabled for the passed bit mask
+	 * @param bitMask the enabled metric bit mask
+	 * @return an array of MethodInterceptor names
+	 */
+	public String[] getEnabledNames(int bitMask);	
 
 	
 		

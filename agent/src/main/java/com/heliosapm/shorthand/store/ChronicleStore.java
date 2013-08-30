@@ -41,6 +41,7 @@ import com.heliosapm.shorthand.accumulator.PeriodClock;
 import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.jmx.MetricJMXPublishOption;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
 import com.heliosapm.shorthand.util.OrderedShutdownService;
 import com.heliosapm.shorthand.util.StringHelper;
@@ -73,7 +74,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	
 	/** Indicates if the mem-spaces should be padded */
 	protected boolean padCache = true;
-	
 	
 	
 	/** JMX notification type for a period end event */
@@ -198,6 +198,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	protected final ConcurrentLongSlidingWindow periodUpdateTimes = new ConcurrentLongSlidingWindow(100);
 	/** A sliding window of new metric creation times in ns. */
 	protected final ConcurrentLongSlidingWindow newMetricTimes = new ConcurrentLongSlidingWindow(100); 
+	
+	/** The configured jmx mbean publication option */
+	protected final MetricJMXPublishOption jmxPublishOption;
 	
 	
 	/** This store's JMX ObjectName */
@@ -382,10 +385,13 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		if(!dataDir.isDirectory()) {
 			throw new IllegalArgumentException("The directory [" + dataDirectory + "] is not valid");
 		}
+		log("Initializing chronicle store in [%s]", dataDir.getAbsolutePath());
+		com.higherfrequencytrading.chronicle.tools.ChronicleTools.deleteOnExit(dataDir.getAbsolutePath());
 		SNAPSHOT_INDEX = new NonBlockingHashMap<String, Long>(1024);
 		UNLOADED_INDEX = new NonBlockingHashMap<String, Long>(1024);
 		padCache = System.getProperty(ShorthandProperties.USE_POW2_ALLOC_PROP, ShorthandProperties.DEFAULT_USE_POW2_ALLOC).toLowerCase().trim().equals("true");
-		
+		jmxPublishOption = MetricJMXPublishOption.forName(System.getProperty(ShorthandProperties.PUBLISH_JMX_PROP, ShorthandProperties.DEFAULT_PUBLISH_JMX));
+		log("Metric JMX Publication Option: [%s]", jmxPublishOption.name());
 		try {
 			enumIndex = getIntChronicle(ENUM_INDEX);
 			enumIndex.useUnsafe(true);				
@@ -406,7 +412,13 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			writeZeroRec(tier1Data);
 			log(printChronicleDetails(tier1Data));			
 			notificationBroadcasterSupport = new NotificationBroadcasterSupport(notificationProcessors, NOTIFS); 
-			JMXHelper.registerMBean(this, OBJECT_NAME);			
+			JMXHelper.registerMBean(this, OBJECT_NAME);	
+			JMXHelper.getHeliosMBeanServer().addNotificationListener(OBJECT_NAME, new NotificationListener(){
+				@Override
+				public void handleNotification(Notification notification, Object handback) {
+					
+				}
+			}, null, null);
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			throw new RuntimeException("Failed to initialize name index chronicle", ex);
@@ -505,6 +517,23 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		}
 		return index;
 	}
+	
+	/**
+	 * Returns a new name index excerpt
+	 * @return a new name index excerpt
+	 */
+	public Excerpt getNameIndexExcerpt() {
+		return nameIndex.createExcerpt();
+	}
+	
+	/**
+	 * Returns a new tier1 data index excerpt
+	 * @return a new tier1 data index excerpt
+	 */
+	public Excerpt getDataIndexExcerpt() {
+		return tier1Data.createExcerpt();
+	}
+	
 
 	/**
 	 * Acquires the named chronicle
@@ -581,9 +610,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 */
 	@Override
 	public void finalize() throws Throwable {		
-		try { enumIndex.close(); } catch (Exception ex) {}
-		try { nameIndex.close(); } catch (Exception ex) {}
-		try { tier1Data.close(); } catch (Exception ex) {}
+		try { enumIndex.close(); } catch (Exception ex) {/* No Op */}
+		try { nameIndex.close(); } catch (Exception ex) {/* No Op */}
+		try { tier1Data.close(); } catch (Exception ex) {/* No Op */}
 		super.finalize();
 	}
 	
@@ -597,7 +626,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	protected long newMetricName(String metricName, int enumIndex, int bitMask) {
 		final long start = System.nanoTime();
 		long index = ChronicleOffset.writeNewNameIndex(enumIndex, bitMask, metricName);
-		newMetricTimes.insert(System.nanoTime()-start);		
+		newMetricTimes.insert(System.nanoTime()-start);
+		jmxPublishOption.publish(metricName, index);
 		return index;
 	}
 	
@@ -775,8 +805,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		try {
 //			long address = -1L;
 			bufferCount = SNAPSHOT_INDEX.size();
-			log("Processing Period Update for [%s] Store Name Index Values", bufferCount);
-			@SuppressWarnings("unchecked")
+			log("Processing Period Update for [%s] Store Name Index Values", bufferCount);			
 			MemSpaceAccessor<T> msa = MemSpaceAccessor.get(-1L);
 			// =========================================================================
 			// Phase 1 Flush
@@ -802,9 +831,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					if(msa.isStale(now, stalePeriod)) {
 						//log("Pending stale for Metric Ref [%s]", metricName);
 						untouched.put(address, metricName);
-					} else {
-						unlock(address);
-					}
+					} 
+					unlock(address);
 					bufferCount--;	
 					continue;					
 				}
@@ -849,6 +877,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					UnsafeAdapter.putLong(address + UnsafeAdapter.LONG_SIZE, -1L);
 					UNLOADED_INDEX.put(metricName, nameIndex * -1L);
 					unlock(address);
+					jmxPublishOption.unPublish(metricName, nameIndex);
 					untouched.remove(address);
 				}
 				long stage3Elapsed = System.nanoTime()-stage3start;

@@ -20,6 +20,13 @@ public class StringHelper {
 	
 	/** The ThreadMXBean */
 	protected static final ThreadMXBean tmx = ManagementFactory.getThreadMXBean();
+	
+	
+	public static String initCap(CharSequence cs) {
+		char[] chars = cs.toString().trim().toCharArray();
+		chars[0] = new String(new char[]{chars[0]}).toUpperCase().charAt(0);
+		return new String(chars);
+	}
 
 	/**
 	 * Returns a formatted string representing the thread identified by the passed id

@@ -117,7 +117,7 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 		this.setDaemon(true);
 		this.setName("RunnableReferenceQueueThread");
 		this.start();
-		JMXHelper.registerMBean(JMXHelper.objectName(getClass().getPackage().getName(), "service", getClass().getSimpleName()), this);
+		JMXHelper.registerMBean(JMXHelper.objectName("%s:%s=%s", getClass().getPackage().getName(), "service", getClass().getSimpleName()), this);
 		
 	}
 	

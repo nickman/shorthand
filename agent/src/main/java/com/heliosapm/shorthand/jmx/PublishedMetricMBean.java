@@ -24,6 +24,8 @@
  */
 package com.heliosapm.shorthand.jmx;
 
+import java.util.Date;
+
 /**
  * <p>Title: PublishedMetricMBean</p>
  * <p>Description: JMX MBean interface for {@link PublishedMetric}</p> 
@@ -32,6 +34,66 @@ package com.heliosapm.shorthand.jmx;
  * <p><code>com.heliosapm.shorthand.jmx.PublishedMetricMBean</code></p>
  */
 
-public interface PublishedMetricMBean {
-
+public interface PublishedMetricMBean  {
+	/**
+	 * Returns the chronicle name index for this metric 
+	 * @return the chronicle name index for this metric
+	 */
+	public long getNameIndex();
+	/**
+	 * Returns the metric name
+	 * @return the metric name
+	 */
+	public String getMetricName();
+	/**
+	 * Returns the enum collector index 
+	 * @return the enum collector index
+	 */
+	public int getEnumIndex();
+	/**
+	 * Returns the enum collector name
+	 * @return the enum collector name
+	 */
+	public String getCollectorName();
+	/**
+	 * Returns the enabled metric bitmask
+	 * @return the enabled metric bitmask
+	 */
+	public int getBitMask();
+	/**
+	 * Returns the names of the enabled metrics
+	 * @return the names of the enabled metrics
+	 */
+	public String[] getEnabledMetrics();
+	/**
+	 * Returns the metric creation time in long UTC
+	 * @return the metric creation time
+	 */
+	public long getCreationTime();
+	/**
+	 * Returns the metric creation date
+	 * @return the metric creation date
+	 */
+	public Date getCreationDate();
+	/**
+	 * Returns the metric period start time in long UTC
+	 * @return the metric period start time
+	 */
+	public long getPeriodStartTime();
+	/**
+	 * Returns the metric period start date
+	 * @return the metric period start date
+	 */
+	public Date getPeriodStartDate();
+	/**
+	 * Returns the metric period end time in long UTC
+	 * @return the metric period end time
+	 */
+	public long getPeriodEndTime();
+	/**
+	 * Returns the metric period end date
+	 * @return the metric period end date
+	 */
+	public Date getPeriodEndDate();
+	
 }

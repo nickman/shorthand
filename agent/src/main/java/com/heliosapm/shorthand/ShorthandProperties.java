@@ -25,6 +25,9 @@
 package com.heliosapm.shorthand;
 
 import java.io.File;
+import java.lang.management.ManagementFactory;
+
+import com.heliosapm.shorthand.jmx.MetricJMXPublishOption;
 
 /**
  * <p>Title: ShorthandProperties</p>
@@ -37,10 +40,14 @@ import java.io.File;
 public class ShorthandProperties {
 	private ShorthandProperties() {}
 	
+	/** The PID of this JVM */
+	public static final String PID = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
+
+	
 	/** System property name to specify the shorthand chronicle directory */
 	public static final String CHRONICLE_DIR_PROP = "shorthand.store.chronicle.dir";
 	/** The default shorthand chronicle directory */
-	public static final String DEFAULT_CHRONICLE_DIR =  String.format("%s%sshorthand", System.getProperty("java.io.tmpdir"), File.separator);
+	public static final String DEFAULT_CHRONICLE_DIR =  String.format("%s%sshorthand%s%s", System.getProperty("java.io.tmpdir"), File.separator, File.separator, PID);
 	
     /** The system prop name to indicate if mem-spaces should be padded to the next largest pow(2) */
     public static final String USE_POW2_ALLOC_PROP = "shorthand.memspace.padcache";
@@ -60,6 +67,12 @@ public class ShorthandProperties {
 	public static final long DEFAULT_PERIOD = 15000;
 	/** The default shorthand stale period in ms, which is 5 minutes */
 	public static final long DEFAULT_STALE_PERIOD = DEFAULT_PERIOD *2;  // DEFAULT_PERIOD * 4 * 5;  // 5 minutes
+	
+	/** The system property that defines how active metrics should be published. The value supplied should be an enum member name from {@link MetricJMXPublishOption} */
+	public static final String PUBLISH_JMX_PROP = "shorthand.metrics.publish";
+	/** The system property that defines the shorthand stale period in ms. which is the elapsed time in which a metric is considered stale with no activity */
+	public static final String DEFAULT_PUBLISH_JMX = MetricJMXPublishOption.NAME.name();
+	
 
     
 }

@@ -256,7 +256,7 @@ public class UnsafeAdapter {
         		totalMemoryAllocated = new AtomicLong(0L);
         		deallocators = new HashSet<String>(1024);
         		allocators = new HashSet<String>(1024);
-        		JMXHelper.registerMBean(new UnsafeMemory(), JMXHelper.objectName(UnsafeAdapter.class.getPackage().getName(), "service", UnsafeMemory.class.getSimpleName()));
+        		JMXHelper.registerMBean(new UnsafeMemory(), JMXHelper.objectName("%s:%s=%s", UnsafeAdapter.class.getPackage().getName(), "service", UnsafeMemory.class.getSimpleName()));
         	} else {
         		totalMemoryAllocated = null;
         		memoryAllocations = null;

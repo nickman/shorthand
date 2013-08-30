@@ -302,6 +302,21 @@ public class JMXHelper {
 	
 	/**
 	 * Creates a new JMX object name.
+	 * @param format The string format template 
+	 * @param args The arguments to populate the template with
+	 * @return an ObjectName the created ObjectName
+	 */
+	public static ObjectName objectName(String format, Object...args) {
+		try {
+			return new ObjectName(String.format(format, args));
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to create Object Name", e);
+		}
+	}
+	
+	
+	/**
+	 * Creates a new JMX object name.
 	 * @param on An object representing the ObjectName
 	 * @return an ObjectName the created ObjectName
 	 */
@@ -349,38 +364,38 @@ public class JMXHelper {
 	}
 	
 
-	/**
-	 * Creates a new JMX object name.
-	 * @param domain The ObjectName domain
-	 * @param nameValuePairs an (even lengthed) array of name value pairs making up the key properties
-	 * @return an ObjectName the created ObjectName
-	 */
-	public static ObjectName objectName(CharSequence domain, CharSequence...nameValuePairs) {
-		if(domain==null || domain.toString().length()<1) throw new IllegalArgumentException("Null or zero length domain name");
-		if(nameValuePairs==null || nameValuePairs.length<1 || nameValuePairs.length%2!=0) {
-			throw new IllegalArgumentException("Invalid number of namevaluepairs [" + (nameValuePairs==null ? 0 : nameValuePairs.length) + "]");
-		}
-		try {
-			Hashtable<String, String> props = new Hashtable<String, String>();
-			for(int i = 0; i < nameValuePairs.length; i++) {
-				if(nameValuePairs[i]==null || nameValuePairs[i].toString().length()<1) {
-					throw new IllegalArgumentException("Null or blank nameValuePair entry at index [" + i + "]");
-				}
-				String key = nameValuePairs[i].toString();
-				i++;
-				if(nameValuePairs[i]==null || nameValuePairs[i].toString().length()<1) {
-					throw new IllegalArgumentException("Null or blank nameValuePair entry at index [" + i + "]");
-				}				
-				String value = nameValuePairs[i].toString();
-				props.put(key, value);
-			}
-			return new ObjectName(domain.toString(), props);
-		} catch (IllegalArgumentException iae) {
-			throw iae;
-		} catch (Exception e) {
-			throw new RuntimeException("Failed to create Object Name", e);
-		}
-	}
+//	/**
+//	 * Creates a new JMX object name.
+//	 * @param domain The ObjectName domain
+//	 * @param nameValuePairs an (even lengthed) array of name value pairs making up the key properties
+//	 * @return an ObjectName the created ObjectName
+//	 */
+//	public static ObjectName objectName(CharSequence domain, CharSequence...nameValuePairs) {
+//		if(domain==null || domain.toString().length()<1) throw new IllegalArgumentException("Null or zero length domain name");
+//		if(nameValuePairs==null || nameValuePairs.length<1 || nameValuePairs.length%2!=0) {
+//			throw new IllegalArgumentException("Invalid number of namevaluepairs [" + (nameValuePairs==null ? 0 : nameValuePairs.length) + "]");
+//		}
+//		try {
+//			Hashtable<String, String> props = new Hashtable<String, String>();
+//			for(int i = 0; i < nameValuePairs.length; i++) {
+//				if(nameValuePairs[i]==null || nameValuePairs[i].toString().length()<1) {
+//					throw new IllegalArgumentException("Null or blank nameValuePair entry at index [" + i + "]");
+//				}
+//				String key = nameValuePairs[i].toString();
+//				i++;
+//				if(nameValuePairs[i]==null || nameValuePairs[i].toString().length()<1) {
+//					throw new IllegalArgumentException("Null or blank nameValuePair entry at index [" + i + "]");
+//				}				
+//				String value = nameValuePairs[i].toString();
+//				props.put(key, value);
+//			}
+//			return new ObjectName(domain.toString(), props);
+//		} catch (IllegalArgumentException iae) {
+//			throw iae;
+//		} catch (Exception e) {
+//			throw new RuntimeException("Failed to create Object Name", e);
+//		}
+//	}
 	
 	/**
 	 * Registers an MBean
