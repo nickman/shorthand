@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.heliosapm.shorthand.ShorthandProperties;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
 import com.heliosapm.shorthand.util.OrderedShutdownService;
 
@@ -32,18 +33,6 @@ import com.heliosapm.shorthand.util.OrderedShutdownService;
  */
 
 public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandler, RejectedExecutionHandler, PeriodEventListener {
-	/** The system property that defines the shorthand period in ms. */
-	public static final String PERIOD_PROP = "shorthand.period";
-	/** The system property that defines the shorthand stale period in ms. which is the elapsed time in which a metric is considered stale with no activity */
-	public static final String STALE_PERIOD_PROP = "shorthand.period.stale";
-	
-	/** The system property that defines if the period clock should be disabled, usually for testing purposes */
-	public static final String DISABLE_PERIOD_CLOCK_PROP = "shorthand.period.disabled";
-	
-	/** The default shorthand period in ms, which is 15000 */
-	public static final long DEFAULT_PERIOD = 15000;
-	/** The default shorthand stale period in ms, which is 15000 */
-	public static final long DEFAULT_STALE_PERIOD = DEFAULT_PERIOD * 4 * 5;  // 5 minutes
 	
 	/** The thread mxbean */
 	protected static final ThreadMXBean tmx = ManagementFactory.getThreadMXBean();
@@ -96,7 +85,7 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 				handle.cancel(true);
 				scheduleHandle.set(null);
 			}
-			System.setProperty(DISABLE_PERIOD_CLOCK_PROP, "true");
+			System.setProperty(ShorthandProperties.DISABLE_PERIOD_CLOCK_PROP, "true");
 			instance = null;
 			getInstance();
 		}
@@ -111,7 +100,7 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 			periodListeners.clear();
 			periodCompletionListeners.clear();
 			OrderedShutdownService.getInstance().remove(shutdownHook);
-			System.setProperty(DISABLE_PERIOD_CLOCK_PROP, "false");
+			System.setProperty(ShorthandProperties.DISABLE_PERIOD_CLOCK_PROP, "false");
 			instance = null;
 			getInstance();
 		}
@@ -212,12 +201,12 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 				} catch (Exception ex) {/* No Op */}
 			}
 		};
-		clockDisabled = ConfigurationHelper.getBooleanSystemThenEnvProperty(DISABLE_PERIOD_CLOCK_PROP, false);
+		clockDisabled = ConfigurationHelper.getBooleanSystemThenEnvProperty(ShorthandProperties.DISABLE_PERIOD_CLOCK_PROP, false);
 		if(clockDisabled) {
 			log("\n\t================================================\n\tPERIOD CLOCK DISABLED\n\t================================================\n");
 		}
 		periodMs = getPeriod();
-		stalePeriodMs = ConfigurationHelper.getLongSystemThenEnvProperty(STALE_PERIOD_PROP, DEFAULT_STALE_PERIOD);
+		stalePeriodMs = ConfigurationHelper.getLongSystemThenEnvProperty(ShorthandProperties.STALE_PERIOD_PROP, ShorthandProperties.DEFAULT_STALE_PERIOD);
 		int cores = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
 		threadPool = new ThreadPoolExecutor(2,cores,(periodMs*2), TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(10, true), this, this);
 		
@@ -442,13 +431,13 @@ public class PeriodClock implements ThreadFactory, Thread.UncaughtExceptionHandl
 	private static long getPeriod() {
 		long p = -1;
 		try {
-			p = Long.parseLong(System.getProperty(PERIOD_PROP, "" + DEFAULT_PERIOD));
+			p = Long.parseLong(System.getProperty(ShorthandProperties.PERIOD_PROP, "" + ShorthandProperties.DEFAULT_PERIOD));
 			if(p < 1000) {
-				p = DEFAULT_PERIOD;
+				p = ShorthandProperties.DEFAULT_PERIOD;
 			}
 			
 		} catch (Exception ex) {
-			p = DEFAULT_PERIOD;
+			p = ShorthandProperties.DEFAULT_PERIOD;
 		}	
 		return p;
 	}

@@ -75,15 +75,15 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 	 * @return true if this mem-space has been invalidated, false otherwise
 	 */
 	public boolean isInvalidated() {
-		return UnsafeAdapter.getLong(address + UnsafeAdapter.LONG_SIZE)==-1L;
+		return address==-1L;
 	}
 	
 	/**
 	 * Deletes the mem-space associated to this accessor.
 	 * SHOULD ONLY BE CALLED ON AN INVALIDATED ACCESSOR !!.
 	 */
-	public void delete() {
-		UnsafeAdapter.freeMemory(address);
+	public void delete(long actualAddress) {
+		UnsafeAdapter.freeMemory(actualAddress);
 		address = -1L;
 	}
 	
@@ -116,6 +116,10 @@ public class MemSpaceAccessor<T extends Enum<T> & ICollector<T>>  {
 		return UnsafeAdapter.getByte(address + HeaderOffset.Touch.offset)>0;
 	}
 	
+	/**
+	 * Creates a new mem-space which is a copy of this one's header with a reset body.
+	 * @return a new reset mem-space copy of this mem-space 
+	 */
 	public long copy() {
 		long addr = UnsafeAdapter.allocateMemory(getMemSize());
 		UnsafeAdapter.copyMemory(address, addr, getMemSize());

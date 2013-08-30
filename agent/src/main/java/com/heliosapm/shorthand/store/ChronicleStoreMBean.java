@@ -100,11 +100,7 @@ public interface ChronicleStoreMBean {
 	 */
 	public long getNameIndexReprobes();
 	
-	/**
-	 * Returns the total number of invalid mem-space releases which occurs when an accumulator thread locks an invalidated mem-space.
-	 * @return the total number of invalid mem-space releases
-	 */
-	public long getReleaseCount();
+
 
 	
 	

@@ -4,19 +4,14 @@
 package com.heliosapm.shorthand.store;
 
 import gnu.trove.map.hash.TObjectIntHashMap;
-import gnu.trove.map.hash.TObjectLongHashMap;
-import gnu.trove.set.hash.TLongHashSet;
 
 import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.nio.ByteOrder;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -39,10 +34,9 @@ import javax.management.ObjectName;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 
+import com.heliosapm.shorthand.ShorthandProperties;
 import com.heliosapm.shorthand.accumulator.AccumulatorThreadStats;
-import com.heliosapm.shorthand.accumulator.HeaderOffset;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
-import com.heliosapm.shorthand.accumulator.MemSpaceAccessorTest;
 import com.heliosapm.shorthand.accumulator.PeriodClock;
 import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
@@ -55,7 +49,6 @@ import com.heliosapm.shorthand.util.jmx.JMXHelper;
 import com.heliosapm.shorthand.util.ref.RunnableReferenceQueue;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 import com.heliosapm.shorthand.util.unsafe.collections.ConcurrentLongSlidingWindow;
-import com.heliosapm.shorthand.util.unsafe.collections.ConcurrentLongSortedSet;
 import com.heliosapm.shorthand.util.unsafe.collections.LongSortedSet;
 import com.higherfrequencytrading.chronicle.Chronicle;
 import com.higherfrequencytrading.chronicle.Excerpt;
@@ -72,10 +65,6 @@ import com.higherfrequencytrading.chronicle.impl.IntIndexedChronicle;
  */
 
 public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore<T>, ChronicleStoreMBean, NotificationBroadcaster,  RejectedExecutionHandler, Thread.UncaughtExceptionHandler, ThreadFactory {
-	/** The default directory */
-	public static final String DEFAULT_DIRECTORY = String.format("%s%sshorthand", System.getProperty("java.io.tmpdir"), File.separator);
-	/** System property name to override the default directory */
-	public static final String CHRONICLE_DIR_PROP = "shorthand.store.chronicle.dir";
 	
 	/** The index of metric name to slab id to find the snapshot */
 	protected final NonBlockingHashMap<String, Long> SNAPSHOT_INDEX;
@@ -84,8 +73,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	
 	/** Indicates if the mem-spaces should be padded */
 	protected boolean padCache = true;
-    /** The system prop name to indicate if mem-spaces should be padded to the next largest pow(2) */
-    public static final String USE_POW2_ALLOC_PROP = "shorthand.memspace.padcache";
 	
 	
 	
@@ -96,6 +83,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	/** JMX notification type for stale metric names at period end */
 	public static final String NOTIF_STALE_METRICS = "shorthand.store.period.metrics.stale";
 	
+	/** The notification infos for this mbean */
 	private static final MBeanNotificationInfo[] NOTIFS = new MBeanNotificationInfo[]{
 		new MBeanNotificationInfo(new String[]{NOTIF_PERIOD_END}, Notification.class.getName(), "Notification indicating a metric period has ended"),
 		new MBeanNotificationInfo(new String[]{NOTIF_NEW_METRICS}, Notification.class.getName(), "Notification indicating new metrics were created in the prior period"),
@@ -108,7 +96,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	private static final Object lock = new Object();
 	
 	/** The notification broadcaster delegate */
-	protected final NotificationBroadcasterSupport notificationBroadcaterSupport; 
+	protected final NotificationBroadcasterSupport notificationBroadcasterSupport; 
 	/** A set of metric names that have been added this period */
 	protected final Set<String> addedMetricNames = new CopyOnWriteArraySet<String>();
 	/** Serial number factory for notification sequences */
@@ -122,6 +110,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * Acquires the singleton ChronicleStore instance
 	 * @return the singleton ChronicleStore instance
 	 */
+	@SuppressWarnings("rawtypes")
 	public static ChronicleStore<?> getInstance() {		
 		if(instance==null) {
 			synchronized(lock) {
@@ -172,6 +161,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	/** The ThreadMXBean */
 	protected static final ThreadMXBean tmx = ManagementFactory.getThreadMXBean();
 	
+	/** Stale metric addresses and names are registered here pending clearing */
+	protected final NonBlockingHashMapLong<String> untouched = new NonBlockingHashMapLong<String>();
+	
 	/** The store directory */
 	protected final File dataDir;
 	/** The store name index chronicle */
@@ -190,9 +182,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 
 	
 	/** A sliding window of first phase flush elapsed times in ns. */
-	protected final ConcurrentLongSlidingWindow firstPhaseFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(PeriodClock.PERIOD_PROP, 15000)); 
+	protected final ConcurrentLongSlidingWindow firstPhaseFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.PERIOD_PROP, 15000)); 
 	/** A sliding window of second phase flush elapsed times in ns. */
-	protected final ConcurrentLongSlidingWindow secondPhaseFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(PeriodClock.PERIOD_PROP, 15000));
+	protected final ConcurrentLongSlidingWindow secondPhaseFlushTimes = new ConcurrentLongSlidingWindow((1000*60*5)/ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.PERIOD_PROP, 15000));
 	/** A map of addresses pending de-allocation */
 	private final NonBlockingHashMapLong<Boolean> pendingDeallocates = new NonBlockingHashMapLong<Boolean>(CORES, false);
 	/** A sliding window of period update times in ns. */
@@ -213,6 +205,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	/**
 	 * Clears the store 
 	 */
+	@Override
 	public void clear() {
 		SNAPSHOT_INDEX.clear();
 		UNLOADED_INDEX.clear();
@@ -226,33 +219,33 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	
 
 	
-	public static void main(String[] args) {
-		log("Dumping Shorthand DB");
-		ChronicleStore store = ChronicleStore.getInstance();
-		long count = 0;
-		long start = System.currentTimeMillis();
-//		store.dump();
-		IMetric metric = null;
-		for(Object o: store.UNLOADED_INDEX.keySet()) {
-			String name = o.toString();
-			metric = store.getMetric(name);			
-			if(metric==null) continue;			
-			count++;
-//			if(count%100==0) {
-//				log("Loaded [%s] IMetrics", count);
-//			}
-		}
-		long elapsed = System.currentTimeMillis()-start;
-		if(metric!=null) {
-			log(metric.toString());
-		}
-		System.gc();
-		try { Thread.sleep(1000); } catch (Exception ex) {}
-
-		
-		
-		log("Dump of [%s] metrics complete in [%s] ms.", count, elapsed);		
-	}
+//	public static void main(String[] args) {
+//		log("Dumping Shorthand DB");
+//		ChronicleStore store = ChronicleStore.getInstance();
+//		long count = 0;
+//		long start = System.currentTimeMillis();
+////		store.dump();
+//		IMetric metric = null;
+//		for(Object o: store.UNLOADED_INDEX.keySet()) {
+//			String name = o.toString();
+//			metric = store.getMetric(name);			
+//			if(metric==null) continue;			
+//			count++;
+////			if(count%100==0) {
+////				log("Loaded [%s] IMetrics", count);
+////			}
+//		}
+//		long elapsed = System.currentTimeMillis()-start;
+//		if(metric!=null) {
+//			log(metric.toString());
+//		}
+//		System.gc();
+//		try { Thread.sleep(1000); } catch (Exception ex) {}
+//
+//		
+//		
+//		log("Dump of [%s] metrics complete in [%s] ms.", count, elapsed);		
+//	}
 	
 	/**
 	 * {@inheritDoc}
@@ -278,13 +271,16 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		
 		Excerpt nameEx = this.nameIndex.createExcerpt();
 		Excerpt dataEx = this.tier1Data.createExcerpt();
-		DirectMetric dm = new DirectMetric(nameIndex, nameEx, dataEx);
+		DirectMetric<T> dm = new DirectMetric<T>(nameIndex, nameEx, dataEx);
 		nameEx.close();
 		dataEx.close();
 		return dm;
 	}
 	
 	
+	/**
+	 * Dumps the contents of the store
+	 */
 	public void dump() {
 		Excerpt dx = tier1Data.createExcerpt();
 		try {
@@ -295,8 +291,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 				b.append(nameIndexEx.index()).append(",");
 				b.append(nameIndexEx.read()).append(",");
 				b.append(nameIndexEx.read()).append(",");
+				@SuppressWarnings("unchecked")
 				Class<T> collectorType = (Class<T>) EnumCollectors.getInstance().type(nameIndexEx.readInt());
-				ICollector[] collectors = collectorType.getEnumConstants();
+				ICollector<?>[] collectors = collectorType.getEnumConstants();
 				b.append(collectorType.getSimpleName()).append(",");
 				b.append(nameIndexEx.readInt()).append(",");
 				b.append(nameIndexEx.readByteString()).append(",");
@@ -313,7 +310,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					b.append(dx.read()).append(",");
 					dx.readLong();
 					int enumIndex = dx.readInt();
-					ICollector collector = collectors[enumIndex];
+					ICollector<?> collector = collectors[enumIndex];
 					b.append(collector.getShortName()).append(",");
 					String[] subNames = collector.getSubMetricNames();
 					int subCount = dx.readInt();
@@ -347,9 +344,13 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * Creates a new ChronicleStore persisting to the default directory
 	 */
 	protected ChronicleStore() {		
-		this(ConfigurationHelper.getSystemThenEnvProperty(CHRONICLE_DIR_PROP, DEFAULT_DIRECTORY));
+		this(ConfigurationHelper.getSystemThenEnvProperty(ShorthandProperties.CHRONICLE_DIR_PROP, ShorthandProperties.DEFAULT_CHRONICLE_DIR));
 	}
 	
+	/**
+	 * Writes a header record to the passed chronicle
+	 * @param chr The chronicle to write to
+	 */
 	protected void writeZeroRec(Chronicle chr) {
 		if(chr.size()==0) {
 			Excerpt ex = chr.createExcerpt();			
@@ -376,7 +377,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		}
 		SNAPSHOT_INDEX = new NonBlockingHashMap<String, Long>(1024);
 		UNLOADED_INDEX = new NonBlockingHashMap<String, Long>(1024);
-		padCache = System.getProperty(USE_POW2_ALLOC_PROP, "true").toLowerCase().trim().equals("true");
+		padCache = System.getProperty(ShorthandProperties.USE_POW2_ALLOC_PROP, ShorthandProperties.DEFAULT_USE_POW2_ALLOC).toLowerCase().trim().equals("true");
 		
 		try {
 			enumIndex = getIntChronicle(ENUM_INDEX);
@@ -397,7 +398,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			tier1Data.useUnsafe(true);
 			writeZeroRec(tier1Data);
 			log(printChronicleDetails(tier1Data));			
-			notificationBroadcaterSupport = new NotificationBroadcasterSupport(notificationProcessors, NOTIFS); 
+			notificationBroadcasterSupport = new NotificationBroadcasterSupport(notificationProcessors, NOTIFS); 
 			JMXHelper.registerMBean(this, OBJECT_NAME);			
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
@@ -422,6 +423,11 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		
 	}
 	
+	/**
+	 * Returns a string providing some details on the passed chronicle
+	 * @param chronicle The chronicle to print details for
+	 * @return the chronicle details message
+	 */
 	protected String printChronicleDetails(IndexedChronicle chronicle) {
 		return String.format("[%s] Chronicle Created.\n\tUsing Unsafe:%s\n\tSynchronous:%s\n\tMultithreaded:%s\n\tSize (bytes):%s\n\tSize (entries):%s",
 				chronicle.name(), chronicle.useUnsafe(), chronicle.synchronousMode(), chronicle.multiThreaded(), chronicle.sizeInBytes(), chronicle.size() 
@@ -429,11 +435,15 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	}
 
 	
+	/**
+	 * Loads all enums from the enum chronicle
+	 */
 	protected void cacheEnums() {
 		int index = 1;
 		int loaded = 0;
 		while(enumIndexEx.index(index)) {
 			String className = enumIndexEx.readByteString();
+			@SuppressWarnings("unchecked")
 			Class<T> type = (Class<T>) EnumCollectors.getInstance().typeForName(className);
 			ENUM_CACHE.put(type, index);
 			loaded++; index++;
@@ -447,6 +457,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * @return the enum chronicle index
 	 */
 	protected int getEnum(String collectorClassName) {
+		@SuppressWarnings("unchecked")
 		Class<T> collectorClass = (Class<T>) EnumCollectors.getInstance().typeForName(collectorClassName);
 		int index = ENUM_CACHE.get(collectorClass);
 		if(index==-1) {
@@ -492,7 +503,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * Acquires the named chronicle
 	 * @param name The name of the chronicle
 	 * @return the named chronicle
-	 * @throws IOException
+	 * @throws IOException An exception occured creating or opening the chronicle
 	 */
 	protected IndexedChronicle getChronicle(String name) throws IOException {
 		return new IndexedChronicle(dataDir.getAbsolutePath() + File.separator + name, 1, ByteOrder.nativeOrder(), true, false);
@@ -502,12 +513,16 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * Acquires the named int chronicle
 	 * @param name The name of the chronicle
 	 * @return the named chronicle
-	 * @throws IOException
+	 * @throws IOException An exception occured creating or opening the chronicle
 	 */
 	protected IntIndexedChronicle getIntChronicle(String name) throws IOException {
 		return new IntIndexedChronicle(dataDir.getAbsolutePath() + File.separator + name, 1, ByteOrder.nativeOrder());
 	}	
 	
+	/**
+	 * Marks a name index chronicle entry as deleted.
+	 * @param index The index to mark deleted
+	 */
 	protected void markNameIndexDeleted(long index) {
 		final long cindex = nameIndexEx.index();
 		final int cpos = nameIndexEx.position();
@@ -523,11 +538,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	}
 
 	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#loadSnapshotNameIndex(java.util.concurrent.ConcurrentHashMap)
+	 * Loads the unloaded name index on startup
 	 */
-	@Override
-	public void loadSnapshotNameIndex() {
+	protected void loadSnapshotNameIndex() {
 		log("Loading NameIndex....");
 		long index = 1;
 		while(nameIndexEx.index(index)) {
@@ -554,18 +567,27 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		}
 	}
 
+	/**
+	 * <p>Closes the chronicles on finalization</p>
+	 * {@inheritDoc}
+	 * @see java.lang.Object#finalize()
+	 */
 	@Override
 	public void finalize() throws Throwable {		
+		try { enumIndex.close(); } catch (Exception ex) {}
 		try { nameIndex.close(); } catch (Exception ex) {}
+		try { tier1Data.close(); } catch (Exception ex) {}
 		super.finalize();
 	}
 	
 	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#newMetricName(java.lang.String, int, int)
+	 * Creates a new metric name
+	 * @param metricName The metric name
+	 * @param enumIndex The enum collector index
+	 * @param bitMask The enabled metric bitmask
+	 * @return the name index
 	 */
-	@Override
-	public long newMetricName(String metricName, int enumIndex, int bitMask) {
+	protected long newMetricName(String metricName, int enumIndex, int bitMask) {
 		final long start = System.nanoTime();
 		long index = ChronicleOffset.writeNewNameIndex(enumIndex, bitMask, metricName);
 		newMetricTimes.insert(System.nanoTime()-start);		
@@ -576,6 +598,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * {@inheritDoc}
 	 * @see com.heliosapm.shorthand.store.IStore#cacheMetricAddress(java.lang.String, long)
 	 */
+	@Override
 	public void cacheMetricAddress(String metricName, long address) {
 		SNAPSHOT_INDEX.put(metricName, address);
 	}
@@ -663,18 +686,20 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	}
 	
 
+
 	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#getMetricAddress(java.lang.String, com.heliosapm.shorthand.collectors.CollectorSet)
+	 * Returns an indirect address reference of a mem-space allocated for the passed metric name
+	 * @param metricName The metric name
+	 * @param collectorSet The collector set
+	 * @return the address
 	 */
-	@Override
-	public long[] getMetricAddress(String metricName, CollectorSet<T> collectorSet) {
-		long[] metricRef = new long[2];
+	protected long getMetricAddress(String metricName, CollectorSet<T> collectorSet) {		
 		Long address = SNAPSHOT_INDEX.get(metricName);
 		if(address==null) address = UNLOADED_INDEX.get(metricName);
 		if(address==null || address <0) {
 			synchronized(SNAPSHOT_INDEX) {
 				address = SNAPSHOT_INDEX.get(metricName);
+				if(address==null) address = UNLOADED_INDEX.get(metricName);
 				if(address==null || address <0) {
 					int requestedMem = (int)(collectorSet.getTotalAllocation());
 					int memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
@@ -687,48 +712,48 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 						unloaded = true;
 					}
 					address = UnsafeAdapter.allocateMemory(memSize);
-					metricRef[1] = address;
 					MemSpaceAccessor.get(address).initializeHeader(memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
 					MemSpaceAccessor.get(address).reset();
-					long memSpaceRef = UnsafeAdapter.allocateMemory(UnsafeAdapter.LONG_SIZE * 2);
-					metricRef[0] = memSpaceRef; 
+					long memSpaceRef = UnsafeAdapter.allocateMemory(UnsafeAdapter.LONG_SIZE * 2);					
 					UnsafeAdapter.putLong(memSpaceRef, 0);
 					UnsafeAdapter.putLong(memSpaceRef + UnsafeAdapter.LONG_SIZE, address);
+					address = memSpaceRef;
 					SNAPSHOT_INDEX.put(metricName, memSpaceRef);
 					if(unloaded) UNLOADED_INDEX.remove(metricName);					
 				}
 			}
-		} else {
-			// CHECK FOR INVALIDATED HERE.
-			
-			metricRef[0] = address;
-			metricRef[1] = UnsafeAdapter.getLong(address + UnsafeAdapter.LONG_SIZE);
-			if(metricRef[1]==-1L) {
-				SNAPSHOT_INDEX.remove(metricName);
-				return getMetricAddress(metricName, collectorSet);
-			}
-			lock(address);
-			return metricRef;
 		}
-		lock(metricRef[0]);
-		return metricRef;
+		return address;
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.IStore#doSnap(java.lang.String, com.heliosapm.shorthand.collectors.CollectorSet, long[])
+	 */
+	@Override
 	public void doSnap(String metricName, CollectorSet<T> collectorSet, long...collectedValues) {
-		Long address = SNAPSHOT_INDEX.get(metricName);
-		if(address==null) address = UNLOADED_INDEX.get(metricName);
-		if(address==null || address <0) {
-			synchronized(SNAPSHOT_INDEX) {
-				address = SNAPSHOT_INDEX.get(metricName);
-				if(address==null || address <0) {
-					
-				}
+		long address = getMetricAddress(metricName, collectorSet);
+		long ref = -1L;
+		try {
+			ref = lock(address);
+			@SuppressWarnings("unchecked")
+			MemSpaceAccessor<T> msa = MemSpaceAccessor.get(ref);
+			if(msa.isInvalidated()) {
+				msa.delete(address);
+				ref = -1L;
+				SNAPSHOT_INDEX.remove(metricName);
+				doSnap(metricName, collectorSet, collectedValues);
+				return;
+			}
+			collectorSet.put(ref, collectedValues);
+		} finally {
+			if(ref!=-1L) {
+				unlock(address);
 			}
 		}
-				}
 	}
 		
-	protected final NonBlockingHashMapLong<String> untouched = new NonBlockingHashMapLong<String>();
+	
 
 	/**
 	 * {@inheritDoc}
@@ -744,28 +769,30 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 //			long address = -1L;
 			bufferCount = SNAPSHOT_INDEX.size();
 			log("Processing Period Update for [%s] Store Name Index Values", bufferCount);
+			@SuppressWarnings("unchecked")
 			MemSpaceAccessor<T> msa = MemSpaceAccessor.get(-1L);
 			// =========================================================================
 			// Phase 1 Flush
 			// =========================================================================
 			final long startTime = System.nanoTime();
 			dirtyKeys = new LongSortedSet(SNAPSHOT_INDEX.size());
-			//TLongHashSet dirtyKeys = new TLongHashSet(SNAPSHOT_INDEX.size()); 			
-						
 			for(String metricName: SNAPSHOT_INDEX.keySet()) {
 				long address = SNAPSHOT_INDEX.get(metricName);
 				// =========================================================================
 				long ref = lockNoYield(address);
+				//log("Locked address for [%s] [%s]", metricName, ref);
 				msa.setAddress(ref);
 				if(msa.isInvalidated()) {
-					log("Clearing Invalid Metric Ref [%s]", metricName);
+					//log("Clearing Invalid Metric Ref [%s]", metricName);
 					SNAPSHOT_INDEX.remove(metricName);
-					msa.delete();
+					msa.delete(address);
+					bufferCount--;
 					continue;
 				}
 				if(!msa.isTouched()) {
+					//log("Pending stale for Metric Ref [%s]", metricName);
 					untouched.put(address, metricName);
-					unlock(address);					
+					bufferCount--;	
 					continue;					
 				}
 				dirtyKeys.add(ref);
@@ -774,7 +801,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			}
 			long elapsed = System.nanoTime()-startTime;
 			this.firstPhaseFlushTimes.insert(elapsed);
-			log(StringHelper.reportTimes("First Phase Flush Elapsed Time", elapsed));
+			log(StringHelper.reportTimes("First Phase Flush [" + bufferCount + "], Elapsed Time", elapsed));
 			// =========================================================================
 			// Phase 2 Flush
 			// =========================================================================
@@ -883,28 +910,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 */
 	
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#release(long)
-	 */
-	@Override
-	public boolean release(long address) {
-		// this means an accumulator thread acquired a lock on an invalidated mem-space.
-		if(deAllocateDirtyMemSpace(address)) {
-			releaseCount.incrementAndGet();
-			return true;
-		}
-		return false;
-	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getReleaseCount()
-	 */
-	@Override
-	public long getReleaseCount() {
-		return releaseCount.get();
-	}
 	
 	
 	
@@ -919,34 +925,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	
 	
 
-	/**
-	 * Writes a new metric data slot
-	 * @param nameIndex The name index of the parent name
-	 * @param enumIndex The metric enum collector index
-	 * @param subCount The number of sub values
-	 * @return the index of the slot
-	 */
-	public long newTier1Entry(long nameIndex, int enumIndex, int subCount) {
-		Excerpt ex = tier1Data.createExcerpt();
-		int size = (int) (TIER_1_SIZE + (subCount*UnsafeAdapter.LONG_SIZE));
-		ex.startExcerpt(size);
-		ex.writeByte(0);				// the lock 1
-		ex.writeByte(0);				// the delete indicator 1
-		ex.writeLong(nameIndex);		// the name index  8
-		ex.writeInt(enumIndex);			// the enum index  (i.e. the ordinal) 4
-		ex.writeInt(subCount);			// the sub count 4
-		for(int i = 0; i < subCount; i++) {
-			ex.writeLong(-1L);			// the sub value slot
-		}
-		ex.finish();
-		long index = ex.index();
-		ex.close();
-		return index;
-		
-	}
-	
-
-	
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.shorthand.store.ChronicleStoreMBean#getEnumCollectorCount()
@@ -1026,8 +1004,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * @param address The address reference of the lock
 	 * @return the actual address of the mem-space
 	 */
-	@Override
-	public long lock(long address) {
+	protected long lock(long address) {
 		long id = Thread.currentThread().getId();
 		if(UnsafeAdapter.getLong(address)!=id) {
 			while(!UnsafeAdapter.compareAndSwapLong(null, address, UNLOCKED, id)) {
@@ -1037,16 +1014,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		return UnsafeAdapter.getLong(address + UnsafeAdapter.LONG_SIZE);
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#unlockIfHeld(long)
-	 */
-	@Override
-	public void unlockIfHeld(long address) {
-		if(UnsafeAdapter.getLong(address)==Thread.currentThread().getId()) {
-			unlock(address);
-		}
-	}
 	
 	/**
 	 * Acquires the passed address reference with no yielding
@@ -1066,10 +1033,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	
 	/**
 	 * Unlocks the passed address
-	 * @param address The address of the lock
+	 * @param address the address to unlock
 	 */
-	@Override
-	public void unlock(long address) {		
+	protected void unlock(long address) {		
 		if(!UnsafeAdapter.compareAndSwapLong(null, address, Thread.currentThread().getId(), UNLOCKED)) {			
 			System.err.println("[" + Thread.currentThread().toString() + "] Yikes! Tried to unlock, but was not locked.Expected " +  Thread.currentThread().getId());
 			new Throwable().printStackTrace(System.err);
@@ -1081,7 +1047,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * This will lock out all other threads while it is held, so it should be used sparingly and released quickly.
 	 * Intended for period flushes or data exports.
 	 */
-	private void globalLockNoYield() {
+	protected void globalLockNoYield() {
 		long id = Thread.currentThread().getId();
 		int loops = 0;
 		while(!UnsafeAdapter.compareAndSwapLong(null, globalLockAddress, UNLOCKED, id)) {			
@@ -1176,55 +1142,63 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 
 
 	/**
-	 * @param listener
-	 * @param filter
-	 * @param handback
+	 * Adds a listener. 
+	 * @param listener The listener to receive notifications.
+	 * @param filter The filter object. If filter is null, no filtering will be performed before handling notifications.
+	 * @param handback An opaque object to be sent back to the listener when a notification is emitted. This object cannot be used by the Notification broadcaster object. It should be resent unchanged with the notification to the listener.
 	 * @see javax.management.NotificationBroadcasterSupport#addNotificationListener(javax.management.NotificationListener, javax.management.NotificationFilter, java.lang.Object)
 	 */
+	@Override
 	public void addNotificationListener(NotificationListener listener, NotificationFilter filter, Object handback) {
-		notificationBroadcaterSupport.addNotificationListener(listener, filter, handback);
+		notificationBroadcasterSupport.addNotificationListener(listener, filter, handback);
 	}
 
 
 
 	/**
-	 * @param listener
-	 * @throws ListenerNotFoundException
+	 * Removes a listener from this MBean. 
+	 * @param listener A listener that was previously added to this MBean.
+	 * @throws ListenerNotFoundException The listener is not registered with the MBean.
 	 * @see javax.management.NotificationBroadcasterSupport#removeNotificationListener(javax.management.NotificationListener)
 	 */
+	@Override
 	public void removeNotificationListener(NotificationListener listener) throws ListenerNotFoundException {
-		notificationBroadcaterSupport.removeNotificationListener(listener);
+		notificationBroadcasterSupport.removeNotificationListener(listener);
 	}
 
 	/**
-	 * @param listener
-	 * @param filter
-	 * @param handback
-	 * @throws ListenerNotFoundException
+	 * Unsubscribes a notification listener
+	 * @param listener A listener that was previously added to this MBean.
+	 * @param filter The filter that was specified when the listener was added. 
+	 * @param handback The handback that was specified when the listener was added. 
+	 * @throws ListenerNotFoundException The listener is not registered with the MBean, or it is not registered with the given filter and handback.
 	 * @see javax.management.NotificationBroadcasterSupport#removeNotificationListener(javax.management.NotificationListener, javax.management.NotificationFilter, java.lang.Object)
 	 */ 
 	public void removeNotificationListener(NotificationListener listener, NotificationFilter filter, Object handback) throws ListenerNotFoundException {
-		notificationBroadcaterSupport.removeNotificationListener(listener, filter, handback);
+		notificationBroadcasterSupport.removeNotificationListener(listener, filter, handback);
 	}
 
 
 
 	/**
-	 * @return
+	 * Returns the JMX notification meta-data describing notifications emitted by this service
+	 * @return the JMX notification meta-data
 	 * @see javax.management.NotificationBroadcasterSupport#getNotificationInfo()
 	 */
+	@Override
 	public MBeanNotificationInfo[] getNotificationInfo() {
-		return notificationBroadcaterSupport.getNotificationInfo();
+		return notificationBroadcasterSupport.getNotificationInfo();
 	}
 
 
 
 	/**
-	 * @param notification
+	 * Sends a JMX notification
+	 * @param notification The notification to send
 	 * @see javax.management.NotificationBroadcasterSupport#sendNotification(javax.management.Notification)
 	 */
 	public void sendNotification(Notification notification) {
-		notificationBroadcaterSupport.sendNotification(notification);
+		notificationBroadcasterSupport.sendNotification(notification);
 	}
 
 	
