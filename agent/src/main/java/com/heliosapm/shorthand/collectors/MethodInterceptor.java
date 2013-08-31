@@ -33,9 +33,8 @@ import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
  * <p>Description: An {@link ICollector} that collects a set of metrics about method invocations</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.instrumentor.helper.MethodInterceptor</code></p>
+ * <p><code>com.heliosapm.shorthand.collectors.MethodInterceptor</code></p>
  */
-
 public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	/** The elapsed system cpu time in microseconds */
 	SYS_CPU(seed.next(), false, true, "CPU Time (\u00b5s)", "syscpu", "CPU Thread Execution Time", new DefaultSysCpuMeasurer(0), DataStruct.getInstance(Primitive.LONG, 3, Long.MAX_VALUE, Long.MIN_VALUE, -1L), "Min", "Max", "Avg"),

@@ -3,7 +3,6 @@
  */
 package com.heliosapm.shorthand.collectors.measurers;
 
-import com.heliosapm.shorthand.instrumentor.helper.MetricCollection;
 
 
 /**
@@ -30,14 +29,7 @@ public abstract class AbstractMeasurer implements Measurer {
 		this.bitMask = metricOrdinal<0 ? -1 : POWS_OF_TWO[metricOrdinal];
 	} 
 	
-	/**
-	 * {@inheritDoc}
-	 * @see java.lang.Object#toString()
-	 */
-	@Override
-	public String toString() {
-		return new StringBuilder(getClass().getSimpleName()).append("[").append(MetricCollection.ord(metricOrdinal).name()).append("]").toString();
-	}
+
 	
 	/**
 	 * {@inheritDoc}

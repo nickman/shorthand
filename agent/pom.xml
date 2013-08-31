@@ -8,7 +8,7 @@
     <groupId>com.heliosapm.shorthand</groupId>
     <artifactId>agent</artifactId>
     <version>1.0-SNAPSHOT</version>    
-    <name>shorthand</name>
+    <name>shorthand-agent</name>
     <packaging>jar</packaging>
     <description>The shorthand agent and instrumentor</description>
 
@@ -18,6 +18,12 @@
 	  <groupId>junit</groupId>
 	  <artifactId>junit</artifactId>
 	</dependency>
+	<dependency>
+	  <groupId>com.heliosapm.shorthand</groupId>
+	  <artifactId>attach</artifactId>
+	  <version>${project.version}</version>
+	</dependency>
+	
 	<dependency>
 	  <groupId>org.reflections</groupId>
 	  <artifactId>reflections</artifactId>

@@ -73,6 +73,19 @@ public class ShorthandProperties {
 	/** The system property that defines the shorthand stale period in ms. which is the elapsed time in which a metric is considered stale with no activity */
 	public static final String DEFAULT_PUBLISH_JMX = MetricJMXPublishOption.DATA.name();
 	
+	/** The system property that defines a comma separated package list where enum collector classes are located */
+	public static final String ENUM_COLLECTOR_PACKAGES_PROP = "shorthand.metrics.publish";
+	/** The base package list where enum collector classes are located */
+	public static final String BASE_ENUM_COLLECTOR_PACKAGES = "com.heliosapm.shorthand.collectors";
+
+	
+	
+	/** The name of the class that will provide the instrumentation instance if we don't boot with this as the java-agent */
+	public static final String AGENT_PROVIDER_CLASS_PROP = "shorthand.instrumentation.provider";
+	/** The name of the field in the agent provider that will provide the instrumentation instance if we don't boot with this as the java-agent */
+	public static final String AGENT_PROVIDER_FIELD = "shorthand.instrumentation.field";
+	/** The name of the attribute in the agent provider that will provide the instrumentation instance if we don't boot with this as the java-agent */
+	public static final String AGENT_PROVIDER_ATTRIBUTE = "shorthand.instrumentation.attribute";
 
     
 }

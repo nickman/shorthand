@@ -23,11 +23,10 @@ import javax.xml.crypto.dsig.Transform;
 
 import org.cliffc.high_scale_lib.Counter;
 
+import com.heliosapm.shorthand.instrumentor.helper.ShorthandHelperManager;
+import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandDirectiveRepository;
 import com.heliosapm.shorthand.util.StringPrintWriter;
 import com.heliosapm.shorthand.util.URLHelper;
-/**
- * Helios Development Group LLC, 2010
- */
 
 
 
@@ -44,8 +43,8 @@ public class InstrumentationAgent implements  InstrumentationAgentMBean {
 	/** The byteman retransformer */
 	protected ShorthandRetransformer retransformer = null;
 	
-	/** The byteman script repository */
-	protected ScriptRepository scriptRepository = null;
+	/** The shorthand script repository */
+	protected ShorthandDirectiveRepository scriptRepository = null;
 	
 	/** The helper manager */
 	protected final ShorthandHelperManager helperManager;
@@ -54,7 +53,7 @@ public class InstrumentationAgent implements  InstrumentationAgentMBean {
 	
 	
 	/** The name of the class that will provide the instrumentation instance if we don't boot with this as the java-agent */
-	public static final String AGENT_PROVIDER_CLASS = "org.jboss.aop.standalone.PluggableInstrumentor";
+	public static final String AGENT_PROVIDER_CLASS_PROP = "org.jboss.aop.standalone.PluggableInstrumentor";
 	/** The name of the field in the agent provider that will provide the instrumentation instance if we don't boot with this as the java-agent */
 	public static final String AGENT_PROVIDER_FIELD = "instrumentor";
 	

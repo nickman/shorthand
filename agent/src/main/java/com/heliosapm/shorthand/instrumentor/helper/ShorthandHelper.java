@@ -104,26 +104,26 @@ public class ShorthandHelper {
     	log("-------------------->after Rule Exec"); 
     }
 	
-	public long[] snapshot(int bitMask, String classSignature, String methodSignature) {
-		String key = String.format("%s.%s", classSignature, methodSignature);
-		log("-------------------->snapshot(" + bitMask + ",\"" + key + "\")");
-		long[] snapshot = MetricCollection.baseline(bitMask, -1L);
-		threadCounter.get().put(key, snapshot);
-		return null;
-	}
+//	public long[] snapshot(int bitMask, String classSignature, String methodSignature) {
+//		String key = String.format("%s.%s", classSignature, methodSignature);
+//		log("-------------------->snapshot(" + bitMask + ",\"" + key + "\")");
+//		long[] snapshot = MetricCollection.baseline(bitMask, -1L);
+//		threadCounter.get().put(key, snapshot);
+//		return null;
+//	}
+//	
+//	public long[] resolve(String metricName, String classSignature, String methodSignature, Object...args) {
+//		String key = String.format("%s.%s", classSignature, methodSignature);
+//		long[] baseline = threadCounter.get().get(key);
+//		long[] snapshot = MetricCollection.baseline(baseline);
+//		log("####################\nREPORT:" + MetricCollection.report(snapshot));
+//		log("-------------------->resolve(" + metricName + ",\"" + key + "\"," + Arrays.toString(args) + ")");
+//		return null;
+//	}
 	
-	public long[] resolve(String metricName, String classSignature, String methodSignature, Object...args) {
-		String key = String.format("%s.%s", classSignature, methodSignature);
-		long[] baseline = threadCounter.get().get(key);
-		long[] snapshot = MetricCollection.baseline(baseline);
-		log("####################\nREPORT:" + MetricCollection.report(snapshot));
-		log("-------------------->resolve(" + metricName + ",\"" + key + "\"," + Arrays.toString(args) + ")");
-		return null;
-	}
-	
-	public long[] resolve(String metricName, String classSignature, String methodSignature) {		
-		return resolve(metricName, classSignature, methodSignature,  EMPTY_ARGS);
-	}
+//	public long[] resolve(String metricName, String classSignature, String methodSignature) {		
+//		return resolve(metricName, classSignature, methodSignature,  EMPTY_ARGS);
+//	}
 	
 	
 	public long[] handleException(String metricName, String classSignature, String methodSignature, Object...args) {

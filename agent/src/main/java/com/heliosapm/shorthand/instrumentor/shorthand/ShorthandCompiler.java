@@ -8,9 +8,6 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.heliosapm.shorthand.collectors.ICollector;
-import com.heliosapm.shorthand.instrumentor.helper.MetricCollection;
-
 /**
  * <p>Title: ShorthandCompiler</p>
  * <p>Description: A byteman script shorthand compiler</p> 
@@ -324,19 +321,19 @@ Match on [java.lang.Object+ (pub,pri) equals(Object) [3] 'java/lang/Object']
 	 */
 	public static int resolveBitMask(String bitmaskStr) throws ShorthandInvalidBitMaskException {
 		try {
-			if(bitmaskStr==null || bitmaskStr.isEmpty()) return MetricCollection.getDefaultBitMask();
-			if("*".equalsIgnoreCase(bitmaskStr.trim())) return MetricCollection.getAllEnabledBitMask();
-			if(isNumber(bitmaskStr)) return Integer.parseInt(bitmaskStr);
-			if(bitmaskStr.indexOf(',')!=-1) {
-				try {
-					return MetricCollection.enableFor((Object[])COMMA_SPLITTER.split(bitmaskStr));
-				} catch (Exception ex) {
-					throw new ShorthandInvalidBitMaskException("Invalid bitmask", bitmaskStr, ex);
-				}
-			} 
-//			ICollector mc = MetricCollection.forValueOrNull(bitmaskStr);
-//			if(mc!=null) return mc.getMask();
-//			throw new ShorthandInvalidBitMaskException("Invalid bitmask", bitmaskStr);
+//			if(bitmaskStr==null || bitmaskStr.isEmpty()) return MetricCollection.getDefaultBitMask();
+//			if("*".equalsIgnoreCase(bitmaskStr.trim())) return MetricCollection.getAllEnabledBitMask();
+//			if(isNumber(bitmaskStr)) return Integer.parseInt(bitmaskStr);
+//			if(bitmaskStr.indexOf(',')!=-1) {
+//				try {
+//					return MetricCollection.enableFor((Object[])COMMA_SPLITTER.split(bitmaskStr));
+//				} catch (Exception ex) {
+//					throw new ShorthandInvalidBitMaskException("Invalid bitmask", bitmaskStr, ex);
+//				}
+//			} 
+////			ICollector mc = MetricCollection.forValueOrNull(bitmaskStr);
+////			if(mc!=null) return mc.getMask();
+////			throw new ShorthandInvalidBitMaskException("Invalid bitmask", bitmaskStr);
 			return -1;
 		} catch (Exception ex) {
 			throw new ShorthandInvalidBitMaskException("Unexpected error interpreting bitmask", bitmaskStr, ex);
