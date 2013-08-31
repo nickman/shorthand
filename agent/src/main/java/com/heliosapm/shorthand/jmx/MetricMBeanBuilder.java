@@ -24,6 +24,7 @@
  */
 package com.heliosapm.shorthand.jmx;
 
+import java.io.File;
 import java.lang.reflect.Constructor;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,6 +36,7 @@ import javassist.CtConstructor;
 import javassist.CtField;
 import javassist.CtMethod;
 import javassist.CtNewConstructor;
+import javassist.Modifier;
 
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
@@ -146,7 +148,7 @@ public class MetricMBeanBuilder {
 			
 			CtClass clazz = cp.makeClass("PublishedMetric_" + collectorName + "_" + bitMask, pmSuper);		
 			CtClass clazzIface = cp.makeInterface("PublishedMetric_" + collectorName + "_" + bitMask + "MBean", pmIface);
-			clazz.addField(new CtField(longArrClazz, "dataIndexes", clazz));
+//			clazz.addField(new CtField(longArrClazz, "dataIndexes", clazz));
 			CtConstructor ctor = CtNewConstructor.copy(pmSuper.getDeclaredConstructor(new CtClass[]{CtClass.longType}), clazz, null);
 			clazz.addConstructor(ctor);
 			ctor.setBody("{ super($1); }");
@@ -156,7 +158,8 @@ public class MetricMBeanBuilder {
 				String[] subNames = collector.getSubMetricNames();				
 				if(subNames.length==1) {
 					methodName = String.format("get%s",  StringHelper.initCap(collector.getShortName()));									
-					implCode.clear().appendFmt("{return ChronicleDataOffset.getDataPoint(dataIndexes[%s], 0, dataEx);}", dataIndex);
+					implCode.clear().appendFmt("{long id = dataIndexes[%s]; dataEx.index(id);  return ChronicleDataOffset.getDataPoint(dataIndexes[%s], 0, dataEx);}", dataIndex, dataIndex);
+//					implCode.clear().appendFmt("{dataEx.index(dataIndexes[%s]);  return ChronicleDataOffset.getDataPoint(dataIndexes[%s], 0, dataEx);}", dataIndex, dataIndex);
 					log("[%s]  %s", methodName, implCode);
 					clazzIface.addMethod(new CtMethod(CtClass.longType, methodName, EMPTY_SIG, clazzIface));
 					CtMethod implGetter = new CtMethod(CtClass.longType, methodName, EMPTY_SIG, clazz);
@@ -166,7 +169,8 @@ public class MetricMBeanBuilder {
 					int dataPointIndex = 0;
 					for(String subMetricName: subNames) {
 						methodName = String.format("get%s%s",  StringHelper.initCap(collector.getShortName()), subMetricName);
-						implCode.clear().appendFmt("{return ChronicleDataOffset.getDataPoint(dataIndexes[%s], %s, dataEx);}", dataIndex, dataPointIndex);
+						implCode.clear().appendFmt("{long id = dataIndexes[%s]; dataEx.index(id); return ChronicleDataOffset.getDataPoint(dataIndexes[%s], %s, dataEx);}", dataIndex, dataIndex, dataPointIndex);
+//						implCode.clear().appendFmt("{dataEx.index(dataIndexes[%s]); return ChronicleDataOffset.getDataPoint(dataIndexes[%s], %s, dataEx);}", dataIndex, dataIndex, dataPointIndex);
 						log("[%s]  %s", methodName, implCode);
 						clazzIface.addMethod(new CtMethod(CtClass.longType, methodName, EMPTY_SIG, clazzIface));
 						CtMethod implGetter = new CtMethod(CtClass.longType, methodName, EMPTY_SIG, clazz);
@@ -179,6 +183,11 @@ public class MetricMBeanBuilder {
 				 
 			}
 			clazz.addInterface(clazzIface);
+			//clazzIface.setModifiers(clazzIface.getModifiers() & ~Modifier.ABSTRACT);
+			clazz.setModifiers(clazz.getModifiers() & ~Modifier.ABSTRACT);
+			clazzIface.writeFile(System.getProperty("java.io.tmpdir") + File.separator + "js");
+			clazz.writeFile(System.getProperty("java.io.tmpdir") + File.separator + "js");
+			
 			clazzIface.toClass();
 			return clazz.toClass();
 		} catch (Exception ex) {

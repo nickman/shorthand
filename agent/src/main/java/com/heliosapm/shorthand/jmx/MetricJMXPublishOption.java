@@ -26,6 +26,7 @@ package com.heliosapm.shorthand.jmx;
 
 import javax.management.ObjectName;
 
+import com.heliosapm.shorthand.store.ChronicleOffset;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
 
 /**
@@ -42,7 +43,7 @@ public enum MetricJMXPublishOption {
 	/** An MBean representing the metric's name index details will be published  */
 	NAME(new NameMetricJMXPublisher()),
 	/** An MBean representing the metric's name index and details and live data will be published  */
-	DATA(new NameMetricJMXPublisher());
+	DATA(new DataMetricJMXPublisher());
 	
 	/** The default option */
 	public static final MetricJMXPublishOption DEFAULT = NONE;
@@ -121,10 +122,16 @@ public enum MetricJMXPublishOption {
 		 * {@inheritDoc}
 		 * @see com.heliosapm.shorthand.jmx.MetricJMXPublishOption.MetricJMXPublisher#publish(java.lang.String, long)
 		 */
+		@Override
 		public void publish(String metricName, long nameIndex) {
 			/* No Op */
 		}
 		
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.jmx.MetricJMXPublishOption.MetricJMXPublisher#unPublish(java.lang.String, long)
+		 */
+		@Override
 		public void unPublish(String metricName, long nameIndex) {
 			/* No Op */
 		}
@@ -142,18 +149,59 @@ public enum MetricJMXPublishOption {
 		 * {@inheritDoc}
 		 * @see com.heliosapm.shorthand.jmx.MetricJMXPublishOption.MetricJMXPublisher#publish(java.lang.String, long)
 		 */
+		@Override
 		public void publish(String metricName, long nameIndex) {
 			ObjectName on = JMXHelper.isObjectName(metricName) ? JMXHelper.objectName(metricName) :
 				JMXHelper.objectName("shorthand.metrics:name=%s", ObjectName.quote(metricName));
 			JMXHelper.registerMBean(new PublishedMetric(nameIndex), on);
 		}
 		
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.jmx.MetricJMXPublishOption.MetricJMXPublisher#unPublish(java.lang.String, long)
+		 */
+		@Override
 		public void unPublish(String metricName, long nameIndex) {
 			ObjectName on = JMXHelper.isObjectName(metricName) ? JMXHelper.objectName(metricName) :
 				JMXHelper.objectName("shorthand.metrics:name=%s", ObjectName.quote(metricName));
 			try { JMXHelper.unregisterMBean(on); } catch (Exception e) { /* No Op */ }
 		}
-				
 	}
+	
+	/**
+	 * <p>Title: NameMetricJMXPublisher</p>
+	 * <p>Description: Publsihes a name index details MBean</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.shorthand.jmx.MetricJMXPublishOption.NameMetricJMXPublisher</code></p>
+	 */
+	public static class DataMetricJMXPublisher implements MetricJMXPublisher {
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.jmx.MetricJMXPublishOption.MetricJMXPublisher#publish(java.lang.String, long)
+		 */
+		@Override
+		public void publish(String metricName, long nameIndex) {
+			ObjectName on = JMXHelper.isObjectName(metricName) ? JMXHelper.objectName(metricName) :
+				JMXHelper.objectName("shorthand.metrics:name=%s", ObjectName.quote(metricName));
+			PublishedMetric pm = MetricMBeanBuilder.getInstance().getPublishedMetricInstance(
+					(int)ChronicleOffset.EnumIndex.get(nameIndex), 
+					(int)ChronicleOffset.BitMask.get(nameIndex), 
+					nameIndex);
+			JMXHelper.registerMBean(pm, on);
+		}
+		
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.jmx.MetricJMXPublishOption.MetricJMXPublisher#unPublish(java.lang.String, long)
+		 */
+		@Override
+		public void unPublish(String metricName, long nameIndex) {
+			ObjectName on = JMXHelper.isObjectName(metricName) ? JMXHelper.objectName(metricName) :
+				JMXHelper.objectName("shorthand.metrics:name=%s", ObjectName.quote(metricName));
+			try { JMXHelper.unregisterMBean(on); } catch (Exception e) { /* No Op */ }
+		}
+	}
+	
 	
 }

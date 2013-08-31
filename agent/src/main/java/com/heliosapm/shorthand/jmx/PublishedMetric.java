@@ -98,6 +98,7 @@ public class PublishedMetric implements PublishedMetricMBean, MBeanRegistration 
 			nameEx = ChronicleStore.getInstance().getNameIndexExcerpt();
 			nameEx.index(nameIndex);
 			dataEx = ChronicleStore.getInstance().getDataIndexExcerpt();
+			dataIndexes = getDataIndexes();
 		}
 	}
 
@@ -228,6 +229,13 @@ public class PublishedMetric implements PublishedMetricMBean, MBeanRegistration 
 	public Date getPeriodEndDate() {
 		return new Date(ChronicleOffset.PeriodEnd.get(nameIndex, nameEx));
 	}
+	protected long[] dataIndexes = null;
 
-
+//	private long[] dataIndexes;
+//	
+//	public long getWaitsMin()
+//	  {
+//	    this.dataEx.index(this.dataIndexes[2]);
+//	    return ChronicleDataOffset.getDataPoint(this.dataIndexes[2], 0, this.dataEx);
+//	  }
 }
