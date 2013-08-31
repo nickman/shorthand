@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.ShorthandCompiler</code></p>
  * <h4><pre>
-		 <ClassName>[+] [(Method Attributes)] <MethodName>[<Signature>] [Invocation Options] [<BitMask>|<CollectionNames>] <MetricFormat> DISABLED
+		 <ClassName>[+] [(Method Attributes)] <MethodName>[<Signature>] [Invocation Options] <CollectorName>[<BitMask>|<CollectionNames>] <MetricFormat> DISABLED
 	</pre></h4>
  */
 
@@ -247,12 +247,12 @@ Match on [java.lang.Object+ (pub,pri) equals(Object) [3] 'java/lang/Object']
 			// ==================================================
 			
 			
-			ShorthandDirective sd = new ShorthandDirective(clazz.getName(), clazz.isInterface(),
-					inherrit, methodName, signature,
-					bitmask, metricExpression, "", false, false); 
+//			ShorthandDirective sd = new ShorthandDirective(clazz.getName(), clazz.isInterface(),
+//					inherrit, methodName, signature,
+//					bitmask, metricExpression, "", false, false); 
+//				
 				
-				
-				return sd;
+				return null;
 		} catch (Exception ex) {
 			throw new ShorthandException("Unexpected compilation error", (_source==null ? source.toString() : _source), ex);
 		}		

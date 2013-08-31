@@ -1,3 +1,7 @@
+/**
+ * Helios Development Group LLC, 2013
+ */
+
 package com.heliosapm.shorthand.instrumentor;
 
 import java.io.PrintWriter;
@@ -7,36 +11,35 @@ import java.util.List;
 import javassist.convert.Transformer;
 
 import com.heliosapm.shorthand.instrumentor.helper.ShorthandHelper;
+import com.heliosapm.shorthand.instrumentor.helper.ShorthandHelperManager;
+import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandDirective;
+import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandDirectiveRepository;
 import com.heliosapm.shorthand.util.StringPrintWriter;
 
-/**
- * Helios Development Group LLC, 2013
- */
 
 
 
 /**
  * <p>Title: ShorthandRetransformer</p>
- * <p>Description: Extended {@link Retransformer} to more simply expose internal functionality</p> 
+ * <p>Description: Manages the installation, removal and tracking of shorthand transforms</p> 
  * <p>Company: Helios Development Group LLC</p>
- * @author Whitehead 
- * <p><code>com.heliosapm.jmx.instrumentor.ShorthandRetransformer</code></p>
+ * @author Whitehead (nwhitehead AT heliosdev DOT org)
+ * <p><code>com.heliosapm.shorthand.instrumentor.ShorthandRetransformer</code></p>
  */
-
-public class ShorthandRetransformer { //extends Retransformer {
+public class ShorthandRetransformer { 
 	
+	/** The directive repository */
+	protected ShorthandDirectiveRepository directiveRepository;
+	/** The helper manager */
+	protected ShorthandHelperManager shorthandHelperManager;
+	
+
 	/**
 	 * Creates a new ShorthandRetransformer
-	 * @param inst
-	 * @param scriptPaths
-	 * @param scriptTexts
-	 * @param isRedefine
-	 * @throws Exception
+	 * @param inst The instrumentation instance
 	 */
-	public ShorthandRetransformer(Instrumentation inst, List<String> scriptPaths,
-			List<String> scriptTexts, boolean isRedefine) throws Exception {
-		super(inst, scriptPaths, scriptTexts, isRedefine);
-		iceHelperManager = new ShorthandHelperManager(inst);
+	public ShorthandRetransformer(Instrumentation inst) {
+		shorthandHelperManager = new ShorthandHelperManager(inst);
 	}
 
     /**
@@ -50,7 +53,7 @@ public class ShorthandRetransformer { //extends Retransformer {
      * @return the byte code of the transformed class
      */
 	@Override
-    public byte[] transform(RuleScript ruleScript, ClassLoader loader, String className, byte[] targetClassBytes)   {
+    public byte[] transform(ShorthandDirective directive, ClassLoader loader, String className, byte[] targetClassBytes)   {
         TransformContext transformContext = new TransformContext(this, ruleScript, className, loader, iceHelperManager);
         return transformContext.transform(targetClassBytes);
     }
@@ -100,29 +103,13 @@ public class ShorthandRetransformer { //extends Retransformer {
 		return super.isSkipClass(clazz);
 	}
 
-	/**
-	 * {@inheritDoc}
-	 * @see org.jboss.byteman.agent.Transformer#dumpScript(org.jboss.byteman.agent.RuleScript)
-	 */
-	@Override
-	public void dumpScript(RuleScript ruleScript) {
-		super.dumpScript(ruleScript);
-	}
 
-	/**
-	 * {@inheritDoc}
-	 * @see org.jboss.byteman.agent.Transformer#isBytemanClass(java.lang.String)
-	 */
-	@Override
-	public boolean isBytemanClass(String className) {
-		return super.isBytemanClass(className);
-	}
 	
 	/**
 	 * Returns the script repository for this retransformer
 	 * @return the script repository
 	 */	
-	public ScriptRepository getScriptRepository() {
+	public ShorthandDirectiveRepository getShorthandDirectiveRepository() {
 		return this.scriptRepository;
 	}
 	

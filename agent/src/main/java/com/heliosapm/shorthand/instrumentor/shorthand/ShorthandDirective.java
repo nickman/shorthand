@@ -4,6 +4,7 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand;
 
+
 /**
  * <p>Title: ShorthandDirective</p>
  * <p>Description: A type checked container for a compiled shorthand expression</p> 
@@ -11,60 +12,41 @@ package com.heliosapm.shorthand.instrumentor.shorthand;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.ShorthandDirective</code></p>
  * <pre>
- 		<ClassName>[+] <MethodName>[<Signature>] [<BitMask>|<CollectionNames>] <MetricFormat> DISABLED
+ 		<ClassName>[+] [(Method Attributes)] <MethodName>[<Signature>] [Invocation Options] <CollectorName>[<BitMask>|<CollectionNames>] <MetricFormat> DISABLED
  * </pre>
  */
 
 public class ShorthandDirective {
-	protected String className;
-	protected boolean iface;
-	protected boolean inherritance;
-	protected String methodName;
-	protected String methodSignature;
-	protected int bitMask;
-	protected String metricExpression;
-	protected String closeExpression;
-	protected boolean recursive;
-	protected boolean disabled;
-	
-	
 	
 	/**
-	 * Creates a new ShorthandDirective
-	 * @param className
-	 * @param iface
-	 * @param inherritance
-	 * @param methodName
-	 * @param methodSignature
-	 * @param bitMask
-	 * @param metricExpression
-	 * @param closeExpression 
-	 * @param recursive
-	 * @param disabled
+	 * Simple out formatted logger
+	 * @param fmt The format of the message
+	 * @param args The message arguments
 	 */
-	public ShorthandDirective(String className, boolean iface,
-			boolean inherritance, String methodName, String methodSignature,
-			int bitMask, String metricExpression, String closeExpression, boolean recursive, boolean disabled) {
-		super();
-		this.className = className;
-		this.iface = iface;
-		this.inherritance = inherritance;
-		this.methodName = methodName;
-		this.methodSignature = methodSignature;
-		this.bitMask = bitMask;
-		this.metricExpression = metricExpression;
-		this.closeExpression = closeExpression;
-		this.recursive = recursive;
-		this.disabled = disabled;
+	public static void log(String fmt, Object...args) {
+		System.out.println(String.format(fmt, args));
 	}
-
-
-
+	
 	/**
-	 * Creates a new ShorthandDirective
+	 * Simple err formatted logger
+	 * @param fmt The format of the message
+	 * @param args The message arguments
 	 */
-	public ShorthandDirective() {
-		// TODO Auto-generated constructor stub
+	public static void loge(String fmt, Object...args) {
+		System.err.println(String.format(fmt, args));
 	}
+	
+	/**
+	 * Simple err formatted logger
+	 * @param fmt The format of the message
+	 * @param t The throwable to print stack trace for
+	 * @param args The message arguments
+	 */
+	public static void loge(String fmt, Throwable t, Object...args) {
+		System.err.println(String.format(fmt, args));
+		t.printStackTrace(System.err);
+	}
+	
+
 
 }

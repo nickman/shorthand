@@ -60,21 +60,6 @@ public class InstrumentationAgent implements  InstrumentationAgentMBean {
 	/** Constant empty list */
 	private static final List<String> EMPTY_STR_LIST = Collections.unmodifiableList(new ArrayList<String>(0));
 	
-	private static final Map<Object, Counter> synchCounterMap;
-	
-	static {
-		System.setProperty("org.jboss.byteman.sysprops.strict", "false");
-		System.setProperty("org.jboss.byteman.allow.config.update", "true");
-		System.setProperty("org.jboss.byteman.transform.all", "true");
-		try {
-			 //private static HashMap<Object, Counter> counterMap = new HashMap<Object, Counter>();
-			Field f = Helper.class.getDeclaredField("counterMap");
-			f.setAccessible(true);
-			synchCounterMap = (HashMap<Object, Counter>)f.get(null);			
-		} catch (Exception ex) {
-			throw new RuntimeException(ex);
-		}
-	}
 	
 	/**
 	 * Creates a new InstrumentationAgent

@@ -6,13 +6,13 @@ package com.heliosapm.shorthand.instrumentor.shorthand;
 
 /**
  * <p>Title: ShorthandException</p>
- * <p>Description: </p> 
+ * <p>Description: The base shorthand exception class</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.ShorthandException</code></p>
  */
 
-public class ShorthandException extends Exception {
+public class ShorthandException extends RuntimeException {
 	/**  */
 	private static final long serialVersionUID = -3505318391749927410L;
 	/** The failed expression */

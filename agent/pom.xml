@@ -48,6 +48,11 @@
 	  <groupId>org.jvnet.opendmk</groupId>
 	  <artifactId>jmxremote_optional</artifactId>
 	</dependency>
+	<dependency>
+	  <groupId>com.google.code.gson</groupId>
+	  <artifactId>gson</artifactId>
+	</dependency>
+	
 	
       
     </dependencies>
