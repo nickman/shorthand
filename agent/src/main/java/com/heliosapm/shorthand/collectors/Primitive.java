@@ -10,13 +10,17 @@ import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
  * <p>Title: Primitive</p>
- * <p>Description: A simple enum of all primitive numerics</p> 
+ * <p>Description: A simple enum of all primitive</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.collectors.Primitive</code></p>
  */
 
 public enum Primitive {
+	/** A void (not really a primitive) */
+	VOID(8, Void.TYPE, Void.class),	
+	/** A boolean primitive */
+	BOOLEAN(8, Boolean.TYPE, Boolean.class),
 	/** A byte primitive */
 	BYTE(Byte.SIZE, Byte.TYPE, Byte.class),
 	/** A short primitive */
