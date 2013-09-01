@@ -24,10 +24,17 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand;
 
+import java.io.File;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.regex.Pattern;
+
+import javax.management.ObjectName;
 
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
@@ -38,6 +45,8 @@ import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 import com.heliosapm.shorthand.ShorthandProperties;
 import com.heliosapm.shorthand.instrumentor.shorthand.gson.GsonProvider;
+import com.heliosapm.shorthand.util.URLHelper;
+import com.heliosapm.shorthand.util.jmx.JMXHelper;
 
 /**
  * <p>Title: ShorthandScript</p>
@@ -95,6 +104,11 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 	/** Indicates that the name in {@link #methodName} is a method level annotation and the target is any method annotated as such */
 	protected boolean annotatedMethod;
 	
+	/** The target class classloaders */
+	protected final Set<ClassLoader> targetClassLoaders = new HashSet<ClassLoader>();
+	/** The enum collector class classloaders */
+	protected final Set<ClassLoader> collectorClassLoaders = new HashSet<ClassLoader>();
+	
 	// ===============================================================================================
 	//		Transient Fields  (i.e. temp values read in by Gson, but then discarded) 
 	// ===============================================================================================
@@ -108,6 +122,16 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 	@Expose(serialize=false)
 	protected String methodModMembers;
 
+	/** Instrumentation target class classloader expressions as comma separated URLs, ObjectNames and keywords */
+	@SerializedName("tcldr")
+	@Expose(serialize=false)
+	protected String targetClassLoaderExpressions = "";
+	
+	/** Enum collector class classloader expressions as comma separated URLs, ObjectNames and keywords */
+	@SerializedName("tcldr")
+	@Expose(serialize=false)
+	protected String collectorClassLoaderExpressions = "";
+	
 
 	
 	/**
@@ -127,8 +151,6 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 	private static final Pattern ANNOT = Pattern.compile("@");
 	/** Inherritance sufffix pattern */
 	private static final Pattern PLUS = Pattern.compile("\\+");
-	/** Interface sufffix pattern */
-	private static final Pattern MULT = Pattern.compile("\\*");
 	
 
 	/**
@@ -145,15 +167,8 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 			pre.annotatedClass = true;
 			pre.className = ANNOT.matcher(pre.className).replaceFirst("");
 		}
-		if(pre.className.endsWith("*")) {
-			pre.inherritance = true;
-			pre.iface = true;
-			pre.className = MULT.matcher(pre.className).replaceFirst("");
-		}		
-		if(pre.className.endsWith("+")) {
-			if(iface) throw new ShorthandParseFailureException("Class Name inherritance was specified as interface (*) and extends (+)", json); 
-			pre.inherritance = true;
-			pre.iface = false;
+		if(pre.className.endsWith("+")) { 
+			pre.inherritance = true;			
 			pre.className = PLUS.matcher(pre.className).replaceFirst("");
 		}
 		
@@ -168,6 +183,48 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 	public ShorthandScript deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
 		ShorthandScript pre = GsonProvider.getInstance().getNoSerGson().fromJson(json, ShorthandScript.class);
 		return postDeserialize(pre, json.toString());
+	}
+	
+	/**
+	 * Interprets a classloader from the passed expression
+	 * @param strict If true, an exception will the thrown if the expression fails, otherwise a null will be returned
+	 * @param expression The expression to interpret
+	 * @return A classloader or null if strict is false
+	 */
+	public ClassLoader getClassLoader(boolean strict, String expression) {
+		if(expression==null || expression.trim().isEmpty()) {
+			if(strict) throw new RuntimeException("The passed expression was null or empty");
+			return null;
+		}
+		String _expr = expression.trim();
+		if(_expr.equalsIgnoreCase("SYSTEM")) return ClassLoader.getSystemClassLoader();
+		if(URLHelper.isValidURL(_expr)) {
+			URL url = URLHelper.toURL(_expr);
+			return new URLClassLoader(new URL[]{url});
+		}
+		if(JMXHelper.isObjectName(_expr)) {
+			ObjectName on = JMXHelper.objectName(_expr);
+			if(JMXHelper.getHeliosMBeanServer().isRegistered(on)) {
+				try {
+					if(JMXHelper.getHeliosMBeanServer().isInstanceOf(on, ClassLoader.class.getName())) {
+						return JMXHelper.getHeliosMBeanServer().getClassLoader(on);
+					} 
+					return JMXHelper.getHeliosMBeanServer().getClassLoaderFor(on);
+				} catch (Exception ex) {
+					if(strict) throw new RuntimeException("Failed to get ClassLoader for ObjectName [" + on + "]", ex);
+					return null;
+				}
+			}
+			if(strict) throw new RuntimeException("Specified ObjectName ClassLoader [" + on + "] was not registered");
+			return null;
+		}
+		File cpFile = new File(_expr);
+		if(cpFile.canRead()) {
+			URL url = URLHelper.toURL(cpFile);
+			return new URLClassLoader(new URL[]{url});
+		}
+		if(strict) throw new RuntimeException("Failed to derive ClassLoader from expression [" + _expr + "]");
+		return null;
 	}
 
 	
