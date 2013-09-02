@@ -45,6 +45,7 @@ import com.google.gson.JsonParser;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 import com.heliosapm.shorthand.ShorthandProperties;
+import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.instrumentor.shorthand.gson.GsonProvider;
 import com.heliosapm.shorthand.util.URLHelper;
 import com.heliosapm.shorthand.util.classload.MultiClassLoader;
@@ -68,12 +69,12 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 	/** The target class containing the methods to be instrumented. */
 	@SerializedName("tc") @Expose
 	protected String className;
-	/** The target method to be instrumented */
+	/** The target method name to be instrumented. May be a regular expression */
 	@SerializedName("meth") @Expose
 	protected String methodName;
 	/** An optional expression that if provided filters the target methods by matching against the method signature using a regular expression  */
 	@SerializedName("sig") @Expose	
-	protected String methodSignature;
+	protected String methodSignature = ".*";
 	/** An optional bitmask of enum members in {@link MethodAttribute} that filters method by {@link Modifier} attributes. Defaults to {@link MethodAttribute#DEFAULT_METHOD_MASK} */
 	@SerializedName("mod") @Expose	
 	protected int methodMod = MethodAttribute.DEFAULT_METHOD_MASK;
@@ -82,7 +83,7 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 	protected String collectorName;
 	/** The bitmask of the enabled metric members in the declared enum collector in {@link #collectorName} */
 	@SerializedName("bitmask") @Expose
-	protected int bitMask;
+	protected int bitMask = -1;
 	/** An expression from which the metric name generated a runtime will be derived from */
 	@SerializedName("exp")
 	@Expose
@@ -118,12 +119,12 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 	/** The names or ordinals of the enabled metric members in the declared enum collector in {@link #collectorName}. Will be parsed and converted into the bitmask  */
 	@SerializedName("cmbrs")
 	@Expose(serialize=false)
-	protected String collectorMembers;
+	protected String collectorMembers = null;
 
 	/** Alternate expression syntax to specify the {@link ShorthandScript#methodMod} as comma separated names or ordinals of the members in {@link MethodAttribute} */
 	@SerializedName("mbrs")
 	@Expose(serialize=false)
-	protected String methodModMembers;
+	protected String methodModMembers = null;
 
 	/** Instrumentation target class classloader expressions as comma separated URLs, ObjectNames and keywords */
 	@SerializedName("tcldr")
@@ -189,9 +190,47 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 		try {
 			Class.forName(pre.className, false, pre.targetClassLoader);
 		} catch (Exception ex) {
-			throw new ShorthandParseFailureException("Failed to load class [" + pre.className + "]", json, ex);
+			throw new ShorthandParseFailureException("Failed to load target class [" + pre.className + "]", json, ex);
 		}
 		
+		// ======================================================================
+		//		Test for collector class classpath overrides
+		// ======================================================================		
+		if(pre.collectorClassLoaderExpressions!=null && !pre.collectorClassLoaderExpressions.trim().isEmpty()) {
+			pre.collectorClassLoader = gatherClassLoaders(false, pre.collectorClassLoaderExpressions);
+		}
+		
+		// ======================================================================
+		//		Clean the collector class
+		// ======================================================================				
+		if(pre.collectorName==null || pre.collectorName.trim().isEmpty()) throw new ShorthandParseFailureException("Collector Class Name was null or empty", json);
+		pre.collectorName = pre.collectorName.trim();
+
+		// ======================================================================
+		//		Locate and validate collector class
+		// ======================================================================
+		// T extends Enum<T> & ICollector<T>
+		Class<ICollector<?>> collectorClazz = null;
+		try {
+			collectorClazz = resolveCollectorName(pre.collectorName, pre.targetClassLoader);
+			pre.collectorName = collectorClazz.getName();			
+		} catch (Exception ex) {
+			throw new ShorthandParseFailureException("Failed to load collector class [" + pre.collectorName + "]", json, ex);
+		}
+		// ======================================================================
+		//		Sets the metric bit mask. If the actual bitmask is -1,
+		// 		then the bitmask should be validated from the specified collectorMembers
+		// ======================================================================				
+		if(pre.bitMask==-1) {
+			if(pre.collectorMembers==null || pre.collectorMembers.trim().isEmpty()) {
+				throw new ShorthandParseFailureException("Enum collector bitmask was -1 and no collector member names were defined", json);
+			}
+			Set<String> names = new HashSet<String>();
+			for(String s: pre.collectorMembers.trim().split(",")) {
+				if(s.trim().isEmpty()) continue;
+			}
+
+		}
 		
 		
 		return pre;
@@ -205,6 +244,25 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 	public ShorthandScript deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
 		ShorthandScript pre = GsonProvider.getInstance().getNoSerGson().fromJson(json, ShorthandScript.class);
 		return postDeserialize(pre, json.toString());
+	}
+	
+	/**
+	 * Expands the collector name from the passed simple name to the fully qualified class name
+	 * @param collectorName Assumed to be the short name, but will test to see if the name by itself can be loaded
+	 * @param classLoader The classloader to load from
+	 * @return the collector class
+	 */
+	protected Class<ICollector<?>>  resolveCollectorName(String collectorName, ClassLoader classLoader) {
+		try {
+			return (Class<ICollector<?>>) Class.forName(collectorName, false, classLoader);
+		} catch (ClassNotFoundException cnfx) {}
+		for(String packageName: ShorthandProperties.getEnumCollectorPackages()) {
+			try {
+				return (Class<ICollector<?>>) Class.forName(packageName + "." + collectorName, false, classLoader);
+			} catch (ClassNotFoundException cnfx) {}			
+		}
+		throw new RuntimeException("Failed to find enum collector [" + collectorName + "] in any package");
+		//Class.forName(pre.collectorName, false, pre.targetClassLoader);
 	}
 	
 	/**

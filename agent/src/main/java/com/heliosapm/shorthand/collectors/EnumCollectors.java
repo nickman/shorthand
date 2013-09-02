@@ -131,6 +131,14 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 		return ct.getEnumConstants()[0];
 	}
 	
+	public T member(Class<T> clazz, CharSequence name) {
+		if(name==null || name.toString().trim().isEmpty()) return null;
+		String _name = name.toString().trim();
+		
+		Enum.valueOf(clazz, name)
+		clazz.getEnumConstants()[0].valueOf(enumType, name)
+	}
+	
 	/**
 	 * Returns the enum collector member for the passed indexes
 	 * @param enumIndex The enum collector index

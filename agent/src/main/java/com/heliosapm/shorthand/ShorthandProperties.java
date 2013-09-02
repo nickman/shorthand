@@ -26,8 +26,11 @@ package com.heliosapm.shorthand;
 
 import java.io.File;
 import java.lang.management.ManagementFactory;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import com.heliosapm.shorthand.jmx.MetricJMXPublishOption;
+import com.heliosapm.shorthand.util.ConfigurationHelper;
 
 /**
  * <p>Title: ShorthandProperties</p>
@@ -76,8 +79,27 @@ public class ShorthandProperties {
 	/** The system property that defines a comma separated package list where enum collector classes are located */
 	public static final String ENUM_COLLECTOR_PACKAGES_PROP = "shorthand.metrics.publish";
 	/** The base package list where enum collector classes are located */
-	public static final String BASE_ENUM_COLLECTOR_PACKAGES = "com.heliosapm.shorthand.collectors";
+	public static final String BASE_ENUM_COLLECTOR_PACKAGE = "com.heliosapm.shorthand.collectors";
 
+	/**
+	 * Returns the base and configured default package names for enum collector classes
+	 * @return an array of package names
+	 */
+	public static String[] getEnumCollectorPackages() {
+		Set<String> packages = new LinkedHashSet<String>();
+		packages.add(BASE_ENUM_COLLECTOR_PACKAGE);
+		String pConfig = ConfigurationHelper.getSystemThenEnvProperty(ENUM_COLLECTOR_PACKAGES_PROP, null);
+		if(pConfig != null && !pConfig.trim().isEmpty()) {
+			for(String s: pConfig.trim().split(",")) {
+				if(s.trim().isEmpty()) continue;
+				while(s.endsWith(".")) {
+					s = s.substring(0, s.length()-1);
+				}
+				packages.add(s + ".");
+			}
+		}
+		return packages.toArray(new String[packages.size()]);
+	}
 	
 	
 	/** The name of the class that will provide the instrumentation instance if we don't boot with this as the java-agent */
