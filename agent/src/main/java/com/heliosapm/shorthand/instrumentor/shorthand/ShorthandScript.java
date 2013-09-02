@@ -45,6 +45,7 @@ import com.google.gson.JsonParser;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 import com.heliosapm.shorthand.ShorthandProperties;
+import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.instrumentor.shorthand.gson.GsonProvider;
 import com.heliosapm.shorthand.util.URLHelper;
@@ -209,7 +210,6 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 		// ======================================================================
 		//		Locate and validate collector class
 		// ======================================================================
-		// T extends Enum<T> & ICollector<T>
 		Class<ICollector<?>> collectorClazz = null;
 		try {
 			collectorClazz = resolveCollectorName(pre.collectorName, pre.targetClassLoader);
@@ -228,10 +228,21 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 			Set<String> names = new HashSet<String>();
 			for(String s: pre.collectorMembers.trim().split(",")) {
 				if(s.trim().isEmpty()) continue;
+				names.add(EnumCollectors.getInstance().getMember(collectorClazz.getName(), s).name());
 			}
-
+			if(names.isEmpty()) {
+				throw new ShorthandParseFailureException("Enum collector bitmask was -1 and no collector member names were defined", json);
+			}
+			pre.bitMask = collectorClazz.getEnumConstants()[0].getBitMaskOf(names.toArray(new String[names.size()]));
+			pre.collectorMembers=null;
 		}
-		
+		// ======================================================================
+		//		Check that metricExpression is not null
+		//		Any other validation we can do here ?
+		// ======================================================================
+		if(pre.metricExpression==null || pre.metricExpression.trim().isEmpty()) {
+			throw new ShorthandParseFailureException("The metric expression was null or empty", json);
+		}
 		
 		return pre;
 	}
@@ -335,7 +346,7 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 		log("Shorthand Script Test");
 		ShorthandScript sd = new ShorthandScript();
 		//com.theice.aop.icebyteman.test.classes.BaseSampleClass massiveCalc(int) [*] '$class/$method/$1'"
-		sd.className = "com.heliosapm.shorthand.testclasses.BaseSampleClass";
+		sd.className = "java.util.concurrent.ThreadPoolExecutor";
 		sd.methodName = "massiveCalc";
 		sd.methodSignature = "int";
 		sd.collectorName = "MethodInterceptor";
@@ -370,7 +381,7 @@ public class ShorthandScript implements JsonDeserializer<ShorthandScript> {
 	public String toString() {
 		StringBuilder b = new StringBuilder();
 		b.append("ShorthandScript [");
-		b.append("\n\t");
+		b.append("\n\ttargetClass=");
 		if(annotatedClass) b.append("@");
 		b.append(className);
 		if(iface && inherritance) b.append("* ");

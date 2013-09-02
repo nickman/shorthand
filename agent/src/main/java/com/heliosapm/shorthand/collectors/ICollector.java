@@ -33,6 +33,13 @@ public interface ICollector<T extends Enum<? extends ICollector<T>>> {
 	public ICollector<?>[] collectors();
 	
 	/**
+	 * Returns the bitmask for the passed collectors
+	 * @param collectorNames The collector names to get the bitmask for
+	 * @return the bitmask
+	 */
+	public int getBitMaskOf(String...collectorNames);
+	
+	/**
 	 * Callback to "massage" the values before writing to the tier 1 data store
 	 * @param address The address of the metric's memspace in the accumulator
 	 * @param bitMask The configured bitMask

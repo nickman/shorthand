@@ -43,14 +43,6 @@ import com.heliosapm.shorthand.attach.vm.VirtualMachine;
  */
 
 public class AgentInstaller {
-
-	/**
-	 * Creates a new AgentInstaller
-	 */
-	public AgentInstaller() {
-		// TODO Auto-generated constructor stub
-	}
-
 	/**
 	 * Installs the loader agent on the target JVM identified in <code>args[0]</code>
 	 * and then transforms all the classes identified in <code>args[1..n]</code>.
@@ -96,5 +88,4 @@ public class AgentInstaller {
 	    }
 		// Done. (Hopefully)
 	}
-
 }

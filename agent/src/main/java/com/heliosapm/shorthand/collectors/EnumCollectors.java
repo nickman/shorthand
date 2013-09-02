@@ -131,13 +131,48 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 		return ct.getEnumConstants()[0];
 	}
 	
-	public T member(Class<T> clazz, CharSequence name) {
+	/**
+	 * Determines if the passed name is a valid enum collector name for the passed enum collector class.
+	 * The name will be trimmed and matched ignoring case.
+	 * @param clazz The enum collector class
+	 * @param name The name to test
+	 * @return true for match, false otherwise
+	 */
+	public boolean isMemberName(Class<T> clazz, CharSequence name) {
+		if(name==null || name.toString().trim().isEmpty()) return false;
+		String _name = name.toString().trim();
+		for(T t: clazz.getEnumConstants()) {
+			if(_name.equalsIgnoreCase(t.name())) return true;
+		}
+		return false;
+	}
+	
+	/**
+	 * Returns the member for the passed enum collector class that has a name match with the passed name
+	 * @param clazz The enum collector class
+	 * @param name The name of the member to get
+	 * @return the matching member or null if no match was made
+	 */
+	public T getMember(Class<T> clazz, CharSequence name) {
 		if(name==null || name.toString().trim().isEmpty()) return null;
 		String _name = name.toString().trim();
-		
-		Enum.valueOf(clazz, name)
-		clazz.getEnumConstants()[0].valueOf(enumType, name)
+		for(T t: clazz.getEnumConstants()) {
+			if(_name.equalsIgnoreCase(t.name())) return t;
+		}
+		return null;
 	}
+	
+	/**
+	 * Returns the member for the passed enum collector class name that has a name match with the passed name
+	 * @param className The enum collector class name
+	 * @param name The name of the member to get
+	 * @return the matching member or null if no match was made
+	 */
+	public T getMember(String className, CharSequence name) {
+		return getMember(typeForName(className), name);
+	}
+	
+	
 	
 	/**
 	 * Returns the enum collector member for the passed indexes

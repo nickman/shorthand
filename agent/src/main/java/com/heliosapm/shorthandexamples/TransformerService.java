@@ -74,8 +74,6 @@ public class TransformerService implements TransformerServiceMBean {
 		}
 		throw new RuntimeException("Failed to locate class [" + className + "]");
 	}
-
-
 	
 	/**
 	 * Registers a transformer and executes the transform
@@ -93,6 +91,4 @@ public class TransformerService implements TransformerServiceMBean {
 			instrumentation.removeTransformer(dt);
 		}		
 	}
-
-
 }

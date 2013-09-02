@@ -22,22 +22,27 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.shorthandexamples;
+package com.heliosapm.shorthand.script;
 
-import javax.management.ObjectName;
+import org.junit.Test;
+
+import test.com.heliosapm.shorthand.BaseTest;
 
 /**
- * <p>Title: TransformerServiceMBean</p>
+ * <p>Title: ShorthandScriptTestCase</p>
  * <p>Description: </p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthandexamples.TransformerServiceMBean</code></p>
+ * <p><code>com.heliosapm.shorthand.script.ShorthandScriptTestCase</code></p>
  */
 
-public interface TransformerServiceMBean {
+public class ShorthandScriptTestCase extends BaseTest {
+	
 	/**
-	 * Transforms the target class name
-	 * @param className The binary name of the target class
+	 * Tests a simple class based expression
 	 */
-	public void transformClass(String className);
+	@Test
+	public void testBasicClass() {
+		
+	}
 }

@@ -415,6 +415,8 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 		return copy.toArray(new MethodInterceptor[copy.size()]);
 	}
 	
+
+	
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.shorthand.collectors.ICollector#isPreApply()
@@ -828,6 +830,24 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 			return cmx.getTotalCompilationTime();
 		}
 	}
+
+
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.collectors.ICollector#getBitMaskOf(String[])
+	 */
+	@Override
+	public int getBitMaskOf(String...interceptors) {		
+		if(interceptors==null || interceptors.length==0) return 0;
+		int bitMask = 0;
+		for(String s: interceptors) {
+			MethodInterceptor mi = valueOf(s);
+			bitMask = mi.enable(bitMask);
+		}
+		return bitMask;
+	}
+
 		
 
 
