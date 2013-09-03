@@ -24,6 +24,7 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand;
 
+import java.lang.reflect.Field;
 import java.util.regex.Pattern;
 
 /**
@@ -33,7 +34,7 @@ import java.util.regex.Pattern;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.ShorthandSimpleScript</code></p>
  * <h4><pre>
-		 <ClassName>[+] [(Method Attributes)] <MethodName>[<Signature>] [Invocation Options] <CollectorName>[<BitMask>|<CollectionNames>] <MetricFormat> DISABLED
+		 [@]<ClassName>[+] [(Method Attributes)] [@]<MethodName>[<Signature>] [Invocation Options] <CollectorName>[<BitMask>|<CollectionNames>] <MetricFormat> DISABLED
 	</pre></h4>
  */
 
@@ -50,22 +51,28 @@ public class ShorthandSimpleScript extends ShorthandScript {
 		"(?:'(.*)')"					// The metric name format		
 	);
 
+	/** The index of the target class annotation indicator */
+	public static final int IND_TARGETCLASS_ANNOT = 0;
 	/** The index of the target class */
-	public static final int IND_TARGETCLASS = 0;
+	public static final int IND_TARGETCLASS = 1;
 	/** The index of the inherritance indicator */
-	public static final int IND_INHERRIT = 1;
+	public static final int IND_INHERRIT = 2;
 	/** The index of the method attributes */
-	public static final int IND_ATTRS= 2;	
+	public static final int IND_ATTRS= 3;
+	/** The index of the target method annotation indicator */
+	public static final int IND_METHOD_ANNOT = 4;	
 	/** The index of the target method name or expression */
-	public static final int IND_METHOD = 3;
+	public static final int IND_METHOD = 5;
 	/** The index of the target method signature */
-	public static final int IND_SIGNATURE = 4;
+	public static final int IND_SIGNATURE = 6;
 	/** The index of the instrumentation options */
-	public static final int IND_INSTOPTIONS = 5;
+	public static final int IND_INSTOPTIONS = 7;
+	/** The index of the collector name */
+	public static final int IND_COLLECTORNAME = 8;
 	/** The index of the instrumentation bit mask */
-	public static final int IND_BITMASK = 6;
+	public static final int IND_BITMASK = 9;
 	/** The index of the instrumentation generated metric name */
-	public static final int IND_METRICNAME = 7;
+	public static final int IND_METRICNAME = 10;
 
 	/** The whitespace cleaner */
 	protected static final Pattern WH_CLEANER = Pattern.compile("\\s+");
@@ -106,5 +113,71 @@ public class ShorthandSimpleScript extends ShorthandScript {
 	public ShorthandSimpleScript() {
 		// TODO Auto-generated constructor stub
 	}
+	
+	public static void main(String[] args) {
+		StringBuilder b = new StringBuilder("keys = [");
+		for(Field f: ShorthandSimpleScript.class.getDeclaredFields()) {
+			if(f.getName().startsWith("IND")) {
+				try {
+					int i = ((Integer)f.get(null));
+					b.append("\n\t").append(i).append(" : ").append("\"").append(f.getName()).append("\",");
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		b.append("\n];");
+		System.out.println(b);
+	}
 
 }
+
+//
+//import java.util.regex.*;
+///*
+//
+//    [@]<ClassName>[+] [(Method Attributes)] [@]<MethodName>[<Signature>] [Invocation Options] <CollectorName>[<BitMask>|<CollectionNames>] <MetricFormat> DISABLED
+//
+//*/
+//keys = [
+//    0 : "IND_TARGETCLASS_ANNOT",
+//    1 : "IND_TARGETCLASS",
+//    2 : "IND_INHERRIT",
+//    3 : "IND_ATTRS",
+//    4 : "IND_METHOD_ANNOT",
+//    5 : "IND_METHOD",
+//    6 : "IND_SIGNATURE",
+//    7 : "IND_INSTOPTIONS",
+//    8 : "IND_COLLECTORNAME",
+//    9 : "IND_BITMASK",
+//    10 : "IND_METRICNAME",
+//];
+//WH_CLEANER = Pattern.compile("\\s+");
+//SH_PATTERN = Pattern.compile(
+//        "(@)?" +                         // The class annotation indicator
+//        "(.*?)" +                         // The classname
+//        "(\\+)?" +                         // The classname options (+ for inherritance) 
+//        "\\s(?:\\((.*?)\\)\\s)?" +         // The optional method accessibilities. Defaults to "pub"
+//        "(@)?" +                         // The method annotation indicator
+//        "(.*?)" +                         // The method name expression, wrapped in "[ ]" if a regular expression
+//        "(?:\\((.*)\\))?" +            // The optional method signature 
+//        "\\s" +                             // spacer
+//        "(?:\\-(\\w+))?" +                 // The method instrumentation options (-dr)
+//        "(.*?)" +                         // The collector name
+//        "(?:\\[(.*)\\])?" +         // The bitmask option. [] is mandatory. It may contain the bitmask int, or comma separated MetricCollection names
+//        "\\s" +                            // spacer
+//        "(?:'(.*)')"                    // The metric name format        
+//    );
+//    
+//script = "java.lang.Object equals MethodInterceptor[0] 'java/lang/Object'";
+////script = "java.lang.Object+ equals MethodInterceptor[0] 'java/lang/Object'";
+//script = WH_CLEANER.matcher(script).replaceAll(" ")
+//m = SH_PATTERN.matcher(script);
+//if(!m.matches()) {
+//    println "NO MATCH";
+//} else {
+//    println "Match. Parsing....";
+//    for(x in 1..m.groupCount()) {
+//        println "\t${keys.get(x-1)} [${m.group(x)}]";
+//    }
+//}
