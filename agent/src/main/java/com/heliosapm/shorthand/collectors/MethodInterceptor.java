@@ -26,6 +26,7 @@ import com.heliosapm.shorthand.collectors.measurers.DefaultMeasurer;
 import com.heliosapm.shorthand.collectors.measurers.DelegatingMeasurer;
 import com.heliosapm.shorthand.collectors.measurers.InvocationMeasurer;
 import com.heliosapm.shorthand.collectors.measurers.Measurer;
+import com.heliosapm.shorthand.util.enums.IntBitMaskedEnum;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
@@ -35,7 +36,7 @@ import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.collectors.MethodInterceptor</code></p>
  */
-public enum MethodInterceptor implements ICollector<MethodInterceptor> {
+public enum MethodInterceptor implements ICollector<MethodInterceptor>, IntBitMaskedEnum {
 	/** The elapsed system cpu time in microseconds */
 	SYS_CPU(seed.next(), false, true, "CPU Time (\u00b5s)", "syscpu", "CPU Thread Execution Time", new DefaultSysCpuMeasurer(0), DataStruct.getInstance(Primitive.LONG, 3, Long.MAX_VALUE, Long.MIN_VALUE, -1L), "Min", "Max", "Avg"),
 	/** The elapsed user mode cpu time in microseconds */
@@ -587,7 +588,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 	}
 	
 	/**
-	 * Captures method exit metrics.
+	 * Captures method normal exit metrics. If {@link #RETURN_COUNT} is enabled, it will be incremented.
 	 * @param values The method entry caputed baseline
 	 * @return and array of thread stat baseline values.
 	 */
@@ -601,10 +602,37 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor> {
 				values = executeMeasurement(values, m, false);
 			}
 		}
+		if(RETURN_COUNT.isEnabled(bitMask)) {
+			values[RETURN_COUNT.ordinal()]++;
+		}
 		currentThreadInfo.remove();
 		values[openCloseIndex] = 0;
 		return values;				
 	}
+	
+	/**
+	 * Captures exit metrics for an exception throwing method exit. If {@link #EXCEPTION_COUNT} is enabled, it will be incremented.
+	 * @param values The method entry caputed baseline
+	 * @return and array of thread stat baseline values.
+	 */
+	public static long[] methodException(long[] values) {
+		int bitMask = (int)values[bitMaskIndex];
+		if(isRequiresTI(bitMask)) {
+			currentThreadInfo.set(threadMXBean.getThreadInfo(Thread.currentThread().getId()));
+		}			
+		for(MethodInterceptor m: MethodInterceptor.values()) {
+			if(m.isEnabled(bitMask)) {
+				values = executeMeasurement(values, m, false);
+			}
+		}
+		if(EXCEPTION_COUNT.isEnabled(bitMask)) {
+			values[EXCEPTION_COUNT.ordinal()]++;
+		}
+		currentThreadInfo.remove();
+		values[openCloseIndex] = 0;
+		return values;				
+	}
+	
 
 	
 	/**

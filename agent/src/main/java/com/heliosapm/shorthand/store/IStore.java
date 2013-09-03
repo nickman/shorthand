@@ -3,12 +3,11 @@
  */
 package com.heliosapm.shorthand.store;
 
-import java.util.Map;
 import java.util.Set;
 
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
-import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.datamapper.IDataMapper;
 
 /**
  * <p>Title: IStore</p>
@@ -91,7 +90,12 @@ public interface IStore<T extends Enum<T> & ICollector<T>> {
 	
 
 	
-	public void doSnap(String metricName, CollectorSet<T> collectorSet, long...collectedValues);
+	/**
+	 * @param metricName
+	 * @param dataMapper
+	 * @param collectedValues
+	 */
+	public void doSnap(String metricName, IDataMapper<T> dataMapper, long...collectedValues);
 	
 
 	

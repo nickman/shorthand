@@ -64,6 +64,15 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	private final CtMethod dataMapperResetMethod;
 	private final CtMethod dataMappertoStringMethod;
 	
+	private final CtMethod dataMapperMethodEnterMethod;
+	private final CtMethod dataMapperMethodExitMethod;
+	private final CtMethod dataMapperMethodExceptionMethod;
+	
+	private final CtMethod dataMapperAllocationMethod;
+	private final CtMethod dataMapperNameMethod;
+	
+
+	
 	/** A map of already created data mappers keyed by enum-name/bitmask */
 	private final Map<String, IDataMapper> dataMappers = new ConcurrentHashMap<String, IDataMapper>();
 	
@@ -119,7 +128,15 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 			dataMapperIface = cp.get(IDataMapper.class.getName());
 			dataMapperSuper = cp.get(AbstractDataMapper.class.getName());
 			copiedAddressProcedureIface = cp.get(CopiedAddressProcedure.class.getName());
-			CtMethod _dataMapperPutMethod = null, _dataMapperResetMethod = null, _dataMapperPrePutMethod = null, _dataMappergetDpMethod = null;
+			CtMethod _dataMapperPutMethod = null, _dataMapperResetMethod = null, _dataMapperPrePutMethod = null, _dataMappergetDpMethod = null,
+					_dataMapperMethodEnterMethod = null,
+					_dataMapperMethodExitMethod = null,
+					_dataMapperMethodExceptionMethod = null,
+					_dataMapperAllocationMethod = null,
+					_dataMapperNameMethod = null;
+					
+					
+					
 			for(CtMethod cm: dataMapperIface.getDeclaredMethods()) {
 				if("put".equals(cm.getName())) {
 					_dataMapperPutMethod = cm;					
@@ -129,17 +146,39 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 					_dataMapperPrePutMethod = cm;
 				} else if("getDataPoints".equals(cm.getName())) {
 					_dataMappergetDpMethod = cm;
+				} else if("methodEnter".equals(cm.getName())) {
+					_dataMapperMethodEnterMethod = cm;
+				}  else if("methodExit".equals(cm.getName())) {
+					_dataMapperMethodExitMethod = cm;
+				}  else if("methodException".equals(cm.getName())) {
+					_dataMapperMethodExceptionMethod = cm;
+				}  else if("getTotalAllocation".equals(cm.getName())) {
+					_dataMapperAllocationMethod = cm;
+				}  else if("getCollectorName".equals(cm.getName())) {
+					_dataMapperNameMethod = cm;
 				}
 			}
+			
+			
 			dataMapperPutMethod = _dataMapperPutMethod;
 			dataMapperResetMethod = _dataMapperResetMethod;
 			dataMapperPrePutMethod = _dataMapperPrePutMethod;			
 			dataMappertoStringMethod = new CtMethod(stringClazz, "toString", EMPTY_SIG, objectClazz);
 			dataMappergetDpMethod = _dataMappergetDpMethod;
+			dataMapperMethodEnterMethod = _dataMapperMethodEnterMethod;
+			dataMapperMethodExitMethod = _dataMapperMethodExitMethod;
+			dataMapperMethodExceptionMethod = _dataMapperMethodExceptionMethod;
+			dataMapperAllocationMethod = _dataMapperAllocationMethod;
+			dataMapperNameMethod = _dataMapperNameMethod;
 			if(dataMapperPutMethod==null) { throw new RuntimeException("Failed to find put method"); }
 			if(dataMapperResetMethod==null) {throw new RuntimeException("Failed to find reset put method"); }
 			if(dataMapperPrePutMethod==null) {throw new RuntimeException("Failed to find prePut method"); }
 			if(dataMappergetDpMethod==null) {throw new RuntimeException("Failed to find getDataPoints method"); }
+			if(dataMapperMethodEnterMethod==null) {throw new RuntimeException("Failed to find methodEnter method"); }
+			if(dataMapperMethodExitMethod==null) {throw new RuntimeException("Failed to find methodExit method"); }
+			if(dataMapperMethodExceptionMethod==null) {throw new RuntimeException("Failed to find methodException method"); }
+			if(dataMapperAllocationMethod==null) {throw new RuntimeException("Failed to find allocation method"); }
+			if(dataMapperNameMethod==null) {throw new RuntimeException("Failed to find collector name method"); }
 		} catch (NotFoundException e) {
 			throw new RuntimeException("Failed to get CtClass for AbstractDataMapper", e);
 		}
@@ -203,7 +242,39 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						clazz.addMethod(getDpsMethod);						
 						clazz.addMethod(resetMethod);
 						
+						//================================================================================================================
+						//  Method enter, exit and exception
+						//================================================================================================================
+						CtMethod methodEnter = new CtMethod(dataMapperMethodEnterMethod.getReturnType(), dataMapperMethodEnterMethod.getName(), dataMapperMethodEnterMethod.getParameterTypes(), clazz);
+						clazz.addMethod(methodEnter);
+						CtMethod methodExit = new CtMethod(dataMapperMethodExitMethod.getReturnType(), dataMapperMethodExitMethod.getName(), dataMapperMethodExitMethod.getParameterTypes(), clazz);
+						clazz.addMethod(methodExit);
+						CtMethod methodException = new CtMethod(dataMapperMethodExceptionMethod.getReturnType(), dataMapperMethodExceptionMethod.getName(), dataMapperMethodExceptionMethod.getParameterTypes(), clazz);
+						clazz.addMethod(methodException);
 						
+						// long[] methodEnter(int bitMask)
+						methodEnter.setBody(new StringBuilder("{ return ").append(enumCollectorType.getSimpleName()).append(".methodEnter($1); }").toString());
+						// long[] methodExit(long[] values) 
+						methodExit.setBody(new StringBuilder("{ return ").append(enumCollectorType.getSimpleName()).append(".methodExit($1); }").toString());
+						// long[] methodExit(long[] values)
+						methodException.setBody(new StringBuilder("{ return ").append(enumCollectorType.getSimpleName()).append(".methodException($1); }").toString());
+						
+						//================================================================================================================
+						
+						//================================================================================================================
+						//  allocation and collector name methods
+						//================================================================================================================
+						CtMethod methodAllocation = new CtMethod(dataMapperAllocationMethod.getReturnType(), dataMapperAllocationMethod.getName(), dataMapperAllocationMethod.getParameterTypes(), clazz);
+						clazz.addMethod(methodAllocation);
+						methodAllocation.setBody(new StringBuilder("{ return ").append(enumCollectorType.getSimpleName()).append(".getTotalAllocation(").append(bitMask).append("); }").toString());
+						CtMethod methodCollectorName = new CtMethod(dataMapperNameMethod.getReturnType(), dataMapperNameMethod.getName(), dataMapperNameMethod.getParameterTypes(), clazz);
+						clazz.addMethod(methodCollectorName);
+						methodCollectorName.setBody(new StringBuilder("{ return ").append(enumCollectorType.getName()).append(".class.getName(); }").toString());
+						
+						
+//						if(dataMapperAllocationMethod==null) {throw new RuntimeException("Failed to find allocation method"); }
+//						if(dataMapperNameMethod==null) {throw new RuntimeException("Failed to find collector name method"); }
+
 						
 						ctCtor.setBody(String.format("{\n\tenumIndex = $1;\n\tbitMask = $2;" + 
 								"\n\toffsets = %s.%s.getOffsets($2);" + 

@@ -98,4 +98,38 @@ public interface IDataMapper<T extends Enum<T> & ICollector<T>> {
 	 * @return The name indexes of the enabled metrics in the live tier
 	 */
 	public long[] flush(long address, IStore<T> store, long periodStart, long periodEnd);
+	
+	/**
+	 * Triggers method entry metric collection
+	 * @param bitMask The enabled metrics bitmask
+	 * @return the collected baseline values
+	 */
+	public long[] methodEnter(int bitMask);
+	
+	/**
+	 * Triggers method normal exit metric basline resolution
+	 * @param values The method enter metrics
+	 * @return the delta baseline values
+	 */
+	public long[] methodExit(long[] values);
+	
+	/**
+	 * Triggers method exception exit metric basline resolution
+	 * @param values The method enter metrics
+	 * @return the delta baseline values
+	 */
+	public long[] methodException(long[] values);
+	
+	/**
+	 * Returns the total memory size to allocate a mem-space
+	 * @return the number of bytes required
+	 */
+	public int getTotalAllocation();
+	
+	/**
+	 * Returns the fully qualified name of the enum collector
+	 * @return the fully qualified name of the enum collector
+	 */
+	public String getCollectorName();
+	
 }

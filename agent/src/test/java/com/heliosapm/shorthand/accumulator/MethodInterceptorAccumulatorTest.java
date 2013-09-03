@@ -23,8 +23,6 @@
  *
  */
 package com.heliosapm.shorthand.accumulator;
-import gnu.trove.map.hash.TObjectLongHashMap;
-
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Date;
@@ -39,11 +37,11 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import test.com.heliosapm.shorthand.ExceptionRecordingAssert;
 import test.com.heliosapm.shorthand.FlushCompletionBarrier;
 
-import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.MethodInterceptor;
+import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
+import com.heliosapm.shorthand.datamapper.IDataMapper;
 import com.heliosapm.shorthand.store.IMetric;
 import com.heliosapm.shorthand.store.IMetricDataPoint;
 import com.heliosapm.shorthand.util.ArrayUtils;
@@ -136,7 +134,7 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 	public void testOnePeriodFlush() throws Exception {		
 		STORE.clear();
 		final int bitMask = MethodInterceptor.getBitMaskFor(MethodInterceptor.values());
-		CollectorSet<MethodInterceptor> cs = new CollectorSet<MethodInterceptor>(MethodInterceptor.class, bitMask);
+		IDataMapper<MethodInterceptor> dataMapper = (IDataMapper<MethodInterceptor>) DataMapperBuilder.getInstance().getIDataMapper(MethodInterceptor.class.getName(), bitMask);
 		final int LOOPS = 100;
 		final String metricName = getClass().getName() + ".testOnePeriodFlush"; 
 		final int ITEM_COUNT = MethodInterceptor.values().length;
@@ -156,7 +154,7 @@ public class MethodInterceptorAccumulatorTest extends AccumulatorBaseTest {
 //			values[i][MethodInterceptor.INVOCATION_COUNT.ordinal()] = nextPosInt(9)+1;
 			testValues.put(periodTime + (i*1000), values[i]);	
 			
-			STORE.doSnap(metricName, cs, values[i]);
+			STORE.doSnap(metricName, dataMapper, values[i]);
 		}		
 		
 

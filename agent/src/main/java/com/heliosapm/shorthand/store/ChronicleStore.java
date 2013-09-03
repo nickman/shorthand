@@ -38,9 +38,9 @@ import com.heliosapm.shorthand.ShorthandProperties;
 import com.heliosapm.shorthand.accumulator.AccumulatorThreadStats;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.accumulator.PeriodClock;
-import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.datamapper.IDataMapper;
 import com.heliosapm.shorthand.jmx.MetricJMXPublishOption;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
 import com.heliosapm.shorthand.util.OrderedShutdownService;
@@ -727,10 +727,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	/**
 	 * Returns an indirect address reference of a mem-space allocated for the passed metric name
 	 * @param metricName The metric name
-	 * @param collectorSet The collector set
+	 * @param dataMapoer The collector's data-mapper
 	 * @return the address
 	 */
-	protected long getMetricAddress(String metricName, CollectorSet<T> collectorSet) {		
+	protected long getMetricAddress(String metricName, IDataMapper<T> dataMapper) {		
 		Long address = SNAPSHOT_INDEX.get(metricName);
 		if(address==null) address = UNLOADED_INDEX.get(metricName);
 		if(address==null || address <0) {
@@ -738,18 +738,18 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 				address = SNAPSHOT_INDEX.get(metricName);
 				if(address==null) address = UNLOADED_INDEX.get(metricName);
 				if(address==null || address <0) {
-					int requestedMem = (int)(collectorSet.getTotalAllocation());
+					int requestedMem = (int)(dataMapper.getTotalAllocation());
 					int memSize = padCache ? findNextPositivePowerOfTwo(requestedMem) : requestedMem;
 					long nameIndex;
 					boolean unloaded = false;
 					if(address==null) {
-						nameIndex = newMetricName(metricName, collectorSet.getEnumIndex(), collectorSet.getBitMask());
+						nameIndex = newMetricName(metricName, dataMapper.getEnumIndex(), dataMapper.getBitMask());
 					} else {
 						nameIndex = address * -1;
 						unloaded = true;
 					}
 					address = UnsafeAdapter.allocateMemory(memSize);
-					MemSpaceAccessor.get(address).initializeHeader(memSize, nameIndex, collectorSet.getBitMask(), EnumCollectors.getInstance().index(collectorSet.getReferenceCollector().getDeclaringClass().getName()));
+					MemSpaceAccessor.get(address).initializeHeader(memSize, nameIndex, dataMapper.getBitMask(), EnumCollectors.getInstance().index(dataMapper.getCollectorName()));
 					MemSpaceAccessor.get(address).reset();
 					long memSpaceRef = UnsafeAdapter.allocateMemory(UnsafeAdapter.LONG_SIZE * 2);					
 					UnsafeAdapter.putLong(memSpaceRef, 0);
@@ -763,26 +763,26 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		return address;
 	}
 	
+
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#doSnap(java.lang.String, com.heliosapm.shorthand.collectors.CollectorSet, long[])
+	 * @see com.heliosapm.shorthand.store.IStore#doSnap(java.lang.String, com.heliosapm.shorthand.datamapper.IDataMapper, long[])
 	 */
 	@Override
-	public void doSnap(String metricName, CollectorSet<T> collectorSet, long...collectedValues) {
-		long address = getMetricAddress(metricName, collectorSet);
+	public void doSnap(String metricName, IDataMapper<T> dataMapper, long...collectedValues) {
+		long address = getMetricAddress(metricName, dataMapper);
 		long ref = -1L;
 		try {
 			ref = lock(address);
-			@SuppressWarnings("unchecked")
 			MemSpaceAccessor<T> msa = MemSpaceAccessor.get(ref);
 			if(msa.isInvalidated()) {
 				msa.delete(address);
 				ref = -1L;
 				SNAPSHOT_INDEX.remove(metricName);
-				doSnap(metricName, collectorSet, collectedValues);
+				doSnap(metricName, dataMapper, collectedValues);
 				return;
 			}
-			collectorSet.put(ref, collectedValues);
+			dataMapper.put(ref, collectedValues);
 		} finally {
 			if(ref!=-1L) {
 				unlock(address);

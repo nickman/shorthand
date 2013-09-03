@@ -10,6 +10,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import com.heliosapm.shorthand.util.enums.IntBitMaskedEnum;
+
 /**
  * <p>Title: InvocationOption</p>
  * <p>Description: Functional enum for shorthand method invocation options</p> 
@@ -18,7 +20,7 @@ import java.util.Set;
  * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.InvocationOption</code></p>
  */
 
-public enum InvocationOption {
+public enum InvocationOption implements IntBitMaskedEnum {
 	/** Allows the method injected instrumentation to be invoked reentrantly instead of being disabled if the cflow > 1 */
 	ALLOW_REENTRANT("r"),
 	/** Disables all instrumentation on the current thread when the instrumented method is invoked */
@@ -42,10 +44,57 @@ public enum InvocationOption {
 		}
 		ALIAS2ENUM = Collections.unmodifiableMap(tmp);
 	}
+	
+//	protected boolean allowReentrant = false;
+//	/** Indicates if all instrumentation on the current thread should be disabled when the method is invoked */
+//	protected boolean disableOnTrigger = false;
+//	/** Indicates if the instrumentation should be disabled at start time (and require intervention to activate) */
+//	protected boolean startDisabled = false;
+	
+	/**
+	 * Indicates if the passed option string indicates that a method should allow reentrant enabled instrumentation
+	 * @param opts The option string from the shorthand script
+	 * @return true if enabled, false otherwise
+	 */
+	public static boolean isAllowReentrant(String opts) {
+		for(char c: opts.toCharArray()) {
+			String opt = new String(new char[]{c});
+			if(ALLOW_REENTRANT.aliases.contains(opt)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Indicates if the passed option string indicates that a method should disable all instrumentation on the current thread until the method exits
+	 * @param opts The option string from the shorthand script
+	 * @return true if enabled, false otherwise
+	 */
+	public static boolean isDisableOnTrigger(String opts) {
+		for(char c: opts.toCharArray()) {
+			String opt = new String(new char[]{c});
+			if(DISABLE_ON_TRIGGER.aliases.contains(opt)) return true;
+		}
+		return false;
+	}
+	
+	/**
+	 * Indicates if the passed option string indicates that a method's instrumentation should start in a disabled state
+	 * @param opts The option string from the shorthand script
+	 * @return true if enabled, false otherwise
+	 */
+	public static boolean isStartDisabled(String opts) {
+		for(char c: opts.toCharArray()) {
+			String opt = new String(new char[]{c});
+			if(START_DISABLED.aliases.contains(opt)) return true;
+		}
+		return false;
+	}
+	
 
 	
 	
 	private InvocationOption(String...aliases) {
+		this.mask = BITMASKS[ordinal()];
 		if(aliases==null || aliases.length==0) {
 			this.aliases = Collections.unmodifiableSet(new HashSet<String>(0));
 		} else {
@@ -60,6 +109,9 @@ public enum InvocationOption {
 	
 	/** A set of aliases for this option */
 	public final Set<String> aliases;
+	
+	/** This members mask */
+	private final int mask;
 
 	/**
 	 * Returns a set containing all of the InvocationOptions represented by the passed names, ignoring invalid options.
@@ -139,6 +191,16 @@ public enum InvocationOption {
 		} catch (Exception ex) {
 			return null;
 		}		
+	}
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.util.enums.IntBitMaskedEnum#getMask()
+	 */
+	@Override
+	public int getMask() {
+		return mask;
 	}	
 
 }

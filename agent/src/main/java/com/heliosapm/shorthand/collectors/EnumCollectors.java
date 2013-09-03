@@ -99,7 +99,6 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 	 * @param className The name of the enum collection type  to get
 	 * @return the enum collection class
 	 */
-	@SuppressWarnings("unchecked")
 	public Class<T> typeForName(String className) {
 		Class<T> ct = indexByName.get(className);
 		if(ct==null) {
@@ -120,6 +119,34 @@ public class EnumCollectors<T extends Enum<T> & ICollector<T>> {
 		}
 		return ct;
 	}
+	
+	/**
+	 * Returns the enum collection type for the passed name. This is really for caching already loaded collector instances
+	 * @param className The class name
+	 * @param classLoader The classloader to load from
+	 * @return the loaded class
+	 */
+	public Class<T> typeForName(String className, ClassLoader classLoader) {
+		Class<T> ct = indexByName.get(className);
+		if(ct==null) {
+			synchronized(indexByName) {
+				ct = indexByName.get(className);
+				if(ct==null) {
+					try {
+						int index = INDEX_SEQ.incrementAndGet();
+						ct = (Class<T>) Class.forName(className, true, classLoader);
+						indexByName.put(className, ct);
+						indexByIndex.put(index, ct);
+						refByIndex.put(index, ct.getEnumConstants()[0]);
+					} catch (Exception ex) {
+						throw new RuntimeException("Failed to get type for name [" + className + "]", ex);
+					}
+				}
+			}
+		}
+		return ct;
+	}
+	
 	
 	/**
 	 * Returns the first enum collector member for the passed class name

@@ -17,29 +17,29 @@ import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
  */
 
 public enum Primitive {
-	/** A void (not really a primitive) */
-	VOID(8, Void.TYPE, Void.class),	
+//	/** A void (not really a primitive) */
+//	VOID(8, Void.TYPE, Void.class, null),	
 	/** A boolean primitive */
-	BOOLEAN(8, Boolean.TYPE, Boolean.class),
+	BOOLEAN(8, Boolean.TYPE, Boolean.class, boolean[].class),
 	/** A byte primitive */
-	BYTE(Byte.SIZE, Byte.TYPE, Byte.class),
+	BYTE(Byte.SIZE, Byte.TYPE, Byte.class, byte[].class),
 	/** A short primitive */
-	SHORT(Short.SIZE, Short.TYPE, Short.class),
+	SHORT(Short.SIZE, Short.TYPE, Short.class, short[].class),
 	/** An integer primitive */
-	INTEGER(Integer.SIZE, Integer.TYPE, Integer.class),
+	INTEGER(Integer.SIZE, Integer.TYPE, Integer.class, int[].class),
 	/** A float primitive */
-	FLOAT(Float.SIZE, Float.TYPE, Float.class),
+	FLOAT(Float.SIZE, Float.TYPE, Float.class, float[].class),
 	/** A long primitive */
-	LONG(Long.SIZE, Long.TYPE, Long.class),
+	LONG(Long.SIZE, Long.TYPE, Long.class, long[].class),
 	/** A double primitive */
-	DOUBLE(Double.SIZE, Double.TYPE, Double.class);
+	DOUBLE(Double.SIZE, Double.TYPE, Double.class, double[].class);
 	
 	
-	private Primitive(int size, Class<?> type, Class<?> upcast) {
+	private Primitive(int size, Class<?> type, Class<?> upcast, Class<?> arrayType) {
 		this.size = size/8;
 		this.type = type;
 		this.upcast = upcast;
-		arrayType = Array.newInstance(type, 1).getClass();
+		this.arrayType = arrayType;
 		addressOffset = UnsafeAdapter.arrayBaseOffset(arrayType); 
 	}
 	
