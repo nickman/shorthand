@@ -24,10 +24,18 @@
  */
 package com.heliosapm.shorthand.script;
 
-import org.junit.Test;
+import java.util.regex.Pattern;
+
 import org.junit.Assert;
+import org.junit.Ignore;
+import org.junit.Test;
 
 import test.com.heliosapm.shorthand.BaseTest;
+
+import com.google.gson.annotations.Since;
+import com.heliosapm.shorthand.collectors.EnumCollectors;
+import com.heliosapm.shorthand.collectors.MethodInterceptor;
+import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScript;
 
 /**
  * <p>Title: ShorthandSimpleScriptTestCase</p>
@@ -39,64 +47,122 @@ import test.com.heliosapm.shorthand.BaseTest;
 
 public class ShorthandSimpleScriptTestCase extends BaseTest {
 	/**
-	 * Encapsulates a shorthand compilation test
-	 * @param shorthand The shorthand expression to test
-	 * @param className The expected class name
-	 * @param methodName The expected method name (and signature)
-	 * @param expectedMetricName The expected metric name
-	 * @param isIface true if an interface, false otherwise
-	 * @param isInherrited true if implements/extends, false otherwise
-	 * @param expectedBitMask The expected bit mask
-	 * @param expectedRuleCount The expected rule script and rule count
+	 * Tests ther parsing of a shorthand script
+	 * @param shorthand The shorthand script source
+	 * @param targetClass The expected target class
+	 * @param targetClassAnnotation The expected target class annotation flag
+	 * @param targetClassInterface  The expected is interface enabled flag
+	 * @param inherritanceEnabled The expected inherritance enabled flag
+	 * @param methodName The expected method name
+	 * @param methodNameExpression The expected method name pattern
+	 * @param methodSignature  The expected method signature
+	 * @param methodSignatureExpression  The expected method signature pattern
+	 * @param targetMethodAnnotation The expected target method is annotation flag
+	 * @param enumIndex The expected enum collector index
+	 * @param bitMask The expected metrics enabled bitmask
+	 * @param methodTemplate The expected method template
+	 * @param allowReentrant The expected allow reentrancy invocation option flag
+	 * @param disableOnTrigger The expected disable on trigger invocation option flag
+	 * @param startDisabled The expected start disabled invocation option flag
 	 * @throws Exception thrown on any error
 	 */
-	protected void test(String shorthand, String className, String methodName, String expectedMetricName, boolean isIface, boolean isInherrited, int expectedBitMask, int expectedRuleCount) throws Exception {
-		final String btm = ShorthandCompiler.compile(shorthand);
-		final int bitMask = getBitMaskFromRule(btm);
-		Assert.assertEquals("Unexpected bitmask", expectedBitMask, bitMask);
+	@Ignore
+	protected void test(String shorthand, Class<?> targetClass, boolean targetClassAnnotation,
+			boolean targetClassInterface, boolean inherritanceEnabled,
+			String methodName, Pattern methodNameExpression,
+			String methodSignature, Pattern methodSignatureExpression,
+			boolean targetMethodAnnotation, 
+			int enumIndex, int bitMask,
+			String methodTemplate, boolean allowReentrant,
+			boolean disableOnTrigger, boolean startDisabled) throws Exception {
+		final ShorthandScript script = ShorthandScript.parse(shorthand);
 		
-		Map<String, RuleScript> ruleScripts = compileRules(btm);
-		Assert.assertEquals("Unexpected RuleScript Count", expectedRuleCount, ruleScripts.size());
-		List<Rule> rules = new ArrayList<Rule>();
-		for(RuleScript rs: ruleScripts.values()) {
-			rules.add(Rule.create(rs, ClassLoader.getSystemClassLoader(), HM));
-		}
-		Assert.assertEquals("Unexpected RuleScript Count", expectedRuleCount, rules.size());
-		int index = 0;
-		for(Rule rule: rules) {						 
-			RuleScript rs = ruleScripts.get(rule.getName());			
-			
-			if(index!=0) {
-				final String metricName = extractMetricName(rs.getRuleText());
-				Assert.assertEquals("Unexpected metricName", expectedMetricName, metricName);
-			}
-			
-			
-			Assert.assertEquals("Rule and RuleScript names not equal", rs.getName(), rule.getName());
-			Assert.assertEquals("Unexpected rule name in compiled rule", RULE_NAME_PREFIXES[index] + " " + shorthand, rule.getName());
-			// The rule instance does not have the helper class yet
-			Assert.assertEquals("Unexpected Helper Class Name in rule script", ICEHelper.class.getName(), rs.getTargetHelper());			
-			Assert.assertEquals("Unexpected method name", methodName, rule.getTargetMethod());
-			Assert.assertEquals("Unexpected method name", className, rule.getTargetClass());
-			Assert.assertEquals("Unexpected class interface", isIface, rule.isInterface());
-			Assert.assertEquals("Unexpected class inherritance", isInherrited, rule.isOverride());
-			Location location = rule.getTargetLocation();
-			Action action = rule.getAction();
-			switch(index) {
-			case 0: // open
-				Assert.assertEquals("Unexpected location", ShorthandCompiler.OPEN_LOC, location.toString());				
-				Assert.assertEquals("Unexpected action", SPACE_AND_SEMIC.matcher(String.format(ShorthandCompiler.OPEN_ACTION, bitMask, "classSig", "methodSig")).replaceAll(""), SPACE_AND_SEMIC.matcher(action.toString()).replaceAll(""));				
-				break;
-			case 1: // close
-				Assert.assertEquals("Unexpected location", ShorthandCompiler.CLOSE_LOC, location.toString());
-				//Assert.assertEquals("Unexpected action", SPACE_AND_SEMIC.matcher(String.format(ShorthandCompiler.CLOSE_ACTION, metricName)).replaceAll(""), SPACE_AND_SEMIC.matcher(action.toString()).replaceAll(""));
-				break;					
-			case 2: // exception
-				Assert.assertEquals("Unexpected location", ShorthandCompiler.EXC_LOC, location.toString());
-				//Assert.assertEquals("Unexpected action", SPACE_AND_SEMIC.matcher(String.format(ShorthandCompiler.EXC_ACTION, metricName)).replaceAll(""), SPACE_AND_SEMIC.matcher(action.toString()).replaceAll(""));
-			}
-			index++;
-		}
+		Assert.assertEquals("Unexpected target class", targetClass, script.getTargetClass());
+		Assert.assertEquals("Unexpected target class annot flag", targetClassAnnotation, script.isTargetClassAnnotation());
+		// This guy asserts as true since an annotation does qualify as an interface.
+		// but that's not what we want.
+		//Assert.assertEquals("Unexpected target class iface flag", targetClass.isInterface(), script.isTargetClassInterface());
+		Assert.assertEquals("Unexpected target class iface flag", targetClassInterface, script.isTargetClassInterface());
+		Assert.assertEquals("Unexpected target class inherritance flag", inherritanceEnabled, script.isInherritanceEnabled());
+		
+		Assert.assertEquals("Unexpected method name", methodName, script.getMethodName());
+		Assert.assertEquals("Unexpected method name expression", methodNameExpression, script.getMethodNameExpression());
+		Assert.assertEquals("Unexpected method signature", methodSignature, script.getMethodSignature());
+		Assert.assertEquals("Unexpected method signature expression", methodSignatureExpression, script.getMethodSignatureExpression());
+		
+		Assert.assertEquals("Unexpected target method annot flag", targetMethodAnnotation, script.isTargetMethodAnnotation());
+		
+		Assert.assertEquals("Unexpected enum index", enumIndex, script.getEnumIndex());
+		Assert.assertEquals("Unexpected bitmask", bitMask, script.getBitMask());
+		
+		Assert.assertEquals("Unexpected method name template", methodTemplate, script.getMethodTemplate());
+		
+		Assert.assertEquals("Unexpected allow reentrancy inv option", allowReentrant, script.isAllowReentrant());
+		Assert.assertEquals("Unexpected disable on trigger inv option", disableOnTrigger, script.isDisableOnTrigger());
+		Assert.assertEquals("Unexpected start disabled inv option", startDisabled, script.isStartDisabled());
+		
+		final int _bitMask = script.getBitMask();
+		Assert.assertEquals("Unexpected bitmask", bitMask, _bitMask);
 	}
+	
+	/** Shortcut for match all pattern */
+	protected static final Pattern MA = ShorthandScript.MATCH_ALL;
+	/** Shortcut and early init for the enum collector index for MethodInterceptor */
+	protected static final int MI = EnumCollectors.getInstance().index(MethodInterceptor.class.getName());
+
+	/**
+	 * Tests a simple expression with a zero bitmask
+	 * @throws Exception thrown on any error
+	 */
+	@Test
+	public void testBasicZeroBitMask() throws Exception {
+		test("java.lang.Object equals MethodInterceptor[0] 'java/lang/Object'", 
+				Object.class, false,	// target class, target class annot
+				false, false,  			// target class iface, target class inherritance
+				"equals", null, 		// methodName, methodName pattern
+				null, MA, false, 		// method sig, method sig pattern, target method annot 
+				MI, 0, 			// enum index, bit mask
+				"java/lang/Object",  	// method template
+				false, false, false);  	// allow reentrant, disable on trigger, startDisabled		
+	}
+	
+	/**
+	 * Tests a simple expression with a zero bitmask and inherritance
+	 * @throws Exception thrown on any error
+	 */
+	@Test
+	public void testInherritedBasicZeroBitMask() throws Exception {
+		test("java.lang.Object+ equals MethodInterceptor[0] 'java/lang/Object'", 
+				Object.class, false,	// target class, target class annot
+				false, true,  			// target class iface, target class inherritance
+				"equals", null, 		// methodName, methodName pattern
+				null, MA, false, 		// method sig, method sig pattern, target method annot 
+				MI, 0, 			// enum index, bit mask
+				"java/lang/Object",  	// method template
+				false, false, false);  	// allow reentrant, disable on trigger, startDisabled
+		//test("java.lang.Object equals [0] '$package[0]/$package[1]/$class/$method'", "java.lang.Object", "equals", "java/lang/Object/equals", false, false, 0, 3);
+	}
+	
+	/**
+	 * Tests a simple expression with a zero bitmask and inherritance
+	 * @throws Exception thrown on any error
+	 */
+	@Test
+	public void testAnnotatedClassBasicZeroBitMask() throws Exception {
+		test("@com.google.gson.annotations.Since foo MethodInterceptor[0] 'since/$class/$2'", 
+				Since.class, true,		// target class, target class annot
+				false, false,  			// target class iface, target class inherritance
+				"foo", null, 		// methodName, methodName pattern
+				null, MA, false, 		// method sig, method sig pattern, target method annot 
+				MI, 0, 					// enum index, bit mask
+				"since/$class/$2",  	// method template
+				false, false, false);  	// allow reentrant, disable on trigger, startDisabled
+		//test("java.lang.Object equals [0] '$package[0]/$package[1]/$class/$method'", "java.lang.Object", "equals", "java/lang/Object/equals", false, false, 0, 3);
+	}
+	
+	
+	//@com.google.gson.annotations.Since
+	
+	
 	
 }

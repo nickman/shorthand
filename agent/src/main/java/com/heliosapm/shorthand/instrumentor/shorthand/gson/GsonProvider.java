@@ -26,6 +26,7 @@ package com.heliosapm.shorthand.instrumentor.shorthand.gson;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandJSONScript;
 import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScript;
 
 
@@ -54,11 +55,11 @@ public class GsonProvider {
 		prettyPrinter = new GsonBuilder()
 			.setPrettyPrinting()
 			.excludeFieldsWithoutExposeAnnotation()
-			.registerTypeAdapter(ShorthandScript.class, new ShorthandScript())
+			.registerTypeAdapter(ShorthandJSONScript.class, new ShorthandJSONScript())
 			.create();
 		stdGson = new GsonBuilder()
 		.excludeFieldsWithoutExposeAnnotation()
-		.registerTypeAdapter(ShorthandScript.class, new ShorthandScript())
+		.registerTypeAdapter(ShorthandScript.class, new ShorthandJSONScript())
 		.create();
 		noSerGson = new GsonBuilder()
 		.excludeFieldsWithoutExposeAnnotation()		

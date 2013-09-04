@@ -57,6 +57,7 @@ public enum InvocationOption implements IntBitMaskedEnum {
 	 * @return true if enabled, false otherwise
 	 */
 	public static boolean isAllowReentrant(String opts) {
+		if(opts==null || opts.trim().isEmpty()) return false;
 		for(char c: opts.toCharArray()) {
 			String opt = new String(new char[]{c});
 			if(ALLOW_REENTRANT.aliases.contains(opt)) return true;
@@ -70,6 +71,7 @@ public enum InvocationOption implements IntBitMaskedEnum {
 	 * @return true if enabled, false otherwise
 	 */
 	public static boolean isDisableOnTrigger(String opts) {
+		if(opts==null || opts.trim().isEmpty()) return false;
 		for(char c: opts.toCharArray()) {
 			String opt = new String(new char[]{c});
 			if(DISABLE_ON_TRIGGER.aliases.contains(opt)) return true;
@@ -83,6 +85,7 @@ public enum InvocationOption implements IntBitMaskedEnum {
 	 * @return true if enabled, false otherwise
 	 */
 	public static boolean isStartDisabled(String opts) {
+		if(opts==null || opts.trim().isEmpty()) return false;
 		for(char c: opts.toCharArray()) {
 			String opt = new String(new char[]{c});
 			if(START_DISABLED.aliases.contains(opt)) return true;
