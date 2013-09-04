@@ -25,22 +25,39 @@
 package com.heliosapm.shorthand.instrumentor.shorthand;
 
 import java.io.File;
-import java.lang.reflect.Field;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Member;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
+import org.reflections.Reflections;
+import org.reflections.scanners.SubTypesScanner;
+import org.reflections.scanners.TypeAnnotationsScanner;
+import org.reflections.util.ConfigurationBuilder;
+
 import com.heliosapm.shorthand.ShorthandProperties;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.util.StringHelper;
 import com.heliosapm.shorthand.util.URLHelper;
 import com.heliosapm.shorthand.util.enums.EnumHelper;
-import com.heliosapm.shorthand.util.enums.IntBitMaskedEnum;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
 
 /**
@@ -60,14 +77,19 @@ public class ShorthandScript  {
 	        		"(@)?" +                         	// The class annotation indicator
 	                "(.*?)" +                         	// The classname
 	                "(\\+)?" +                         	// The classname options (+ for inherritance) 
-	                "\\s(?:\\((.*?)\\)\\s)?" +         	// The optional method accessibilities. Defaults to "pub"
+	                "(?:<\\-(.*?))?" + 					// The optional classloader expression for the target class name
+					"\\s" + 							// spacer
+	                "(?:\\((.*?)\\)\\s)?" +         	// The optional method accessibilities. Defaults to "pub"
 	                "(@)?" +                         	// The method annotation indicator
 	                "(.*?)" +                         	// The method name expression, wrapped in "[ ]" if a regular expression
-	                "(?:\\((.*)\\))?" +            		// The optional method signature 
+	                "(?:\\((.*)\\))?" +            		// The optional method signature
+	                "(?:\\[(.*)\\])?" +         		// The optional method attributes
+	                "(?:<\\-(.*?))?" + 					// The optional classloader expression for the method level annotation
 	                "\\s" +                             // spacer
 	                "(?:\\-(\\w+))?" +                 	// The method instrumentation options (-dr)
 	                "(.*?)" +                         	// The collector name
 	                "(?:\\[(.*)\\])?" +         		// The bitmask option. [] is mandatory. It may contain the bitmask int, or comma separated MetricCollection names
+	                "(?:<\\-(.*?))?" + 					// The optional classloader expression for the enum collector
 	                "\\s" +                            	// spacer
 	                "(?:'(.*)')"                    	// The metric name format      
 	);
@@ -78,22 +100,33 @@ public class ShorthandScript  {
 	public static final int IND_TARGETCLASS = 1;				// MANDATORY
 	/** The index of the inherritance indicator */
 	public static final int IND_INHERRIT = 2;
+	/** The index of the target class classloader expression */
+	public static final int IND_TARGETCLASS_CL = 4;	
 	/** The index of the method attributes */
-	public static final int IND_ATTRS= 3;
+	public static final int IND_ATTRS= 4;
 	/** The index of the target method annotation indicator */
-	public static final int IND_METHOD_ANNOT = 4;	
+	public static final int IND_METHOD_ANNOT = 5;	
 	/** The index of the target method name or expression */
-	public static final int IND_METHOD = 5;						// MANDATORY
+	public static final int IND_METHOD = 6;						// MANDATORY
 	/** The index of the target method signature */
-	public static final int IND_SIGNATURE = 6;
+	public static final int IND_SIGNATURE = 7;
+	/** The index of the target method attributes */
+	public static final int IND_METHOD_ATTRS = 8;
+	
+	/** The index of the method level annotation classloader expression */
+	public static final int IND_METHOD_ANNOT_CL = 9;
+	
 	/** The index of the instrumentation options */
-	public static final int IND_INSTOPTIONS = 7;
+	public static final int IND_INSTOPTIONS = 10;
 	/** The index of the collector name */
-	public static final int IND_COLLECTORNAME = 8;				// MANDATORY
+	public static final int IND_COLLECTORNAME = 11;				// MANDATORY
 	/** The index of the instrumentation bit mask */
-	public static final int IND_BITMASK = 9;					// MANDATORY
+	public static final int IND_BITMASK = 12;					
+	/** The index of the collector class classloader expression */
+	public static final int IND_COLLECTOR_CL = 13;
+	
 	/** The index of the instrumentation generated metric name */
-	public static final int IND_METRICNAME = 10;				// MANDATORY
+	public static final int IND_METRICNAME = 14;				
 	
 	/** The whitespace cleaner */
 	public static final Pattern WH_CLEANER = Pattern.compile("\\s+");
@@ -121,14 +154,41 @@ public class ShorthandScript  {
 	/** The JVM's end of line character */
 	public static final String EOL = System.getProperty("line.separator", "\n");
 	
+	/** An executor service to execute classpath scans in parallel */
+	private static final ExecutorService scanExecutor = Executors.newCachedThreadPool(new ThreadFactory(){
+		private final AtomicInteger serial = new AtomicInteger();
+		@Override
+		public Thread newThread(Runnable r) {
+			Thread t = new Thread(r, "ReflectionsScanningThread#" + serial.incrementAndGet());
+			t.setDaemon(true);
+			return t;
+		}
+	});
+	
+	static {
+		((ThreadPoolExecutor)scanExecutor).prestartCoreThread();
+		((ThreadPoolExecutor)scanExecutor).prestartCoreThread();
+	}
+	
+	
+	
+	//==============================================================================================
+	//		Target Class Attributes
+	//==============================================================================================
 	/** The target class for instrumentation */
 	protected Class<?> targetClass = null;
 	/** Indicates if the target class is an annotation */
 	protected boolean targetClassAnnotation = false;
+	/** The target class classloader */
+	protected ClassLoader targetClassLoader = null;
 	/** Indicates if the target class is an interface */
 	protected boolean targetClassInterface = false;	
 	/** Indicates if inherritance off the target class is enabled */
 	protected boolean inherritanceEnabled = false;
+	
+	//==============================================================================================
+	//		Target Method Attributes
+	//==============================================================================================
 	/** The target method name, null if expr is used */
 	protected String methodName = null;
 	/** The target method name expression, null if name is used */
@@ -139,17 +199,26 @@ public class ShorthandScript  {
 	protected Pattern methodSignatureExpression = null;
 	/** Indicates if the target method is an annotation */
 	protected boolean targetMethodAnnotation = false;
-	/** The method invocation options (from {@link InvocationOption}) */
-	protected int methodInvocationOption = 0;
+	/** The target method level annotation class */
+	protected Class<? extends Annotation> methodAnnotationClass = null;	
+	/** The target method level annotation classloader */
+	protected ClassLoader methodAnnotationClassLoader = null;
 	/** The method attributes (from {@link MethodAttribute}) */
 	protected int methodAttribute = MethodAttribute.DEFAULT_METHOD_MASK;
+
+	//==============================================================================================
+	//		Instrumentation Attributes
+	//==============================================================================================
+	/** The method invocation options (from {@link InvocationOption}) */
+	protected int methodInvocationOption = 0;
 	/** The enum collector class index */
 	protected int enumIndex = -1;
+	/** The enum collector class classloader */
+	protected ClassLoader enumCollectorClassLoader = null;
 	/** The enum collector enabled metric bitmask */
 	protected int bitMask = -1;
 	/** The metric name template */
-	protected String methodTemplate = null;
-	
+	protected String metricNameTemplate = null;
 	/** Indicates if the instrumented method should have the instrumentation enabled when the method is called reentrantly (i.e. self-calls) */
 	protected boolean allowReentrant = false;
 	/** Indicates if all instrumentation on the current thread should be disabled when the method is invoked */
@@ -158,55 +227,10 @@ public class ShorthandScript  {
 	protected boolean startDisabled = false;
 	
 	
+	//==============================================================================================
 	
 
-	/**
-	 * Creates a new ShorthandScript
-	 * @param targetClass
-	 * @param targetClassAnnotation
-	 * @param targetClassInterface
-	 * @param inherritanceEnabled
-	 * @param methodName
-	 * @param methodNameExpression
-	 * @param methodSignature
-	 * @param methodSignatureExpression
-	 * @param targetMethodAnnotation
-	 * @param methodInvocationOption
-	 * @param methodAttribute
-	 * @param enumIndex
-	 * @param bitMask
-	 * @param methodTemplate
-	 * @param allowReentrant
-	 * @param disableOnTrigger
-	 * @param startDisabled
-	 */
-	public ShorthandScript(Class<?> targetClass, boolean targetClassAnnotation,
-			boolean targetClassInterface, boolean inherritanceEnabled,
-			String methodName, Pattern methodNameExpression,
-			String methodSignature, Pattern methodSignatureExpression,
-			boolean targetMethodAnnotation, int methodInvocationOption,
-			int methodAttribute, int enumIndex, int bitMask,
-			String methodTemplate, boolean allowReentrant,
-			boolean disableOnTrigger, boolean startDisabled) {
-		super();
-		this.targetClass = targetClass;
-		this.targetClassAnnotation = targetClassAnnotation;
-		this.targetClassInterface = targetClassInterface;
-		this.inherritanceEnabled = inherritanceEnabled;
-		this.methodName = methodName;
-		this.methodNameExpression = methodNameExpression;
-		this.methodSignature = methodSignature;
-		this.methodSignatureExpression = methodSignatureExpression;
-		this.targetMethodAnnotation = targetMethodAnnotation;
-		this.methodInvocationOption = methodInvocationOption;
-		this.methodAttribute = methodAttribute;
-		this.enumIndex = enumIndex;
-		this.bitMask = bitMask;
-		this.methodTemplate = methodTemplate;
-		this.allowReentrant = allowReentrant;
-		this.disableOnTrigger = disableOnTrigger;
-		this.startDisabled = startDisabled;
-	}
+
 
 	/**
 	 * Returns a parsed ShorthandScript instance for the passed source
@@ -217,24 +241,14 @@ public class ShorthandScript  {
 		if(source==null || source.toString().trim().isEmpty()) throw new ShorthandParseFailureException("The passed source was null or empty", "<null>");
 		return new ShorthandScript(source.toString().trim());
 	}
-	
-	/**
-	 * Creates a new ShorthandScript
-	 * @param source The source to parse
-	 */
-	private ShorthandScript(String source) {
-		this(source, null);
-	}
+
 	
 	/**
 	 * Creates a new ShorthandScript
 	 * @param source The source to parse
 	 * @param classLoader An optional classloader
 	 */
-	private ShorthandScript(String source, Object classLoader) {
-		ClassLoader _classLoader = null;
-		if(classLoader==null) _classLoader = Thread.currentThread().getContextClassLoader();
-		else _classLoader = classLoaderFrom(classLoader);
+	private ShorthandScript(String source) {
 		String whiteSpaceCleanedSource = WH_CLEANER.matcher(source).replaceAll(" ");
 		Matcher matcher = SH_PATTERN.matcher(whiteSpaceCleanedSource);
 		if(!matcher.matches()) {
@@ -247,23 +261,30 @@ public class ShorthandScript  {
 		}
 		log("Parsed values: %s", Arrays.toString(parsedFields));
 		validateMandatoryFields(whiteSpaceCleanedSource, parsedFields);
-		validateTargetClass(_classLoader, whiteSpaceCleanedSource, parsedFields[IND_TARGETCLASS], parsedFields[IND_TARGETCLASS_ANNOT], parsedFields[IND_INHERRIT]);
-		validateTargetMethod(_classLoader, whiteSpaceCleanedSource, parsedFields[IND_METHOD], parsedFields[IND_ATTRS], parsedFields[IND_METHOD_ANNOT], parsedFields[IND_SIGNATURE], parsedFields[IND_INSTOPTIONS]);
+		validateTargetClass(whiteSpaceCleanedSource, parsedFields[IND_TARGETCLASS], parsedFields[IND_TARGETCLASS_CL], parsedFields[IND_TARGETCLASS_ANNOT], parsedFields[IND_INHERRIT]);
+		validateTargetMethod(whiteSpaceCleanedSource, parsedFields[IND_METHOD], parsedFields[IND_METHOD_ANNOT_CL], parsedFields[IND_METHOD_ANNOT], parsedFields[IND_SIGNATURE], parsedFields[IND_INSTOPTIONS]);
+		validateTargetMethodAttributes(whiteSpaceCleanedSource, parsedFields[IND_METHOD_ANNOT_CL]); 
 		validateMethodSignature(whiteSpaceCleanedSource, parsedFields[IND_SIGNATURE]);
 		validateMethodInvocationOptions(whiteSpaceCleanedSource, parsedFields[IND_INSTOPTIONS]);
-		validateMethodInstrumentation(_classLoader, whiteSpaceCleanedSource, parsedFields[IND_COLLECTORNAME], parsedFields[IND_BITMASK]);		
-		methodTemplate = parsedFields[IND_METRICNAME].trim();
+		validateMethodInstrumentation(whiteSpaceCleanedSource, parsedFields[IND_COLLECTORNAME], parsedFields[IND_COLLECTOR_CL], parsedFields[IND_BITMASK]);		
+		metricNameTemplate = parsedFields[IND_METRICNAME].trim();
 	}
 	
 	/**
 	 * Validates, loads and configures the target method instrumentation collector and configuration
-	 * @param classLoader A classloader for classloading resolution
 	 * @param source The source (for reporting in any ecxeption thrown)
 	 * @param collectorName The partial or full collector name
+	 * @param parsedClassLoader The classloader expression for the enum collector class
 	 * @param bitMaskOptions The bitmask or comma separated collector member names to enable
 	 */
-	protected void validateMethodInstrumentation(ClassLoader classLoader, String source, String collectorName, String bitMaskOptions) {
+	protected void validateMethodInstrumentation(String source, String collectorName, String parsedClassLoader, String bitMaskOptions) {
 		String _collectorName = collectorName.trim();
+		ClassLoader classLoader = null;
+		if(parsedClassLoader!=null && !parsedClassLoader.trim().isEmpty()) {
+			classLoader = classLoaderFrom(parsedClassLoader.trim());
+		} else {
+			classLoader = Thread.currentThread().getContextClassLoader();
+		}
 		Class<? extends ICollector<?>> clazz = null;
 		try {
 			clazz = (Class<? extends ICollector<?>>) Class.forName(_collectorName, true, classLoader);
@@ -284,12 +305,98 @@ public class ShorthandScript  {
 		if(isNumber(bitMaskOptions.trim())) {
 			bitMask = Integer.parseInt(bitMaskOptions.trim());
 		} else {			
-			bitMask = EnumHelper.getEnabledBitMask(true, EnumHelper.castToIntBitMaskedEnum(clazz), COMMA_SPLITTER.split(bitMaskOptions.trim()));
+			if("*".equals(bitMaskOptions.trim())) {
+				// all members
+				bitMask = EnumHelper.getEnabledBitMask(true, EnumHelper.castToIntBitMaskedEnum(clazz), COMMA_SPLITTER.split(bitMaskOptions.trim()));
+			} else {
+				bitMask = EnumHelper.getEnabledBitMask(true, EnumHelper.castToIntBitMaskedEnum(clazz), COMMA_SPLITTER.split(bitMaskOptions.trim()));
+			}
 		}		
 	}
 	
-
+	/**
+	 * Returns a map of sets of members (methods and constructors) targetted for instrumentation, keyed by the classes they are declared in.
+	 * @return a map of sets of members keyed by the declaring class
+	 */
+	public Map<Class<?>, Set<Member>> getTargetMembers() {
+		Set<Class<?>> targetClasses = getTargetClasses();
+		Map<Class<?>, Set<Member>> targetMembers = new HashMap<Class<?>, Set<Member>>(targetClasses.size());
+		for(Class<?> clazz: targetClasses) {
+			targetMembers.put(clazz, new HashSet<Member>());
+		}
+		Class<? extends Annotation> annotationClass = null;
+		if(targetMethodAnnotation) {
+			annotationClass = (Class<? extends Annotation>) methodAnnotationClass;
+		}
+		for(Map.Entry<Class<?>, Set<Member>> entry: targetMembers.entrySet()) {
+			for(Method m: entry.getKey().getDeclaredMethods()) {
+				if(targetMethodAnnotation) {
+					if(m.getAnnotation(annotationClass)!=null) {
+						if(isMatchingSignature(m) && isMatchingAttribute(m)) {
+							entry.getValue().add(m);
+						}
+					}
+				} else if(methodName!=null && methodName.equals(m.getName())) {
+					if(isMatchingSignature(m) && isMatchingAttribute(m)) {
+						entry.getValue().add(m);
+					}
+				} else if(methodNameExpression!=null && methodNameExpression.matcher(m.getName()).matches()) {
+					if(isMatchingSignature(m) && isMatchingAttribute(m)) entry.getValue().add(m);
+				}
+			}
+		}
+		return targetMembers;
+	}
 	
+	
+	/**
+	 * Determines if the passed member matches either the defined signature or the signature expression
+	 * @param member The member to test 
+	 * @return true for a match, false otherwise
+	 */
+	protected boolean isMatchingSignature(Member member) {
+		String desc = StringHelper.getMemberDescriptor(member);
+		if(methodSignature!=null) {
+			return methodSignature.equals(desc);
+		}
+		return methodSignatureExpression.matcher(desc).matches();
+	}
+	
+	/**
+	 * Determines if the passed member's modifiers match the method attribute defined in the script
+	 * @param member The member to test
+	 * @return true for a match, false otherwise
+	 */
+	protected boolean isMatchingAttribute(Member member) {
+		//log("isMatchingAttribute:  %s [%s]  ma [%s]", member.getName(), member.getModifiers(), methodAttribute);
+		return (methodAttribute & member.getModifiers())==member.getModifiers(); 
+	}
+	
+	
+
+	/**
+	 * Locates the targetted classes and returns them in a set
+	 * @return a set of target classes
+	 */
+	public Set<Class<?>> getTargetClasses() {
+		ConfigurationBuilder cb = new ConfigurationBuilder()
+			.addClassLoader(targetClassLoader)
+			.addScanners(new SubTypesScanner());
+		
+		if(targetClassAnnotation) {
+			cb.addScanners(new TypeAnnotationsScanner());
+		}
+		cb.setExecutorService(scanExecutor);
+		Reflections reflections = new Reflections(cb.build());
+		if(targetClassAnnotation) {
+			return reflections.getTypesAnnotatedWith((Class<? extends Annotation>) targetClass, inherritanceEnabled);
+		} else if(inherritanceEnabled) {
+			Set<?> subTypes = reflections.getSubTypesOf(targetClass);
+			Set<Class<?>> results = new HashSet<Class<?>>((Collection<? extends Class<?>>) subTypes);
+		}
+		Set<Class<?>> results  = new HashSet<Class<?>>(Arrays.asList(targetClass));
+		return results;
+	}
 	
 	/**
 	 * Validates, loads and configures the target method invocation options
@@ -332,18 +439,35 @@ public class ShorthandScript  {
 
 	}
 	
+	/**
+	 * Validates, loads and configures the target method attributes
+	 * @param source The source (for reporting in any ecxeption thrown)
+	 * @param parsedMethodAttributes The method attributes (from {@link MethodAttribute})
+	 */
+	protected void validateTargetMethodAttributes(String source, String parsedMethodAttributes) {
+		if(parsedMethodAttributes!=null && !parsedMethodAttributes.trim().isEmpty()) {
+			String[] attrs = COMMA_SPLITTER.split(parsedMethodAttributes.trim());
+			methodAttribute = EnumHelper.getEnabledBitMask(true, MethodAttribute.class, attrs);
+		}
+	}
 	
 	/**
 	 * Validates, loads and configures the target method[s]
-	 * @param classLoader A classloader for classloading resolution
 	 * @param source The source (for reporting in any ecxeption thrown)
 	 * @param parsedMethodName The method name or pattern
-	 * @param parsedMethodAttributes The method attributes (from {@link MethodAttribute})
+	 * @param parsedClassLoader The classloader expression for the method level annotation class
 	 * @param parsedMethodAnnotation The method annotation indicator
 	 * @param parsedMethodSignature The method signature or pattern
 	 * @param parsedMethodInvOptions The method invocation options (from {@link InvocationOption})
 	 */
-	protected void validateTargetMethod(ClassLoader classLoader, String source, String parsedMethodName, String parsedMethodAttributes, String parsedMethodAnnotation, String parsedMethodSignature, String parsedMethodInvOptions) {
+	protected void validateTargetMethod(String source, String parsedMethodName, String parsedClassLoader, String parsedMethodAnnotation, String parsedMethodSignature, String parsedMethodInvOptions) {
+		ClassLoader classLoader = null;
+		if(parsedClassLoader!=null && !parsedClassLoader.trim().isEmpty()) {
+			classLoader = classLoaderFrom(parsedClassLoader.trim());
+		} else {
+			classLoader = Thread.currentThread().getContextClassLoader();
+		}
+		
 		if(parsedMethodAnnotation!=null) {
 			targetMethodAnnotation = "@".equals(parsedMethodAnnotation.trim());
 		} else {
@@ -354,7 +478,9 @@ public class ShorthandScript  {
 			boolean patternStart = methodName.startsWith("[");
 			boolean patternEnd = methodName.endsWith("]");
 			if((patternStart && patternEnd) || (!patternStart && !patternEnd)) {
+				
 				if(patternStart && patternEnd) {
+					// This means we're looking at a method expression
 					if(targetMethodAnnotation) throw new ShorthandParseFailureException("Cannot combine method annotation and method name expression", source);
 					try {
 						this.methodNameExpression = Pattern.compile(methodName.substring(1, methodName.length()-1));
@@ -362,6 +488,28 @@ public class ShorthandScript  {
 					} catch (Exception ex) {
 						throw new ShorthandParseFailureException("Failed to compile method name pattern " + methodName, source);
 					}
+				} else {
+					// This means we're NOT looking at a method expression, so it's either an annotation or a simple method name
+					this.methodNameExpression = null;
+					if(targetMethodAnnotation) {
+						// It's a method annotation
+						this.methodName = null;
+						try {
+							methodAnnotationClass = (Class<? extends Annotation>)Class.forName(methodName, true, classLoader);
+						} catch (Exception ex) {
+							throw new ShorthandParseFailureException("Failed to load method level annotation class [" + methodName + "]", source, ex);
+						}
+					} else {
+						// It's a simple method name
+						// unless it's "*"
+						if(methodName.equals("*")) {
+							this.methodNameExpression = MATCH_ALL;
+							this.methodName = null;
+						} else {
+							methodAnnotationClass = null;
+						}
+					}
+					
 				}
 			} else {
 				throw new ShorthandParseFailureException("Method name [" + methodName + "] seemed to want to be an expression but was missing an opener or closer", source);
@@ -374,28 +522,24 @@ public class ShorthandScript  {
 		
 	}
 	
-//	/** The index of the method attributes */
-//	public static final int IND_ATTRS= 3;
-//	/** The index of the target method annotation indicator */
-//	public static final int IND_METHOD_ANNOT = 4;	
-//	/** The index of the target method name or expression */
-//	public static final int IND_METHOD = 5;						// MANDATORY
-//	/** The index of the target method signature */
-//	public static final int IND_SIGNATURE = 6;
-//	/** The index of the instrumentation options */
-//	public static final int IND_INSTOPTIONS = 7;
 	
 	
 	/**
 	 * Validates, loads and configures the target class[es]
-	 * @param classLoader A classloader for classloading resolution
 	 * @param source The source (for reporting in any ecxeption thrown)
 	 * @param parsedClassName The target class name
+	 * @param parsedClassLoader The classloader expression for the target class
 	 * @param parsedAnnotationIndicator The parsed annotation indicator
 	 * @param inherritanceIndicator The parsed inherritance indicator
 	 */
-	protected void validateTargetClass(ClassLoader classLoader, String source, String parsedClassName, String parsedAnnotationIndicator, String inherritanceIndicator) {
+	protected void validateTargetClass(String source, String parsedClassName, String parsedClassLoader, String parsedAnnotationIndicator, String inherritanceIndicator) {
 		String className = parsedClassName.trim();
+		ClassLoader classLoader = null;
+		if(parsedClassLoader!=null && !parsedClassLoader.trim().isEmpty()) {
+			classLoader = classLoaderFrom(parsedClassLoader.trim());
+		} else {
+			classLoader = Thread.currentThread().getContextClassLoader();
+		}
 		if(parsedAnnotationIndicator!=null) {
 			targetClassAnnotation = "@".equals(parsedAnnotationIndicator.trim());
 		} else {
@@ -423,7 +567,7 @@ public class ShorthandScript  {
 				targetClassAnnotation = false;
 			}
 		} catch (Exception ex) {
-			throw new ShorthandParseFailureException("Failed to locate target class [" + className + "]", source);
+			throw new ShorthandParseFailureException("Failed to locate target class [" + className + "]", source, ex);
 		}
 	}
 	
@@ -532,45 +676,7 @@ public class ShorthandScript  {
 		}
 	}	
 	
-	
-//	/** The index of the target class annotation indicator */
-//	public static final int IND_TARGETCLASS_ANNOT = 0;				
-//	/** The index of the target class */
-//	public static final int IND_TARGETCLASS = 1;				// MANDATORY
-//	/** The index of the inherritance indicator */
-//	public static final int IND_INHERRIT = 2;
-//	/** The index of the method attributes */
-//	public static final int IND_ATTRS= 3;
-//	/** The index of the target method annotation indicator */
-//	public static final int IND_METHOD_ANNOT = 4;	
-//	/** The index of the target method name or expression */
-//	public static final int IND_METHOD = 5;						// MANDATORY
-//	/** The index of the target method signature */
-//	public static final int IND_SIGNATURE = 6;
-//	/** The index of the instrumentation options */
-//	public static final int IND_INSTOPTIONS = 7;
-//	/** The index of the collector name */
-//	public static final int IND_COLLECTORNAME = 8;				// MANDATORY
-//	/** The index of the instrumentation bit mask */
-//	public static final int IND_BITMASK = 9;					// MANDATORY
-//	/** The index of the instrumentation generated metric name */
-//	public static final int IND_METRICNAME = 10;				// MANDATORY
-	
-	public static void main(String[] args) {
-		StringBuilder b = new StringBuilder("keys = [");
-		for(Field f: ShorthandScript.class.getDeclaredFields()) {
-			if(f.getName().startsWith("IND")) {
-				try {
-					int i = ((Integer)f.get(null));
-					b.append("\n\t").append(i).append(" : ").append("\"").append(f.getName()).append("\",");
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-			}
-		}
-		b.append("\n];");
-		System.out.println(b);
-	}
+
 
 	/**
 	 * Returns the 
@@ -669,11 +775,11 @@ public class ShorthandScript  {
 	}
 
 	/**
-	 * Returns the 
+	 * Returns the template to build the metric name from
 	 * @return the methodTemplate
 	 */
-	public String getMethodTemplate() {
-		return methodTemplate;
+	public String getMetricNameTemplate() {
+		return metricNameTemplate;
 	}
 	
 	/**
@@ -737,6 +843,39 @@ public class ShorthandScript  {
 		return startDisabled;
 	}
 
+	/**
+	 * Returns the target class classloader
+	 * @return the target class classloader
+	 */
+	public ClassLoader getTargetClassLoader() {
+		return targetClassLoader;
+	}
+
+	/**
+	 * Returns the method level annotation classloader
+	 * @return the method level annotation classloader
+	 */
+	public ClassLoader getMethodAnnotationClassLoader() {
+		return methodAnnotationClassLoader;
+	}
+
+	/**
+	 * Returns the enum collector class classloader
+	 * @return the enum collector class classloader
+	 */
+	public ClassLoader getEnumCollectorClassLoader() {
+		return enumCollectorClassLoader;
+	}
+
+
+	/**
+	 * Returns the target method level annotation class
+	 * @return the target method level annotation class
+	 */
+	public Class<? extends Annotation> getMethodAnnotation() {
+		return methodAnnotationClass;
+	}
+
 	
 
 }
@@ -790,3 +929,4 @@ public class ShorthandScript  {
 //        println "\t${keys.get(x-1)} [${m.group(x)}]";
 //    }
 //}
+

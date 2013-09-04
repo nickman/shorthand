@@ -24,6 +24,10 @@
  */
 package com.heliosapm.shorthand.script;
 
+import java.lang.reflect.Member;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 import org.junit.Assert;
@@ -36,6 +40,8 @@ import com.google.gson.annotations.Since;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.MethodInterceptor;
 import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScript;
+import com.heliosapm.shorthand.testclasses.annotated.TypeOnlyAnnotated;
+import com.heliosapm.shorthand.testclasses.annotations.FunShorthandTypeAndMethodAnnotation;
 
 /**
  * <p>Title: ShorthandSimpleScriptTestCase</p>
@@ -67,7 +73,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 	 * @throws Exception thrown on any error
 	 */
 	@Ignore
-	protected void test(String shorthand, Class<?> targetClass, boolean targetClassAnnotation,
+	protected ShorthandScript test(String shorthand, Class<?> targetClass, boolean targetClassAnnotation,
 			boolean targetClassInterface, boolean inherritanceEnabled,
 			String methodName, Pattern methodNameExpression,
 			String methodSignature, Pattern methodSignatureExpression,
@@ -95,7 +101,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 		Assert.assertEquals("Unexpected enum index", enumIndex, script.getEnumIndex());
 		Assert.assertEquals("Unexpected bitmask", bitMask, script.getBitMask());
 		
-		Assert.assertEquals("Unexpected method name template", methodTemplate, script.getMethodTemplate());
+		Assert.assertEquals("Unexpected method name template", methodTemplate, script.getMetricNameTemplate());
 		
 		Assert.assertEquals("Unexpected allow reentrancy inv option", allowReentrant, script.isAllowReentrant());
 		Assert.assertEquals("Unexpected disable on trigger inv option", disableOnTrigger, script.isDisableOnTrigger());
@@ -103,6 +109,8 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 		
 		final int _bitMask = script.getBitMask();
 		Assert.assertEquals("Unexpected bitmask", bitMask, _bitMask);
+		
+		return script;
 	}
 	
 	/** Shortcut for match all pattern */
@@ -137,7 +145,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 				false, true,  			// target class iface, target class inherritance
 				"equals", null, 		// methodName, methodName pattern
 				null, MA, false, 		// method sig, method sig pattern, target method annot 
-				MI, 0, 			// enum index, bit mask
+				MI, 0, 					// enum index, bit mask
 				"java/lang/Object",  	// method template
 				false, false, false);  	// allow reentrant, disable on trigger, startDisabled
 		//test("java.lang.Object equals [0] '$package[0]/$package[1]/$class/$method'", "java.lang.Object", "equals", "java/lang/Object/equals", false, false, 0, 3);
@@ -152,7 +160,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 		test("@com.google.gson.annotations.Since foo MethodInterceptor[0] 'since/$class/$2'", 
 				Since.class, true,		// target class, target class annot
 				false, false,  			// target class iface, target class inherritance
-				"foo", null, 		// methodName, methodName pattern
+				"foo", null, 			// methodName, methodName pattern
 				null, MA, false, 		// method sig, method sig pattern, target method annot 
 				MI, 0, 					// enum index, bit mask
 				"since/$class/$2",  	// method template
@@ -161,8 +169,39 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 	}
 	
 	
-	//@com.google.gson.annotations.Since
+	/**
+	 * Tests handling of a wildcard method name, wildcard bitmask and a type annotation class locator
+	 * @throws Exception thrown on any error
+	 */
+	@Test
+	public void testLocateOnAnnotatedWildcardMethod() throws Exception {
+		
+		ShorthandScript script = test("@com.heliosapm.shorthand.testclasses.annotations.FunShorthandTypeAndMethodAnnotation * MethodInterceptor[*] 'fun/fun/fun'",
+				FunShorthandTypeAndMethodAnnotation.class, true,		// target class, target class annot
+				false, false,  											// target class iface, target class inherritance
+				null, MA, 												// methodName, methodName pattern
+				null, MA, false, 										// method sig, method sig pattern, target method annot 
+				MI, MethodInterceptor.allMetricsMask, 					// enum index, bit mask
+				"fun/fun/fun",  										// method template
+				false, false, false);  									// allow reentrant, disable on trigger, startDisabled
+		Set<Class<?>> targetClasses = script.getTargetClasses();
+		Assert.assertEquals("Unexpected number of target classes", 1, targetClasses.size());
+		Assert.assertEquals("Unexpected target class", targetClasses.iterator().next(), TypeOnlyAnnotated.class);
+		
+		Map<Class<?>, Set<Member>> targetMembers = script.getTargetMembers();
+		Assert.assertEquals("Unexpected number of target classes in target members", 1, targetMembers.size());
+		Set<String> actualMethodNames = new TreeSet<String>();
+		for(Member member: targetMembers.values().iterator().next()) {
+			actualMethodNames.add(member.getName());
+		}
+		Assert.assertArrayEquals("Unexpected target method names", new String[]{"myPublic"}, actualMethodNames.toArray(new String[0]));
+	}
 	
+	/*
+	 	public void myPublic(){}
+		protected void myProtected(){}
+		private void myPrivate(){}   // nudge, nudge
+	 */
 	
 	
 }

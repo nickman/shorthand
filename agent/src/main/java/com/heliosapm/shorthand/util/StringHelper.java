@@ -7,6 +7,9 @@ package com.heliosapm.shorthand.util;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Member;
+import java.lang.reflect.Method;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -14,6 +17,8 @@ import java.util.concurrent.TimeUnit;
  * <p>Description: String helper utility class</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
+ * <p>{@link #getConstructorDescriptor(Constructor)}, {@link #getMethodDescriptor(Method)} and {@link #getDescriptor(StringBuffer, Class)}
+ * are copied from <b>ObjectWeb ASM</b> and were authored by Eric Bruneton and Chris Nokleberg.</p>
  * <p><code>org.helios.apmrouter.jmx.StringHelper</code></p>
  */
 public class StringHelper {
@@ -22,6 +27,118 @@ public class StringHelper {
 	protected static final ThreadMXBean tmx = ManagementFactory.getThreadMXBean();
 	
 	
+	/**
+	 * Returns the descriptor for the passed member
+	 * @param m The class member
+	 * @return the member descriptor
+	 */
+	public static String getMemberDescriptor(final Member m) {
+		if(m instanceof Method) {
+			return getMethodDescriptor((Method)m);
+		} else if(m instanceof Constructor) {
+			return getConstructorDescriptor((Constructor)m);
+		} else {
+			return m.toString();
+		}
+	}
+	
+	
+	   /**
+     * Returns the descriptor corresponding to the given method.
+     * @param m a {@link Method Method} object.
+     * @return the descriptor of the given method.
+     * (All credit to ObjectWeb ASM)
+     * @author Eric Bruneton  
+     * @author Chris Nokleberg
+     */
+    public static String getMethodDescriptor(final Method m) {
+        Class<?>[] parameters = m.getParameterTypes();
+        StringBuffer buf = new StringBuffer();
+        buf.append('(');
+        for (int i = 0; i < parameters.length; ++i) {
+            getDescriptor(buf, parameters[i]);
+        }
+        buf.append(')');
+        getDescriptor(buf, m.getReturnType());
+        return buf.toString();
+    }
+    
+    /**
+     * Returns the descriptor corresponding to the given constructor.
+     * @param c a {@link Constructor Constructor} object.
+     * @return the descriptor of the given constructor.
+     * (All credit to ObjectWeb ASM)
+     * @author Eric Bruneton  
+     * @author Chris Nokleberg
+     */
+    public static String getConstructorDescriptor(final Constructor<?> c) {
+        Class<?>[] parameters = c.getParameterTypes();
+        StringBuffer buf = new StringBuffer();
+        buf.append('(');
+        for (int i = 0; i < parameters.length; ++i) {
+            getDescriptor(buf, parameters[i]);
+        }
+        return buf.append(")V").toString();
+    }
+    
+
+    /**
+     * Appends the descriptor of the given class to the given string buffer.
+     * @param buf the string buffer to which the descriptor must be appended.
+     * @param c the class whose descriptor must be computed.
+     * (All credit to ObjectWeb ASM)
+     * @author Eric Bruneton  
+     * @author Chris Nokleberg
+     */
+    private static void getDescriptor(final StringBuffer buf, final Class<?> c) {
+        Class<?> d = c;
+        while (true) {
+            if (d.isPrimitive()) {
+                char car;
+                if (d == Integer.TYPE) {
+                    car = 'I';
+                } else if (d == Void.TYPE) {
+                    car = 'V';
+                } else if (d == Boolean.TYPE) {
+                    car = 'Z';
+                } else if (d == Byte.TYPE) {
+                    car = 'B';
+                } else if (d == Character.TYPE) {
+                    car = 'C';
+                } else if (d == Short.TYPE) {
+                    car = 'S';
+                } else if (d == Double.TYPE) {
+                    car = 'D';
+                } else if (d == Float.TYPE) {
+                    car = 'F';
+                } else /* if (d == Long.TYPE) */{
+                    car = 'J';
+                }
+                buf.append(car);
+                return;
+            } else if (d.isArray()) {
+                buf.append('[');
+                d = d.getComponentType();
+            } else {
+                buf.append('L');
+                String name = d.getName();
+                int len = name.length();
+                for (int i = 0; i < len; ++i) {
+                    char car = name.charAt(i);
+                    buf.append(car == '.' ? '/' : car);
+                }
+                buf.append(';');
+                return;
+            }
+        }
+    }
+
+	
+	/**
+	 * Caps the first letter in the passed string
+	 * @param cs The string value to initcap
+	 * @return the initcapped string
+	 */
 	public static String initCap(CharSequence cs) {
 		char[] chars = cs.toString().trim().toCharArray();
 		chars[0] = new String(new char[]{chars[0]}).toUpperCase().charAt(0);

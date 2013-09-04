@@ -67,8 +67,11 @@ public class EnumHelper {
 	 * @param names The names or ordinals of the members
 	 * @return the ffective bit mask
 	 */
-	public static <T extends Enum<?> & IntBitMaskedEnum> int getEnabledBitMask(boolean strict, Class<T> clazz, String ...names) {
+	public static <T extends Enum<?> & IntBitMaskedEnum> int getEnabledBitMask(boolean strict, Class<T> clazz, String ...names) {		
 		if(names==null || names.length==0) return 0;
+		if(names.length==1 && "*".equals(names[0].trim())) {
+			return getBitMaskForAll(clazz);
+		}
 		T[] constants = clazz.getEnumConstants();
 		Map<String, T> members = new HashMap<String, T>(constants.length * 2);
 		for(T t: constants) {
@@ -102,6 +105,20 @@ public class EnumHelper {
 			}
 		}
 		return matches.toArray((T[])Array.newInstance(clazz, matches.size()));
+	}
+	
+	/**
+	 * Returns the bitmask representing all the members of the enum
+	 * @param clazz The int bitmasked enum
+	 * @return the biotmask
+	 */
+	public static <T extends Enum<?> & IntBitMaskedEnum> int  getBitMaskForAll(Class<T> clazz) {
+		T[] values = clazz.getEnumConstants();		
+		int bitMask = 0;
+		for(T t: values) {
+			bitMask = (bitMask | t.getMask());
+		}
+		return bitMask;		
 	}
 	
 	/**

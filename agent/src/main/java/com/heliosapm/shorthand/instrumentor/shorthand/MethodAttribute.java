@@ -12,6 +12,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import com.heliosapm.shorthand.util.enums.IntBitMaskedEnum;
+
 /**
  * <p>Title: MethodAttribute</p>
  * <p>Description: Enumerates the method attributes</p> 
@@ -20,7 +22,7 @@ import java.util.Set;
  * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.MethodAttribute</code></p>
  */
 
-public enum MethodAttribute {
+public enum MethodAttribute implements IntBitMaskedEnum {
 	/** The public modifier */
 	PUBLIC(1, "public", true, "pub"),
 	/** The private modifier */
@@ -67,7 +69,7 @@ public enum MethodAttribute {
 			}
 		}
 		NAME2ENUM = Collections.unmodifiableMap(tmp);
-		DEFAULT_METHOD_MASK = enableFor(PUBLIC, PROTECTED);
+		DEFAULT_METHOD_MASK = enableFor(PUBLIC);
 	}
 	
 	
@@ -301,6 +303,15 @@ public enum MethodAttribute {
 			if(ma.isEnabled(mask)) matches.add(ma);
 		}
 		return matches.toArray(new MethodAttribute[matches.size()]);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.util.enums.IntBitMaskedEnum#getMask()
+	 */
+	@Override
+	public int getMask() {
+		return mask;
 	}
 	
 }
