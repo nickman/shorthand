@@ -24,6 +24,7 @@
  */
 package com.heliosapm.shorthand.util.net;
 
+import java.net.URL;
 import java.util.Set;
 
 /**
@@ -52,5 +53,12 @@ public interface BufferManagerMBean {
      * @return the number of MemBuffers that have been expired
      */
     public long getMemBufferExpirations();
+    
+	/**
+	 * Returns the URL created for the passed URL suffix
+	 * @param bufferName The URL suffix for the URL
+	 * @return the MemBuffer URL
+	 */
+	public URL getMemBufferURL(String bufferName);    
 
 }

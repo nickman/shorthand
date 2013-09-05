@@ -101,7 +101,7 @@ public class ShorthandScript  {
 	/** The index of the inherritance indicator */
 	public static final int IND_INHERRIT = 2;
 	/** The index of the target class classloader expression */
-	public static final int IND_TARGETCLASS_CL = 4;	
+	public static final int IND_TARGETCLASS_CL = 3;	
 	/** The index of the method attributes */
 	public static final int IND_ATTRS= 4;
 	/** The index of the target method annotation indicator */

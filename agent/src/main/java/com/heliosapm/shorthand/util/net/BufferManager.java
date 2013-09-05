@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.management.ObjectName;
 
+import com.heliosapm.shorthand.util.URLHelper;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
 
 /**
@@ -64,6 +65,9 @@ public class BufferManager implements BufferManagerMBean, RefRemover {
     
 	/** The mem URL protocol */
 	public static final String MEM_PROTOCOL = "mem";
+	/** The mem URL prefix */
+	public static final String URL_PREFIX = "mem://localhost/";
+	
 	/**
 	 * Acquires the BufferManager singleton instance
 	 * @return the BufferManager singleton instance
@@ -85,7 +89,7 @@ public class BufferManager implements BufferManagerMBean, RefRemover {
 	private BufferManager() {
 		try {
 			JMXHelper.getHeliosMBeanServer().registerMBean(this, OBJECT_NAME);
-
+			register();
 		} catch (Exception ex) {
 
 		}
@@ -194,9 +198,37 @@ public class BufferManager implements BufferManagerMBean, RefRemover {
 	public MemBuffer getMemBuffer(URL url) {
 		validateMemUrl(url);
 		MemBuffer buffer = references.get(url);
-		if(buffer==null) throw new RuntimeException("Invalid URL [" + url + "]. No MemBuffer found", new Throwable());
+		if(buffer==null) {
+			synchronized(references) {
+				buffer = references.get(url);
+				if(buffer==null) {
+					buffer = newMemBuffer(url);
+					references.put(url, buffer);
+				}
+			}
+		}
 		return buffer;		
 	}
+	
+	/**
+	 * Returns the MemBuffer associated to the URL created for the passed URL suffix
+	 * @param bufferName The URL suffix for the URL to get the buffer for
+	 * @return the associated MemBuffer
+	 */
+	public MemBuffer getMemBuffer(String bufferName) {
+		return getMemBuffer(URLHelper.toURL(URL_PREFIX + bufferName));
+	}
+	
+	/**
+	 * Returns the URL created for the passed URL suffix
+	 * @param bufferName The URL suffix for the URL
+	 * @return the MemBuffer URL
+	 */
+	@Override
+	public URL getMemBufferURL(String bufferName) {
+		return URLHelper.toURL(URL_PREFIX + bufferName);
+	}
+	
 	
     /**
      * Parses the named query parameter from a URL query segment
