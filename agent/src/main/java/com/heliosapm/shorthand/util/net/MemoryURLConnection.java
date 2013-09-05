@@ -53,7 +53,7 @@ public class MemoryURLConnection extends URLConnection {
 	/** The system property key for the property that specifies URL stream handler factory names */
 	public static final String PKGS = "java.protocol.handler.pkgs";
 	/** The package specification */
-	public static final String MEM_URL_PKG = "com.theice.clearing.eventcaster.io";
+	public static final String MEM_URL_PKG = "com.heliosapm.shorthand.util.net";
     /** The buffered data */
     private final MemBuffer data;
     

@@ -139,6 +139,9 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 				Reference<?> ref = refQueue.remove();
 				//log("Clearing Ref: [%s]", ref);
 				if(ref instanceof DeallocatingPhantomReference) {
+					if(((DeallocatingPhantomReference) ref).deallocatingAction!=null) {
+						executor.submit(((DeallocatingPhantomReference) ref).deallocatingAction);
+					}
 					executor.submit((DeallocatingPhantomReference<?>)ref);
 					submittedCallbacks.incrementAndGet();
 				}
@@ -291,7 +294,7 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 	 * @param address The address to free when the reference becomes phantom-reachable
 	 * @return a phantom reference
 	 */
-	public <T> PhantomReference<T> buildPhantomReference(T t, long address) {
+	public <T> DeallocatingPhantomReference<T> buildPhantomReference(T t, long address) {
 		return new DeallocatingPhantomReference<T>(t, address);
 	}
 
@@ -306,7 +309,10 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 	 */
 	public class DeallocatingPhantomReference<T> extends PhantomReference<T> implements Runnable {
 		/** The address to deallocate */
-		private final long address;
+		private long address;
+		
+		/** The deallocation action to run, if applicable */
+		private final Runnable deallocatingAction;
 		
 		/**
 		 * Creates a new DeallocatingPhantomReference
@@ -316,6 +322,19 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 		public DeallocatingPhantomReference(T referent, final long address) {
 			super(referent, refQueue);
 			refMap.put(this, this);
+			this.address = address;
+			if(referent instanceof DeallocatingAction) {
+				deallocatingAction = ((DeallocatingAction)referent).getAction();
+			} else {
+				deallocatingAction = null;
+			}
+		}
+		
+		/**
+		 * Updates the address to be deallocated
+		 * @param address the new address
+		 */
+		public void setAddress(long address) {
 			this.address = address;
 		}
 		

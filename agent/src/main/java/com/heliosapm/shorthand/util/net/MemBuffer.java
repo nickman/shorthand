@@ -24,15 +24,15 @@
  */
 package com.heliosapm.shorthand.util.net;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URL;
 import java.util.concurrent.atomic.AtomicLong;
 
-import javax.annotation.Resource;
+import com.heliosapm.shorthand.util.ref.DeallocatingAction;
+import com.heliosapm.shorthand.util.ref.RunnableReferenceQueue;
+import com.heliosapm.shorthand.util.ref.RunnableReferenceQueue.DeallocatingPhantomReference;
+import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 /**
  * <p>Title: MemBuffer</p>
@@ -42,19 +42,21 @@ import javax.annotation.Resource;
  * <p><code>com.heliosapm.shorthand.util.net.MemBuffer</code></p>
  */
 
-public class MemBuffer {
+public class MemBuffer implements DeallocatingAction {
 	/** The memory buffer pointer */
 	private long address;
 	/** The size of the current buffer */
 	private long size;
-	/** The buffer output stream */
-	final TimestampedByteBufOutputStreamImpl os;
 	/** The buffer input stream */
 	InputStream is;
+	/** The timestamp of the last data change to this buffer */
+	private long lastChange = System.currentTimeMillis();
 	
 	
-	private final int initialSize;
+	/** The size increment of the memory allocation when the space is exhausted */
 	private final int nextSegSize;
+	
+	private final DeallocatingPhantomReference<MemBuffer> phantomRef;
 	
 	
 	/** A counter of the number of MemBuffer finalizations */
@@ -74,12 +76,110 @@ public class MemBuffer {
 	}
 	
 	/**
+	 * Creates a new MemBuffer
+	 * @param initialSize The initial memory size
+	 * @param nextSegSize The size of the next segment allocated when space is exhausted
+	 */
+	public MemBuffer(int initialSize, int nextSegSize) {		
+		this.nextSegSize = nextSegSize;
+		address = UnsafeAdapter.allocateMemory(initialSize);
+		size = initialSize;
+		phantomRef = RunnableReferenceQueue.getInstance().buildPhantomReference(this, address); 		
+	}
+	
+	/**
 	 * Creates a new Record of the defalt initial size and growth segment size
 	 */
 	public MemBuffer() {
-		initialSize = DEFAULT_SIZE;
-		nextSegSize = DEFAULT_NEXT_SEG;
-		os = new TimestampedByteBufOutputStreamImpl(this);
+		this(DEFAULT_SIZE, DEFAULT_NEXT_SEG);
+	}
+	
+	/**
+	 * Writes the passed byte to the specified position in the buffer
+	 * @param pos The position to start the write at
+	 * @param b The byte to write
+	 * @throws IOException thrown if the position specified is greater than the current size
+	 */
+	void write(long pos, byte b) throws IOException {
+		if(pos<0) throw new IllegalArgumentException("Invalid position [" + pos + "]");
+		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "]. No sudden movements please.");
+		if(size-pos<10) {
+			resize();
+		}
+		UnsafeAdapter.putByte(null, address + pos, b);
+		lastChange = System.currentTimeMillis();
+	}
+	
+	/**
+	 * Writes the passed byte array to the specified position in the buffer
+	 * @param pos The position to start the write at
+	 * @param arr The byte array to write
+	 * @throws IOException thrown if the position specified is greater than the current size
+	 */
+	void write(long pos, byte[] arr) throws IOException {
+		if(arr==null) throw new IllegalArgumentException("The passed byte array was null");
+		if(pos<0) throw new IllegalArgumentException("Invalid position [" + pos + "]");
+		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "]. No sudden movements please.");
+		if(size-pos<(arr.length + 10)) {
+			resize(Math.max(DEFAULT_NEXT_SEG, arr.length + 10));
+		}
+		UnsafeAdapter.copyMemory(arr, UnsafeAdapter.BYTE_ARRAY_OFFSET, null, address + pos, arr.length);
+		lastChange = System.currentTimeMillis();
+	}
+	
+	/**
+	 * Reads a byte from the allocated memory at the specified offset
+	 * @param pos The offset off the address to read from
+	 * @return The read byte
+	 * @throws IOException thrown if the position specified is greater than the current size
+	 */
+	byte read(long pos) throws IOException {
+		if(pos<0) throw new IllegalArgumentException("Invalid position [" + pos + "]");
+		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "].");
+		return UnsafeAdapter.getByte(address + pos);
+	}
+	
+	/**
+	 * Reads the allocated memory at the specified offset into the passed byte array
+	 * @param pos The offset off the address to read from
+	 * @param arr The aray to write into
+	 * @return The number of bytes read
+	 * @throws IOException thrown if the position specified is greater than the current size
+	 */
+	int read(long pos, byte[] arr) throws IOException {
+		if(pos<0) throw new IllegalArgumentException("Invalid position [" + pos + "]");
+		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "].");
+		if(size==pos) return 0;		
+		int bytesToRead = (int)(Math.min(size, arr.length)-pos);
+		UnsafeAdapter.copyMemory(null, address + pos, arr, UnsafeAdapter.BYTE_ARRAY_OFFSET, bytesToRead);
+		return bytesToRead;
+	}
+	
+	int read(long pos, byte[] arr, int off, int len) throws IOException {
+		if(pos<0) throw new IllegalArgumentException("Invalid position [" + pos + "]");
+		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "].");
+		if(size==pos) return 0;		
+		int bytesToRead = (int)(Math.min(size, len)-pos);
+		UnsafeAdapter.copyMemory(null, address + pos, arr, UnsafeAdapter.BYTE_ARRAY_OFFSET, bytesToRead);
+		return bytesToRead;		
+		
+	}
+	
+	/**
+	 * Grows the allocated memory space by {@link #nextSegSize} bytes.
+	 */
+	private void resize() {
+		address = UnsafeAdapter.reallocateMemory(address, size + nextSegSize);
+		size += nextSegSize; 
+	}
+	
+	/**
+	 * Grows the allocated memory space by the passed size
+	 * @param increase The number of bytes to increase the allocated memory by
+	 */
+	private void resize(int increase) {
+		address = UnsafeAdapter.reallocateMemory(address, size + increase);
+		size += increase;
 	}
 	
 	
@@ -88,7 +188,7 @@ public class MemBuffer {
 	 * @return the timestamp of the last modification to this record's data
 	 */
 	public long getLastModifiedTime() {
-		return os.getLastModifiedTimestamp();
+		return lastChange;
 	}
 	
 	/**
@@ -96,16 +196,15 @@ public class MemBuffer {
 	 * @return the buffer's output stream
 	 */
 	public OutputStream getOutputStream() {
-		return os;
+		return new MemBufferOutputStream(this);
 	}
 	
 	/**
 	 * Returns the buffer's input stream
 	 * @return the buffer's intput stream
 	 */
-	public synchronized InputStream getInputStream() {
-		if(is==null) is = new MemBufferInputStream(this);
-		return is;
+	public InputStream getInputStream() {
+		return new MemBufferInputStream(this);
 	}
 
 	/**
@@ -136,6 +235,28 @@ public class MemBuffer {
 		if (address != other.address)
 			return false;
 		return true;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.util.ref.DeallocatingAction#getAction()
+	 */
+	@Override
+	public Runnable getAction() {
+		return new Runnable(){
+			@Override
+			public void run() {
+				fCount.incrementAndGet();
+			}
+		};
+	}
+
+	/**
+	 * Returns the total size of the allocated memory in bytes
+	 * @return the allocated memory size
+	 */
+	public long getSize() {
+		return size;
 	}
 	
 //	
