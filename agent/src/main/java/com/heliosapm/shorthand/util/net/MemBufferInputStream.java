@@ -99,9 +99,13 @@ public class MemBufferInputStream extends InputStream {
 	 */
 	@Override
 	public int read(byte[] b, int off, int len) throws IOException {
-		// TODO Auto-generated method stub
-		return super.read(b, off, len);
+		if(!open) throw new IOException("This InputStream is closed. Nein, nein, nein");
+		if(readPosition==mb.getSize()) return 0;
+		int bytesRead = mb.read(readPosition, b, off, len);
+		readPosition += bytesRead;
+		return bytesRead;
 	}
+	
 	/**
 	 * {@inheritDoc}
 	 * @see java.io.InputStream#skip(long)

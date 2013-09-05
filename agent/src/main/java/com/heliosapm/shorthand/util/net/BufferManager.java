@@ -32,7 +32,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.Logger;
 
 import javax.management.ObjectName;
 
@@ -46,7 +45,7 @@ import com.heliosapm.shorthand.util.jmx.JMXHelper;
  * <p><code>com.heliosapm.shorthand.util.net.BufferManager</code></p>
  */
 
-public class BufferManager implements BufferManagerMBean {
+public class BufferManager implements BufferManagerMBean, RefRemover {
 
 	/** The singleton instance */
 	private static volatile BufferManager instance = null;
@@ -57,7 +56,9 @@ public class BufferManager implements BufferManagerMBean {
 	private static final ObjectName OBJECT_NAME = JMXHelper.objectName(new StringBuilder(BufferManager.class.getPackage().getName()).append(":service=").append(BufferManager.class.getSimpleName()));
     
     /** Associative wek references from the URL to the data buffers they represent */
-    private final Map<URL, MemBuffer> references = Collections.synchronizedMap(new WeakHashMap<URL, MemBuffer>());
+    private final Map<URL, MemBuffer> references =  Collections.synchronizedMap(new WeakHashMap<URL, MemBuffer>());
+    		//Collections.synchronizedMap(new WeakHashMap<URL, MemBuffer>());
+    		//new ConcurrentHashMap<URL, MemBuffer>();
 	/** Flag indicating if the stream factory has been registered */
     private static final AtomicBoolean factoryRegistered = new AtomicBoolean(false);
     
@@ -119,18 +120,20 @@ public class BufferManager implements BufferManagerMBean {
 	/**
 	 * Creates a new un-registered MemBuffer
 	 * @param initialCapacity The initial capacity of the buffer to create. If 0 or less, the buffer will have no initial capacity.
+	 * @param url the URL this mem buffer is being created for
 	 * @return a new un-registered MemBuffer
 	 */
-	public MemBuffer newMemBuffer(int initialCapacity) {
-		return new MemBuffer();
+	protected MemBuffer newMemBuffer(int initialCapacity, URL url) {
+		return new MemBuffer(initialCapacity, MemBuffer.DEFAULT_NEXT_SEG, url, this);
 	}
 	
 	/**
 	 * Creates a new un-registered MemBuffer with no initial capacity
+	 * @param url the URL this mem buffer is being created for
 	 * @return a new un-registered MemBuffer
 	 */
-	public MemBuffer newMemBuffer() {
-		return newMemBuffer(-1);
+	protected MemBuffer newMemBuffer(URL url) {
+		return new MemBuffer(url, this);
 	}
 	
 	/**
@@ -146,12 +149,16 @@ public class BufferManager implements BufferManagerMBean {
 			synchronized(references) {
 				mb = references.get(url);
 				if(mb==null) {
-					mb = buffer!=null ? buffer :  newMemBuffer(getInitialCapacity(url));
+					mb = buffer!=null ? buffer :  newMemBuffer(getInitialCapacity(url), url);
 					references.put(url, mb);
 				}
 			}
 		}
 		return mb;
+	}
+	
+	public void unregister(URL url) {
+		references.remove(url);
 	}
 	
 //	public URL getRegisteredURL(String protocol, String host, int port,
@@ -222,7 +229,7 @@ public class BufferManager implements BufferManagerMBean {
      */
     public int getInitialCapacity(URL url) {
     	String val = getParameterValue(url, "ic");
-    	if(val==null) return -1;
+    	if(val==null) return MemBuffer.DEFAULT_SIZE;
     	return Integer.parseInt(val.trim());
     }
     

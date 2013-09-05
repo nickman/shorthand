@@ -70,7 +70,11 @@ public class MemBuffTest {
 			log("Read %s bytes", readBytes);
 			Assert.assertArrayEquals(bytes, bytes);
 			log("Arrays Are Equal:%s", Arrays.equals(bytes, obytes));
-			
+			os.close();
+			is.close();
+			conn = null;
+			url = null;
+			Thread.currentThread().join();
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		}

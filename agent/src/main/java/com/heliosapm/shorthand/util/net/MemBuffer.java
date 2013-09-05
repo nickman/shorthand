@@ -27,6 +27,7 @@ package com.heliosapm.shorthand.util.net;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URL;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.heliosapm.shorthand.util.ref.DeallocatingAction;
@@ -51,6 +52,10 @@ public class MemBuffer implements DeallocatingAction {
 	InputStream is;
 	/** The timestamp of the last data change to this buffer */
 	private long lastChange = System.currentTimeMillis();
+	/** The URL this mem buffer was created for */
+	private final URL memUrl;
+	
+	private final RefRemover remover;
 	
 	
 	/** The size increment of the memory allocation when the space is exhausted */
@@ -79,8 +84,11 @@ public class MemBuffer implements DeallocatingAction {
 	 * Creates a new MemBuffer
 	 * @param initialSize The initial memory size
 	 * @param nextSegSize The size of the next segment allocated when space is exhausted
+	 * @param memUrl The URL this mem buffer was created for
 	 */
-	public MemBuffer(int initialSize, int nextSegSize) {		
+	public MemBuffer(int initialSize, int nextSegSize, URL memUrl, RefRemover remover) {
+		this.memUrl = memUrl;
+		this.remover = remover;
 		this.nextSegSize = nextSegSize;
 		address = UnsafeAdapter.allocateMemory(initialSize);
 		size = initialSize;
@@ -89,9 +97,10 @@ public class MemBuffer implements DeallocatingAction {
 	
 	/**
 	 * Creates a new Record of the defalt initial size and growth segment size
+	 * @param memUrl The URL this mem buffer was created for
 	 */
-	public MemBuffer() {
-		this(DEFAULT_SIZE, DEFAULT_NEXT_SEG);
+	public MemBuffer(URL memUrl, RefRemover remover) {
+		this(DEFAULT_SIZE, DEFAULT_NEXT_SEG, memUrl, remover);
 	}
 	
 	/**
@@ -160,7 +169,7 @@ public class MemBuffer implements DeallocatingAction {
 		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "].");
 		if(size==pos) return 0;		
 		int bytesToRead = (int)(Math.min(size, len)-pos);
-		UnsafeAdapter.copyMemory(null, address + pos, arr, UnsafeAdapter.BYTE_ARRAY_OFFSET, bytesToRead);
+		UnsafeAdapter.copyMemory(null, address + pos, arr, UnsafeAdapter.BYTE_ARRAY_OFFSET + off, bytesToRead);
 		return bytesToRead;		
 		
 	}
@@ -171,6 +180,7 @@ public class MemBuffer implements DeallocatingAction {
 	private void resize() {
 		address = UnsafeAdapter.reallocateMemory(address, size + nextSegSize);
 		size += nextSegSize; 
+		phantomRef.setAddress(address);
 	}
 	
 	/**
@@ -180,6 +190,7 @@ public class MemBuffer implements DeallocatingAction {
 	private void resize(int increase) {
 		address = UnsafeAdapter.reallocateMemory(address, size + increase);
 		size += increase;
+		phantomRef.setAddress(address);
 	}
 	
 	
@@ -246,6 +257,7 @@ public class MemBuffer implements DeallocatingAction {
 		return new Runnable(){
 			@Override
 			public void run() {
+				remover.unregister(memUrl);
 				fCount.incrementAndGet();
 			}
 		};
