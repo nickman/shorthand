@@ -67,6 +67,8 @@ public class Handler extends URLStreamHandler {
     	BufferManager.getInstance().registerMemBuffer(u);
     }
     
+
+    
     /** Tracks the thread when evaluating {@link #equals(URL, URL)} to prevent an endless loop and stackoverflow */
     private static final ThreadLocal<Thread> equalsThread = new ThreadLocal<Thread>();
     
@@ -78,21 +80,22 @@ public class Handler extends URLStreamHandler {
     protected boolean equals(URL u1, URL u2) {
     	
     	if(u1==null || u2==null) return false;
-    	String p1 = u1.getProtocol(), p2 = u2.getProtocol();
-    	if(!"mem".equalsIgnoreCase(p1) || !"mem".equalsIgnoreCase(p2)) return false;
-    	try {    		
-    		if(equalsThread.get()!=null) {
-    			// this means that we're in a recursive call, so delegate to super.
-    			return super.equals(u1, u2);
-    		}
-			equalsThread.set(Thread.currentThread());
-    		MemBuffer m1 = BufferManager.getInstance().getMemBuffer(u1), m2 = BufferManager.getInstance().getMemBuffer(u2);
-    		return m1.equals(m2);
-    	} catch (Exception ex) {
-    		return false;
-    	} finally {
-    		equalsThread.remove();
-    	}
+    	return u1.toString().equals(u2.toString());
+////    	String p1 = u1.getProtocol(), p2 = u2.getProtocol();
+////    	if(!"mem".equalsIgnoreCase(p1) || !"mem".equalsIgnoreCase(p2)) return false;
+////    	try {    		
+////    		if(equalsThread.get()!=null) {
+////    			// this means that we're in a recursive call, so delegate to super.
+////    			return super.equals(u1, u2);
+////    		}
+////			equalsThread.set(Thread.currentThread());
+////    		MemBuffer m1 = BufferManager.getInstance().getMemBuffer(u1), m2 = BufferManager.getInstance().getMemBuffer(u2);
+////    		return m1.equals(m2);
+//    	} catch (Exception ex) {
+//    		return false;
+//    	} finally {
+//    		equalsThread.remove();
+//    	}
     }
     
     /**

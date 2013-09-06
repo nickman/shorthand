@@ -1057,12 +1057,14 @@ while(m.find()) {
 	 * @param delegateToCLR True if, when a class is not found in either the parent ClassLoader or the URLs, the MLet should delegate to its containing MBeanServer's ClassLoaderRepository.
 	 * @param privateClassLoader If true, registers a private MLet, otherwise, registers a public one
 	 * @param urls The URLs from which to load classes and resources.
+	 * @return the ObjectName of the classloader
 	 */
-	public static void publishClassLoader(MBeanServerConnection server, CharSequence objectName, boolean delegateToCLR, boolean privateClassLoader, URL...urls) {
+	public static ObjectName publishClassLoader(MBeanServerConnection server, CharSequence objectName, boolean delegateToCLR, boolean privateClassLoader, URL...urls) {
 		ObjectName on = objectName(objectName);
 		String className = privateClassLoader ? "javax.management.loading.PrivateMLet" : "javax.management.loading.MLet"; 
 		try {
 			server.createMBean(className, on, new Object[]{urls, delegateToCLR}, new String[]{URL[].class.getName(), "boolean"});
+			return on;
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to register classloader MBean [" + objectName + "]", ex);
 		}
@@ -1074,9 +1076,10 @@ while(m.find()) {
 	 * @param delegateToCLR True if, when a class is not found in either the parent ClassLoader or the URLs, the MLet should delegate to its containing MBeanServer's ClassLoaderRepository.
 	 * @param privateClassLoader If true, registers a private MLet, otherwise, registers a public one
 	 * @param urls The URLs from which to load classes and resources.
+	 * @return the ObjectName of the classloader
 	 */
-	public static void publishClassLoader(CharSequence objectName, boolean delegateToCLR, boolean privateClassLoader, URL...urls) {
-		publishClassLoader(getHeliosMBeanServer(), objectName, delegateToCLR, privateClassLoader, urls);
+	public static ObjectName publishClassLoader(CharSequence objectName, boolean delegateToCLR, boolean privateClassLoader, URL...urls) {
+		return publishClassLoader(getHeliosMBeanServer(), objectName, delegateToCLR, privateClassLoader, urls);
 	}
 	
 	/**
@@ -1084,18 +1087,20 @@ while(m.find()) {
 	 * @param objectName The JMX object name of the new MBean
 	 * @param delegateToCLR True if, when a class is not found in either the parent ClassLoader or the URLs, the MLet should delegate to its containing MBeanServer's ClassLoaderRepository.
 	 * @param urls The URLs from which to load classes and resources.
+	 * @return the ObjectName of the classloader
 	 */
-	public static void publishClassLoader(CharSequence objectName, boolean delegateToCLR, URL...urls) {
-		publishClassLoader(getHeliosMBeanServer(), objectName, delegateToCLR, false, urls);
+	public static ObjectName publishClassLoader(CharSequence objectName, boolean delegateToCLR, URL...urls) {
+		return publishClassLoader(getHeliosMBeanServer(), objectName, delegateToCLR, false, urls);
 	}
 	
 	/**
 	 * Registers a new public and CLR delegating classloader MBean (an MLet) on the default MBeanServer
 	 * @param objectName The JMX object name of the new MBean
 	 * @param urls The URLs from which to load classes and resources.
+	 * @return the ObjectName of the classloader 
 	 */
-	public static void publishClassLoader(CharSequence objectName, URL...urls) {
-		publishClassLoader(getHeliosMBeanServer(), objectName, true, false, urls);
+	public static ObjectName publishClassLoader(CharSequence objectName, URL...urls) {
+		return publishClassLoader(getHeliosMBeanServer(), objectName, true, false, urls);
 	}
 	
 	

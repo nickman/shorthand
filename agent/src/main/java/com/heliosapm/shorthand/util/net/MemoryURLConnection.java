@@ -55,7 +55,7 @@ public class MemoryURLConnection extends URLConnection {
 	/** The package specification */
 	public static final String MEM_URL_PKG = "com.heliosapm.shorthand.util.net";
     /** The buffered data */
-    private final MemBuffer data;
+    private final BufferManager.MemBuffer data;
     
     /**
      * Registers the Memory URL stream factory
@@ -81,7 +81,7 @@ public class MemoryURLConnection extends URLConnection {
      * @param url The URL that represents this connection
      * @param data The buffered data
      */
-    public MemoryURLConnection(URL url, MemBuffer data) {
+    public MemoryURLConnection(URL url, BufferManager.MemBuffer data) {
         super(url);
         this.data = data;
     }
@@ -92,6 +92,7 @@ public class MemoryURLConnection extends URLConnection {
      */
     @Override
     public void connect() {
+    	/* No Op */
     }
 
     /**

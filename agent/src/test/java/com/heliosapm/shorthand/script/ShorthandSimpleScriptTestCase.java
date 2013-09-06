@@ -32,6 +32,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 
+import javax.management.ObjectName;
+
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -46,6 +48,7 @@ import com.heliosapm.shorthand.testclasses.annotated.TypeOnlyAnnotated;
 import com.heliosapm.shorthand.testclasses.annotations.FunShorthandTypeAndMethodAnnotation;
 import com.heliosapm.shorthand.testclasses.dynamic.DynamicClassCompiler;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
+import com.heliosapm.shorthand.util.net.BufferManager;
 
 /**
  * <p>Title: ShorthandSimpleScriptTestCase</p>
@@ -281,6 +284,35 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 				"foo/bar/put",  	// method template
 				false, false, false);  	// allow reentrant, disable on trigger, startDisabled		
 	}
+	
+	/**
+	 * Test case to verify that a dynamic target class can be located using an ObjectName referenced class loader 
+	 * @throws Exception thrown on any error
+	 */
+	@Test
+	public void testLocateDynamicClassFromObjectName() throws Exception {
+		URL url = DynamicClassCompiler.generateClass("foo.snafu", HashMap.class);
+		log("Dynamic Class URL [%s]", url);
+		ObjectName on = JMXHelper.publishClassLoader("shorthand.classloaders:url=" + ObjectName.quote(url.toString()), url);
+		test("foo.snafu<-" + on.toString() + " put MethodInterceptor[0] 'foo/snafu/put'", 
+				"foo.snafu", false,		// target class, target class annot
+				false, false,  			// target class iface, target class inherritance
+				"put", null, 			// methodName, methodName pattern
+				null, MA, false, 		// method sig, method sig pattern, target method annot 
+				MI, 0, 					// enum index, bit mask
+				"foo/snafu/put",  	// method template
+				false, false, false);  	// allow reentrant, disable on trigger, startDisabled		
+		
+		url = null;
+		JMXHelper.unregisterMBean(on);
+		log("Cleanup Complete");
+		for(int i = 0; i < 10000; i++) {
+			log("MemBuffer Instances: %s   Highwater: %s  Destroys: %s", BufferManager.getInstance().getMemBufferInstances(), BufferManager.getInstance().getMemBufferInstanceHighwater(), BufferManager.getInstance().getMemBufferDestroys());
+			try { Thread.currentThread().join(15000); } catch (Exception ex) {/* No Op*/}
+		}
+		
+	}
+	
 	
 	/*
 	 	public void myPublic(){}

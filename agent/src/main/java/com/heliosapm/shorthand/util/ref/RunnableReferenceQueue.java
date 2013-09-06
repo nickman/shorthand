@@ -61,7 +61,7 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 	/** The reference queue that weak references are enqueued into */
 	private final ReferenceQueue<Object> refQueue = new ReferenceQueue<Object>(); 
 	/** A map of references */
-	private final Map<DeallocatingPhantomReference<?>, DeallocatingPhantomReference<?>> refMap = new ConcurrentHashMap<DeallocatingPhantomReference<?>, DeallocatingPhantomReference<?>>();
+	private final Map<Reference<Object>, Reference<Object>> refMap = new ConcurrentHashMap<Reference<Object>, Reference<Object>>();
 	 
 	
 
@@ -138,9 +138,10 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 			try {
 				Reference<?> ref = refQueue.remove();
 				//log("Clearing Ref: [%s]", ref);
-				if(ref instanceof DeallocatingPhantomReference) {
-					if(((DeallocatingPhantomReference) ref).deallocatingAction!=null) {
-						executor.submit(((DeallocatingPhantomReference) ref).deallocatingAction);
+				if(ref instanceof IDeallocationActionProvider) {
+					Runnable deallocatingAction = ((IDeallocationActionProvider) ref).getDeallocationAction();
+					if(deallocatingAction!=null) {
+						executor.submit(deallocatingAction);
 					}
 					executor.submit((DeallocatingPhantomReference<?>)ref);
 					submittedCallbacks.incrementAndGet();
@@ -292,11 +293,41 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 	 * Creates a new PhantomReference for the passed referent and runnable callback
 	 * @param t The reference
 	 * @param address The address to free when the reference becomes phantom-reachable
-	 * @return a phantom reference
+	 * @return The native address updater so the caller can update the address to be deallocated
 	 */
-	public <T> DeallocatingPhantomReference<T> buildPhantomReference(T t, long address) {
-		return new DeallocatingPhantomReference<T>(t, address);
+	public <T> AtomicLong buildPhantomReference(T t, long address) {
+		return new DeallocatingPhantomReference<T>(t, address).address;
 	}
+	
+	/**
+	 * Creates a new WeakReference for the passed referent and runnable callback
+	 * @param t The reference
+	 * @param address The address to free when the reference becomes weakly-reachable
+	 * @return The native address updater so the caller can update the address to be deallocated
+	 */
+	public <T> AtomicLong buildWeakReference(T t, long address) {
+		return new DeallocatingWeakReference<T>(t, address).address;
+	}	
+	
+	interface IDeallocationActionProvider {
+		public Runnable getDeallocationAction();
+	}
+	
+	/**
+	 * <p>Title: NativeAddressUpdater</p>
+	 * <p>Description: A narrowing interface to allow native memory address holders to update the deallocation address when they re-allocate their memory pointer.</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.shorthand.util.ref.RunnableReferenceQueue.NativeAddressUpdater</code></p>
+	 */
+	public interface NativeAddressUpdater {
+		/**
+		 * Updates the address to be deallocated
+		 * @param address the new address
+		 */
+		public void setAddress(long address);
+	}
+	
 
 	
 	/**
@@ -307,22 +338,31 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 	 * <p><code>com.heliosapm.shorthand.util.ref.RunnableReferenceQueue.DeallocatingPhantomReference</code></p>
 	 * @param <T> The referent type
 	 */
-	public class DeallocatingPhantomReference<T> extends PhantomReference<T> implements Runnable {
+	public class DeallocatingPhantomReference<T> extends PhantomReference<T> implements Runnable, IDeallocationActionProvider, NativeAddressUpdater {
 		/** The address to deallocate */
-		private long address;
+		private final AtomicLong address = new AtomicLong(-1L);
 		
 		/** The deallocation action to run, if applicable */
 		private final Runnable deallocatingAction;
+		
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.util.ref.RunnableReferenceQueue.IDeallocationActionProvider#getDeallocationAction()
+		 */
+		public Runnable getDeallocationAction() {
+			return deallocatingAction;
+		}
 		
 		/**
 		 * Creates a new DeallocatingPhantomReference
 		 * @param referent The referent
 		 * @param address The address to free
 		 */
+		@SuppressWarnings("unchecked")
 		public DeallocatingPhantomReference(T referent, final long address) {
 			super(referent, refQueue);
-			refMap.put(this, this);
-			this.address = address;
+			refMap.put((Reference<Object>)this, (Reference<Object>)this);
+			this.address.set(address);
 			if(referent instanceof DeallocatingAction) {
 				deallocatingAction = ((DeallocatingAction)referent).getAction();
 			} else {
@@ -335,7 +375,7 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 		 * @param address the new address
 		 */
 		public void setAddress(long address) {
-			this.address = address;
+			this.address.set(address);
 		}
 		
 		/**
@@ -344,13 +384,75 @@ public class RunnableReferenceQueue extends Thread implements RunnableReferenceQ
 		 */
 		@Override
 		public void run() {			
-			UnsafeAdapter.freeMemory(address);
+			UnsafeAdapter.freeMemory(address.get());
 			refMap.remove(this);
 			completedCallbacks.incrementAndGet();				
 		}
 		
 	}
 
+	/**
+	 * <p>Title: DeallocatingWeakReference</p>
+	 * <p>Description: A {@link WeakReference} extension that holds an enqueue runnable</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.shorthand.util.ref.RunnableReferenceQueue.DeallocatingWeakReference</code></p>
+	 * @param <T> The referent type
+	 */
+	public class DeallocatingWeakReference<T> extends WeakReference<T> implements Runnable, IDeallocationActionProvider, NativeAddressUpdater {
+		/** The address to deallocate */
+		private final AtomicLong address = new AtomicLong(-1L);
+		
+		/** The deallocation action to run, if applicable */
+		private final Runnable deallocatingAction;
+		
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.util.ref.RunnableReferenceQueue.IDeallocationActionProvider#getDeallocationAction()
+		 */
+		public Runnable getDeallocationAction() {
+			return deallocatingAction;
+		}
+		
+		
+		
+		/**
+		 * Creates a new DeallocatingWeakReference
+		 * @param referent The referent
+		 * @param address The address to free
+		 */
+		@SuppressWarnings("unchecked")
+		public DeallocatingWeakReference(T referent, final long address) {
+			super(referent, refQueue);
+			refMap.put((Reference<Object>)this, (Reference<Object>)this);
+			this.address.set(address);
+			if(referent instanceof DeallocatingAction) {
+				deallocatingAction = ((DeallocatingAction)referent).getAction();
+			} else {
+				deallocatingAction = null;
+			}
+		}
+		
+		/**
+		 * Updates the address to be deallocated
+		 * @param address the new address
+		 */
+		public void setAddress(long address) {
+			this.address.set(address);
+		}
+		
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Runnable#run()
+		 */
+		@Override
+		public void run() {			
+			UnsafeAdapter.freeMemory(address.get());
+			refMap.remove(this);
+			completedCallbacks.incrementAndGet();				
+		}
+		
+	}
 
 
 

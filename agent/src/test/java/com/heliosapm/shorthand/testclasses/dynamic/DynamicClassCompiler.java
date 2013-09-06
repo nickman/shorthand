@@ -24,10 +24,12 @@
  */
 package com.heliosapm.shorthand.testclasses.dynamic;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
-import java.util.zip.ZipEntry;
+import java.util.jar.Manifest;
 
 import javassist.CannotCompileException;
 import javassist.ClassClassPath;
@@ -36,7 +38,6 @@ import javassist.CtClass;
 import javassist.NotFoundException;
 
 import com.heliosapm.shorthand.util.net.BufferManager;
-import com.heliosapm.shorthand.util.net.MemBuffer;
 
 /**
  * <p>Title: DynamicClassCompiler</p>
@@ -48,6 +49,21 @@ import com.heliosapm.shorthand.util.net.MemBuffer;
 
 public class DynamicClassCompiler {
 	
+	/** The debug class output directory */
+	public static final String DEBUG_CLASS_DIR;
+	
+	static {
+		String tmp = System.getProperty("java.io.tmpdir");
+		if(!tmp.endsWith(File.separator)) tmp = tmp + File.separator;
+		tmp = tmp + "js";
+		DEBUG_CLASS_DIR = tmp;
+		System.out.println("DEBUG Class Dir:" + DEBUG_CLASS_DIR);
+		File f = new File(DEBUG_CLASS_DIR);
+		if(!f.exists()) {
+			f.mkdirs();
+		}
+	}
+	
 	
 	/**
 	 * Generates a class that simply extends the passed parent
@@ -56,30 +72,29 @@ public class DynamicClassCompiler {
 	 * @return the URL where the class can be classloaded from
 	 */
 	public static URL generateClass(String name, Class<?> parent) {
+		final String urlKey = name + ".jar";
+		URL _url = BufferManager.getInstance().getMemBufferURL(urlKey); 
 		ClassPool cp = new ClassPool();
 		cp.appendSystemPath();
 		cp.appendClassPath(new ClassClassPath(parent));
 		try {
 			CtClass parentClazz = cp.get(parent.getName());
-			CtClass clazz = cp.makeClass(name, parentClazz);		
-			MemBuffer memBuffer = BufferManager.getInstance().getMemBuffer(name + ".jar");	
-			JarOutputStream jos = new JarOutputStream(memBuffer.getOutputStream());
-			String[] parts = name.split("\\.");
-			parts[parts.length-1] = parts[parts.length-1] + ".class";
-			for(int i = 0; i < parts.length-1; i++) {
-				jos.putNextEntry(new ZipEntry(parts[i] + "/"));
-				jos.closeEntry();
-			}
-			jos.putNextEntry(new ZipEntry(parts[parts.length-1]));
+			CtClass clazz = cp.makeClass(name, parentClazz);
+			JarOutputStream jos = new JarOutputStream(_url.openConnection().getOutputStream(), new Manifest());
+			String entryName = name.replace('.', '/') + ".class";
+			jos.putNextEntry(new JarEntry(entryName));
+			byte[] byteCode = clazz.toBytecode();
+			System.out.println("Byte code size for [" + name + "]:" + byteCode.length);
 			jos.write(clazz.toBytecode());
 			jos.closeEntry();
 			jos.flush();
 			jos.finish();
 			jos.close();
-			//memBuffer.getOutputStream().write(clazz.toBytecode());
+			clazz.writeFile(DEBUG_CLASS_DIR);
 			clazz.detach();
-			parentClazz.detach();			
-			return BufferManager.getInstance().getMemBufferURL(name + ".jar");			
+			parentClazz.detach();						
+//			BufferManager.getInstance().registerMemBuffer(_url, memBuffer);
+			return _url;
 		} catch (IOException ex) {
 			throw new RuntimeException("Failed to write dynamic class [" + name + "] bytecode to membuffer", ex);
 		} catch (CannotCompileException cex) {

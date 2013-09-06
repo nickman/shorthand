@@ -5,9 +5,9 @@ package com.heliosapm.shorthand.accumulator;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
+import com.heliosapm.shorthand.datamapper.IDataMapper;
 import com.heliosapm.shorthand.store.ChronicleStore;
 import com.heliosapm.shorthand.store.IStore;
 import com.heliosapm.shorthand.util.jmx.ShorthandJMXConnectorServer;
@@ -206,8 +206,8 @@ public class MetricSnapshotAccumulator<T extends Enum<T> & ICollector<T>> implem
 	 * @param collectorSet The collector set created when the code was instrumented
 	 * @param collectedValues The collected values
 	 */
-	public void snap(String metricName, CollectorSet<T> collectorSet, long...collectedValues) {
-		store.doSnap(metricName, collectorSet, collectedValues);
+	public void snap(String metricName, IDataMapper dataMapper, long...collectedValues) {
+		store.doSnap(metricName, dataMapper, collectedValues);
 	}
 	
 	

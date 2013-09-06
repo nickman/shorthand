@@ -39,7 +39,7 @@ import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 public class MemBufferInputStream extends InputStream {
 	/** The underlying mem buffer */
-	private final MemBuffer mb;
+	private final BufferManager.MemBuffer mb;
 	/** The position in the buffer we're reading from */
 	private long readPosition = 0;
 	
@@ -59,7 +59,7 @@ public class MemBufferInputStream extends InputStream {
 	 * Creates a new MemBufferInputStream
 	 * @param mb The underlying buffer
 	 */
-	MemBufferInputStream(MemBuffer mb) {
+	MemBufferInputStream(BufferManager.MemBuffer mb) {
 		this.mb = mb;
 	}
 
@@ -70,8 +70,7 @@ public class MemBufferInputStream extends InputStream {
 	@Override
 	public int read() throws IOException {
 		if(!open) throw new IOException("This InputStream is closed. Nein, nein, nein");
-		byte b = mb.read(readPosition);
-		log("MemBufferIS Reading bytes from [%s]", mb.toString());
+		byte b = mb.read(readPosition);		
 		readPosition++;
 		bytesSinceMark++;
 		if(readlimit!=Integer.MAX_VALUE && bytesSinceMark>=readlimit) {
@@ -89,9 +88,7 @@ public class MemBufferInputStream extends InputStream {
 	public int read(byte[] bytes) throws IOException {
 		if(!open) throw new IOException("This InputStream is closed. Nein, nein, nein");
 		if(readPosition==mb.getSize()) return 0;
-		
 		int bytesRead = mb.read(readPosition, bytes);
-		log("MemBufferIS Reading [%s] bytes from [%s]", bytesRead, mb.toString());
 		readPosition += bytesRead;
 		return bytesRead;
 	}
@@ -175,14 +172,7 @@ public class MemBufferInputStream extends InputStream {
 		mark = (int)readPosition;
 	}
 	
-	/**
-	 * Simple out formatted logger
-	 * @param fmt The format of the message
-	 * @param args The message arguments
-	 */
-	public static void log(String fmt, Object...args) {
-		System.out.println(String.format(fmt, args));
-	}
+
 	
 	
 

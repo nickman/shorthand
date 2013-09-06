@@ -5,7 +5,6 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -14,8 +13,9 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import com.heliosapm.shorthand.collectors.CollectorSet;
 import com.heliosapm.shorthand.collectors.MethodInterceptor;
+import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
+import com.heliosapm.shorthand.datamapper.IDataMapper;
 
 /**
  * <p>Title: AccumulatorLoad</p>
@@ -56,8 +56,9 @@ public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionH
 		for(int i = 0; i < metricCount; i++) { metricNames[i] = new UUID(RANDOM.nextLong(), RANDOM.nextLong()).toString();  }
 		//warmupMetricNames = metricNames;
 		for(int i = 0; i < metricCount; i++) { warmupMetricNames[i] = new UUID(RANDOM.nextLong(), RANDOM.nextLong()).toString();  }
-		CollectorSet<MethodInterceptor> cs = new CollectorSet<MethodInterceptor>(MethodInterceptor.class, bitMask);
-		log("Data Mapper [%s]", cs.getDataMapper().getClass().getName());
+		IDataMapper dataMapper = DataMapperBuilder.getInstance().getIDataMapper(MethodInterceptor.class.getName(), bitMask);
+		
+		log("Data Mapper [%s]", dataMapper.getClass().getName());
 		accumulator = MetricSnapshotAccumulator.getInstance();
 		log("Starting Warmup");
 		accumulator.setDebug(true);
@@ -67,7 +68,7 @@ public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionH
 		for(int i = 0; i < warmupLoops; i++) {
 			snap = MethodInterceptor.methodEnter(bitMask);	
 			for(String metricName: warmupMetricNames) {				
-				accumulator.snap(metricName, cs, MethodInterceptor.methodExit(snap));
+				accumulator.snap(metricName, dataMapper, MethodInterceptor.methodExit(snap));
 			}
 		}
 		log(AccumulatorThreadStats.report());
@@ -101,7 +102,7 @@ public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionH
 	
 	private Runnable buildLoadRunner(final String[] metricNames, final int runLoops, final int bitMask, final int slot, final long[] elapsedTimes) {
 		return new Runnable() {
-			final CollectorSet<MethodInterceptor> cs = new CollectorSet<MethodInterceptor>(MethodInterceptor.class, bitMask);
+			final IDataMapper dataMapper = DataMapperBuilder.getInstance().getIDataMapper(MethodInterceptor.class.getName(), bitMask);
 			public void run() {
 				final long startTime = System.currentTimeMillis(), endTime = startTime + LOOP_RUN_TIME;
 				while(true) {
@@ -117,7 +118,7 @@ public class AccumulatorLoad implements ThreadFactory, Thread.UncaughtExceptionH
 					for(int i = 0; i < runLoops; i++) {
 						for(String metricName: _metricNames) {
 							snap = MethodInterceptor.methodEnter(bitMask);
-							accumulator.snap(metricName, cs, MethodInterceptor.methodExit(snap));		
+							accumulator.snap(metricName, dataMapper, MethodInterceptor.methodExit(snap));		
 						}
 					}
 					elapsedTimes[slot] = System.nanoTime()-start;

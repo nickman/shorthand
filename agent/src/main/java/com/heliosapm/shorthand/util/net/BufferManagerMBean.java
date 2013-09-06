@@ -27,6 +27,8 @@ package com.heliosapm.shorthand.util.net;
 import java.net.URL;
 import java.util.Set;
 
+import com.heliosapm.shorthand.util.net.BufferManager.MemBuffer;
+
 /**
  * <p>Title: BufferManagerMBean</p>
  * <p>Description: JMX MBean interface for {@link BufferManager}</p> 
@@ -60,5 +62,24 @@ public interface BufferManagerMBean {
 	 * @return the MemBuffer URL
 	 */
 	public URL getMemBufferURL(String bufferName);    
+	
+    /**
+     * Returns the total number of MemBuffer instances that exist anywhere
+     * @return the total number of MemBuffer instances that exist anywhere
+     */
+    public long getMemBufferInstances();
+    
+    /**
+     * Returns the total number of MemBuffer instances that have been destroyed
+     * @return the total number of MemBuffer instances that have been destroyed
+     */
+    public long getMemBufferDestroys();
+    
+    /**
+     * Returns the highwater number of MemBuffer instances
+     * @return the highwater number of MemBuffer instances
+     */
+    public long getMemBufferInstanceHighwater();
+
 
 }
