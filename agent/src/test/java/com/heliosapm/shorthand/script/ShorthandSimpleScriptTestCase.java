@@ -303,12 +303,13 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 				"foo/snafu/put",  	// method template
 				false, false, false);  	// allow reentrant, disable on trigger, startDisabled		
 		
-		url = null;
-		JMXHelper.unregisterMBean(on);
-		log("Cleanup Complete");
+		//log("Cleanup Complete");
 		for(int i = 0; i < 10000; i++) {
-			log("MemBuffer Instances: %s   Highwater: %s  Destroys: %s", BufferManager.getInstance().getMemBufferInstances(), BufferManager.getInstance().getMemBufferInstanceHighwater(), BufferManager.getInstance().getMemBufferDestroys());
-			try { Thread.currentThread().join(15000); } catch (Exception ex) {/* No Op*/}
+			System.gc();
+			log("Loop #%s  MemBuffer Instances: %s   Highwater: %s  Destroys: %s", i, BufferManager.getInstance().getMemBufferInstances(), BufferManager.getInstance().getMemBufferInstanceHighwater(), BufferManager.getInstance().getMemBufferDestroys());
+			try { Thread.currentThread().join(5000); } catch (Exception ex) {/* No Op*/}
+			if(i==10) url = null;
+			if(i==20) JMXHelper.unregisterMBean(on);
 		}
 		
 	}

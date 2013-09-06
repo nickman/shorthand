@@ -403,7 +403,7 @@ public class BufferManager implements BufferManagerMBean, RemovalListener<String
 			address = UnsafeAdapter.allocateMemory(initialSize);
 			size = 0;
 			capacity = initialSize;
-			addressUpdater = RunnableReferenceQueue.getInstance().buildWeakReference(this, address); 		
+			addressUpdater = RunnableReferenceQueue.getInstance().buildPhantomReference(this, address); 		
 			highWater.set(instances.incrementAndGet());
 			System.out.println("\n\t#### Created MemBuffer for [" + memUrl + "] --> [" + System.identityHashCode(this) + "] ####");
 		}
@@ -595,7 +595,7 @@ public class BufferManager implements BufferManagerMBean, RemovalListener<String
 		
 		private final Runnable action = newAction(instances, fCount);
 		
-		private Runnable newAction(final AtomicLong inst, final AtomicLong fcnt) {
+		private static Runnable newAction(final AtomicLong inst, final AtomicLong fcnt) {
 			return new Runnable() {
 				@Override
 				public void run() {
