@@ -192,6 +192,49 @@ public class JMXHelper {
 		}
 	}
 	
+	/**
+	 * Determines if the passed ObjectName is registered in the passed MBeanServer
+	 * @param conn The MBeanServer reference
+	 * @param on The ObjectName to test for
+	 * @return true if registered, false otherwise
+	 */
+	public static  boolean isRegistered(MBeanServerConnection conn, ObjectName on) {
+		try {
+			return conn.isRegistered(on);
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}
+	}
+	
+	/**
+	 * Determines if the passed ObjectName is registered in the passed MBeanServer
+	 * @param conn The MBeanServer reference
+	 * @param on The ObjectName to test for
+	 * @return true if registered, false otherwise
+	 */
+	public static  boolean isRegistered(MBeanServerConnection conn, CharSequence on) {
+		return isRegistered(conn, objectName(on));
+	}
+	
+	
+	/**
+	 * Determines if the passed ObjectName is registered in the default MBeanServer
+	 * @param on The ObjectName to test for
+	 * @return true if registered, false otherwise
+	 */
+	public static  boolean isRegistered(ObjectName on) {
+		return isRegistered(getHeliosMBeanServer(), on);
+	}
+	
+	/**
+	 * Determines if the passed ObjectName is registered in the default MBeanServer
+	 * @param on The ObjectName to test for
+	 * @return true if registered, false otherwise
+	 */
+	public static  boolean isRegistered(CharSequence on) {
+		return isRegistered(objectName(on));
+	}
+	
 	
 	/**
 	 * Returns an MBeanConnection for an in-vm MBeanServer that has the specified default domain.
