@@ -67,8 +67,9 @@ public class MemBufferOutputStream extends OutputStream {
 	@Override
 	public void write(int b) throws IOException {
 		if(!open) throw new IOException("This OutputStream is closed. Nein, nein, nein");
-		buf.write(writePosition, (byte)b);
+		buf.write((byte)b);
 		writePosition++;
+		log("MemBufferOS Writing byte to [%s]", buf.toString());
 	}
 	
 	/**
@@ -78,8 +79,9 @@ public class MemBufferOutputStream extends OutputStream {
 	@Override
 	public void write(byte[] b) throws IOException {
 		if(!open) throw new IOException("This OutputStream is closed. Nein, nein, nein");
-		buf.write(writePosition, b);
+		buf.write(b);
 		writePosition += b.length;
+		log("MemBufferOS Writing [%s] bytes to [%s]", b.length, buf.toString());
 	}
 	
 	/**
@@ -91,7 +93,16 @@ public class MemBufferOutputStream extends OutputStream {
 		if(!open) throw new IOException("This OutputStream is closed. Nein, nein, nein");
 		byte[] arr = new byte[len];
 		System.arraycopy(b, off, arr, 0, len);
-		write(arr);		
+		buf.write(arr);		
+		writePosition += len;
+		log("MemBufferOS Writing [%s] offset bytes to [%s]", len, buf.toString());
 	}
-
+	/**
+	 * Simple out formatted logger
+	 * @param fmt The format of the message
+	 * @param args The message arguments
+	 */
+	public static void log(String fmt, Object...args) {
+		System.out.println(String.format(fmt, args));
+	}
 }

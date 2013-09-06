@@ -62,7 +62,7 @@ public class DynamicClassCompiler {
 		try {
 			CtClass parentClazz = cp.get(parent.getName());
 			CtClass clazz = cp.makeClass(name, parentClazz);		
-			MemBuffer memBuffer = BufferManager.getInstance().getMemBuffer(name);	
+			MemBuffer memBuffer = BufferManager.getInstance().getMemBuffer(name + ".jar");	
 			JarOutputStream jos = new JarOutputStream(memBuffer.getOutputStream());
 			String[] parts = name.split("\\.");
 			parts[parts.length-1] = parts[parts.length-1] + ".class";
@@ -76,10 +76,10 @@ public class DynamicClassCompiler {
 			jos.flush();
 			jos.finish();
 			jos.close();
-			memBuffer.getOutputStream().write(clazz.toBytecode());
+			//memBuffer.getOutputStream().write(clazz.toBytecode());
 			clazz.detach();
 			parentClazz.detach();			
-			return BufferManager.getInstance().getMemBufferURL(name);			
+			return BufferManager.getInstance().getMemBufferURL(name + ".jar");			
 		} catch (IOException ex) {
 			throw new RuntimeException("Failed to write dynamic class [" + name + "] bytecode to membuffer", ex);
 		} catch (CannotCompileException cex) {

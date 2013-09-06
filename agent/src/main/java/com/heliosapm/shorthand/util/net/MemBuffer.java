@@ -46,8 +46,11 @@ import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 public class MemBuffer implements DeallocatingAction {
 	/** The memory buffer pointer */
 	private long address;
-	/** The size of the current buffer */
+	/** The offset of the last byte of data written in to the buffer */
 	private long size;
+	/** The total size of the memory currently allocated under the address */
+	private long capacity;
+	
 	/** The buffer input stream */
 	InputStream is;
 	/** The timestamp of the last data change to this buffer */
@@ -57,7 +60,9 @@ public class MemBuffer implements DeallocatingAction {
 	
 	private final RefRemover remover;
 	
-	
+	public String toString() {
+		return String.format("[%s] size:%s  capacity:%s", memUrl.toString(), size, capacity);
+	}
 	/** The size increment of the memory allocation when the space is exhausted */
 	private final int nextSegSize;
 	
@@ -91,7 +96,8 @@ public class MemBuffer implements DeallocatingAction {
 		this.remover = remover;
 		this.nextSegSize = nextSegSize;
 		address = UnsafeAdapter.allocateMemory(initialSize);
-		size = initialSize;
+		size = 0;
+		capacity = initialSize;
 		phantomRef = RunnableReferenceQueue.getInstance().buildPhantomReference(this, address); 		
 	}
 	
@@ -104,36 +110,32 @@ public class MemBuffer implements DeallocatingAction {
 	}
 	
 	/**
-	 * Writes the passed byte to the specified position in the buffer
-	 * @param pos The position to start the write at
+	 * Writes the passed byte to the current offset in the buffer
 	 * @param b The byte to write
 	 * @throws IOException thrown if the position specified is greater than the current size
 	 */
-	void write(long pos, byte b) throws IOException {
-		if(pos<0) throw new IllegalArgumentException("Invalid position [" + pos + "]");
-		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "]. No sudden movements please.");
-		if(size-pos<10) {
+	void write(byte b) throws IOException {
+		if(capacity-size<10) {
 			resize();
 		}
-		UnsafeAdapter.putByte(null, address + pos, b);
+		UnsafeAdapter.putByte(null, address + size, b);
+		size++;
 		lastChange = System.currentTimeMillis();
 	}
 	
 	/**
-	 * Writes the passed byte array to the specified position in the buffer
-	 * @param pos The position to start the write at
+	 * Writes the passed byte array to the current offset in the buffer
 	 * @param arr The byte array to write
 	 * @throws IOException thrown if the position specified is greater than the current size
 	 */
-	void write(long pos, byte[] arr) throws IOException {
+	void write(byte[] arr) throws IOException {
 		if(arr==null) throw new IllegalArgumentException("The passed byte array was null");
-		if(pos<0) throw new IllegalArgumentException("Invalid position [" + pos + "]");
-		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "]. No sudden movements please.");
-		if(size-pos<(arr.length + 10)) {
+		if(capacity-size<(arr.length + 10)) {
 			resize(Math.max(DEFAULT_NEXT_SEG, arr.length + 10));
 		}
-		UnsafeAdapter.copyMemory(arr, UnsafeAdapter.BYTE_ARRAY_OFFSET, null, address + pos, arr.length);
+		UnsafeAdapter.copyMemory(arr, UnsafeAdapter.BYTE_ARRAY_OFFSET, null, address + size, arr.length);
 		lastChange = System.currentTimeMillis();
+		size += arr.length;
 	}
 	
 	/**
@@ -157,29 +159,39 @@ public class MemBuffer implements DeallocatingAction {
 	 */
 	int read(long pos, byte[] arr) throws IOException {
 		if(pos<0) throw new IllegalArgumentException("Invalid position [" + pos + "]");
-		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "].");
+		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "].");		
 		if(size==pos) return 0;		
-		int bytesToRead = (int)(Math.min(size, arr.length)-pos);
+		int maxBytes = (int)size-(int)pos;
+		int bytesToRead = (int)(Math.min(maxBytes, arr.length));
 		UnsafeAdapter.copyMemory(null, address + pos, arr, UnsafeAdapter.BYTE_ARRAY_OFFSET, bytesToRead);
 		return bytesToRead;
 	}
 	
+	/**
+	 * Reads the allocated memory at the specified offset into the passed byte array
+	 * @param pos The offset off the address to read from
+	 * @param arr The aray to write into
+	 * @param off The offset in the array to start writing at
+	 * @param len the number of bytes to write into the array
+	 * @return the number of bytes written
+	 * @throws IOException
+	 */
 	int read(long pos, byte[] arr, int off, int len) throws IOException {
 		if(pos<0) throw new IllegalArgumentException("Invalid position [" + pos + "]");
 		if(pos>size) throw new IOException("Invalid position [" + pos + "] for buffer of size ["  + size + "].");
-		if(size==pos) return 0;		
-		int bytesToRead = (int)(Math.min(size, len)-pos);
+		if(size==pos) return 0;
+		int maxBytes = (int)size-(int)pos;
+		int bytesToRead = (int)(Math.min(maxBytes, len));
 		UnsafeAdapter.copyMemory(null, address + pos, arr, UnsafeAdapter.BYTE_ARRAY_OFFSET + off, bytesToRead);
-		return bytesToRead;		
-		
+		return bytesToRead;				
 	}
 	
 	/**
 	 * Grows the allocated memory space by {@link #nextSegSize} bytes.
 	 */
 	private void resize() {
-		address = UnsafeAdapter.reallocateMemory(address, size + nextSegSize);
-		size += nextSegSize; 
+		address = UnsafeAdapter.reallocateMemory(address, capacity + nextSegSize);
+		capacity += nextSegSize; 
 		phantomRef.setAddress(address);
 	}
 	
@@ -188,8 +200,8 @@ public class MemBuffer implements DeallocatingAction {
 	 * @param increase The number of bytes to increase the allocated memory by
 	 */
 	private void resize(int increase) {
-		address = UnsafeAdapter.reallocateMemory(address, size + increase);
-		size += increase;
+		address = UnsafeAdapter.reallocateMemory(address, capacity + increase);
+		capacity += increase;
 		phantomRef.setAddress(address);
 	}
 	
