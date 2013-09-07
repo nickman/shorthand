@@ -306,10 +306,10 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 		//log("Cleanup Complete");
 		for(int i = 0; i < 10000; i++) {
 			System.gc();
-			log("Loop #%s  MemBuffer Instances: %s   Highwater: %s  Destroys: %s", i, BufferManager.getInstance().getMemBufferInstances(), BufferManager.getInstance().getMemBufferInstanceHighwater(), BufferManager.getInstance().getMemBufferDestroys());
+			log("Loop #%s  MemBuffer Instances: %s   Highwater: %s  Destroys: %s  IsClReg: %s", i, BufferManager.getInstance().getMemBufferInstances(), BufferManager.getInstance().getMemBufferInstanceHighwater(), BufferManager.getInstance().getMemBufferDestroys(), JMXHelper.isRegistered(on));
 			try { Thread.currentThread().join(5000); } catch (Exception ex) {/* No Op*/}
 			if(i==10) url = null;
-			if(i==20) JMXHelper.unregisterMBean(on);
+			
 		}
 		
 	}
