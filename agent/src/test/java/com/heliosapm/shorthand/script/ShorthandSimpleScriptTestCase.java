@@ -77,6 +77,8 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 	 * @param allowReentrant The expected allow reentrancy invocation option flag
 	 * @param disableOnTrigger The expected disable on trigger invocation option flag
 	 * @param startDisabled The expected start disabled invocation option flag
+	 * @param batchTransform The expected batch transform invocation option flag
+	 * @param residentTransformer The expected resident transformer invocation option flag
 	 * @return the parsed shorthand script
 	 * @throws Exception thrown on any error
 	 */
@@ -88,7 +90,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 			boolean targetMethodAnnotation, 
 			int enumIndex, int bitMask,
 			String methodTemplate, boolean allowReentrant,
-			boolean disableOnTrigger, boolean startDisabled) throws Exception {
+			boolean disableOnTrigger, boolean startDisabled, boolean batchTransform, boolean residentTransformer) throws Exception {
 		final ShorthandScript script = ShorthandScript.parse(shorthand);
 		
 		Assert.assertEquals("Unexpected target class", targetClass, script.getTargetClass());
@@ -114,6 +116,8 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 		Assert.assertEquals("Unexpected allow reentrancy inv option", allowReentrant, script.isAllowReentrant());
 		Assert.assertEquals("Unexpected disable on trigger inv option", disableOnTrigger, script.isDisableOnTrigger());
 		Assert.assertEquals("Unexpected start disabled inv option", startDisabled, script.isStartDisabled());
+		Assert.assertEquals("Unexpected batch transform inv option", batchTransform, script.isBatchTransform());
+		Assert.assertEquals("Unexpected resident transformer inv option", residentTransformer, script.isResidentTransformer());
 		
 		final int _bitMask = script.getBitMask();
 		Assert.assertEquals("Unexpected bitmask", bitMask, _bitMask);
@@ -139,6 +143,8 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 	 * @param allowReentrant The expected allow reentrancy invocation option flag
 	 * @param disableOnTrigger The expected disable on trigger invocation option flag
 	 * @param startDisabled The expected start disabled invocation option flag
+	 * @param batchTransform The expected batch transform invocation option flag
+	 * @param residentTransformer The expected resident transformer invocation option flag 
 	 * @return the parsed shorthand script
 	 * @throws Exception thrown on any error
 	 */
@@ -150,7 +156,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 			boolean targetMethodAnnotation, 
 			int enumIndex, int bitMask,
 			String methodTemplate, boolean allowReentrant,
-			boolean disableOnTrigger, boolean startDisabled) throws Exception {
+			boolean disableOnTrigger, boolean startDisabled, boolean batchTransform, boolean residentTransformer) throws Exception {
 		final ShorthandScript script = ShorthandScript.parse(shorthand);
 		
 		Assert.assertEquals("Unexpected target class name", targetClassName, script.getTargetClass().getName());
@@ -176,6 +182,8 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 		Assert.assertEquals("Unexpected allow reentrancy inv option", allowReentrant, script.isAllowReentrant());
 		Assert.assertEquals("Unexpected disable on trigger inv option", disableOnTrigger, script.isDisableOnTrigger());
 		Assert.assertEquals("Unexpected start disabled inv option", startDisabled, script.isStartDisabled());
+		Assert.assertEquals("Unexpected batch transform inv option", batchTransform, script.isBatchTransform());
+		Assert.assertEquals("Unexpected resident transformer inv option", residentTransformer, script.isResidentTransformer());
 		
 		final int _bitMask = script.getBitMask();
 		Assert.assertEquals("Unexpected bitmask", bitMask, _bitMask);
@@ -202,7 +210,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 				null, MA, false, 		// method sig, method sig pattern, target method annot 
 				MI, 0, 			// enum index, bit mask
 				"java/lang/Object",  	// method template
-				false, false, false);  	// allow reentrant, disable on trigger, startDisabled		
+				false, false, false, false, true);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer		
 	}
 	
 	/**
@@ -218,7 +226,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 				null, MA, false, 		// method sig, method sig pattern, target method annot 
 				MI, 0, 					// enum index, bit mask
 				"java/lang/Object",  	// method template
-				false, false, false);  	// allow reentrant, disable on trigger, startDisabled
+				false, false, false, false, true);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer
 		//test("java.lang.Object equals [0] '$package[0]/$package[1]/$class/$method'", "java.lang.Object", "equals", "java/lang/Object/equals", false, false, 0, 3);
 	}
 	
@@ -235,9 +243,74 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 				null, MA, false, 		// method sig, method sig pattern, target method annot 
 				MI, 0, 					// enum index, bit mask
 				"since/$class/$2",  	// method template
-				false, false, false);  	// allow reentrant, disable on trigger, startDisabled
-		//test("java.lang.Object equals [0] '$package[0]/$package[1]/$class/$method'", "java.lang.Object", "equals", "java/lang/Object/equals", false, false, 0, 3);
+				false, false, false, false, true);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer
 	}
+	
+	/**
+	 * Tests the correct reading of one instrumentation option
+	 * @throws Exception thrown on any error
+	 */
+	@Test
+	public void testAnnotatedClassInstrumentOption() throws Exception {
+		test("@com.google.gson.annotations.Since foo -s MethodInterceptor[0] 'since/$class/$2'", 
+				Since.class, true,		// target class, target class annot
+				false, false,  			// target class iface, target class inherritance
+				"foo", null, 			// methodName, methodName pattern
+				null, MA, false, 		// method sig, method sig pattern, target method annot 
+				MI, 0, 					// enum index, bit mask
+				"since/$class/$2",  	// method template
+				false, false, true, false, true);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer
+	}
+	
+	/**
+	 * Tests the correct reading of multiple instrumentation option
+	 * @throws Exception thrown on any error
+	 */
+	@Test
+	public void testAnnotatedClassInstrumentOptions() throws Exception {
+		test("@com.google.gson.annotations.Since foo -sda MethodInterceptor[0] 'since/$class/$2'", 
+				Since.class, true,		// target class, target class annot
+				false, false,  			// target class iface, target class inherritance
+				"foo", null, 			// methodName, methodName pattern
+				null, MA, false, 		// method sig, method sig pattern, target method annot 
+				MI, 0, 					// enum index, bit mask
+				"since/$class/$2",  	// method template
+				true, true, true, false, true);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer
+	}
+	
+	/**
+	 * Tests the correct reading of multiple instrumentation options and batch transform
+	 * @throws Exception thrown on any error
+	 */
+	@Test
+	public void testAnnotatedClassInstrumentOptionsBatchTransform() throws Exception {
+		test("@com.google.gson.annotations.Since foo -sdab MethodInterceptor[0] 'since/$class/$2'", 
+				Since.class, true,		// target class, target class annot
+				false, false,  			// target class iface, target class inherritance
+				"foo", null, 			// methodName, methodName pattern
+				null, MA, false, 		// method sig, method sig pattern, target method annot 
+				MI, 0, 					// enum index, bit mask
+				"since/$class/$2",  	// method template
+				true, true, true, true, false);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer
+	}
+	
+	/**
+	 * Tests the correct reading of multiple instrumentation options and batch and resident transform
+	 * @throws Exception thrown on any error
+	 */
+	@Test
+	public void testAnnotatedClassInstrumentOptionsBatchResidentTransform() throws Exception {
+		test("@com.google.gson.annotations.Since foo -sdabr MethodInterceptor[0] 'since/$class/$2'", 
+				Since.class, true,		// target class, target class annot
+				false, false,  			// target class iface, target class inherritance
+				"foo", null, 			// methodName, methodName pattern
+				null, MA, false, 		// method sig, method sig pattern, target method annot 
+				MI, 0, 					// enum index, bit mask
+				"since/$class/$2",  	// method template
+				true, true, true, true, true);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer
+	}
+	
+	
 	
 	
 	/**
@@ -253,7 +326,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 				null, MA, false, 										// method sig, method sig pattern, target method annot 
 				MI, MethodInterceptor.allMetricsMask, 					// enum index, bit mask
 				"fun/fun/fun",  										// method template
-				false, false, false);  									// allow reentrant, disable on trigger, startDisabled
+				false, false, false, false, true);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer
 		Set<Class<?>> targetClasses = script.getTargetClasses();
 		Assert.assertEquals("Unexpected number of target classes", 1, targetClasses.size());
 		Assert.assertEquals("Unexpected target class", targetClasses.iterator().next(), TypeOnlyAnnotated.class);
@@ -282,7 +355,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 				null, MA, false, 		// method sig, method sig pattern, target method annot 
 				MI, 0, 					// enum index, bit mask
 				"foo/bar/put",  	// method template
-				false, false, false);  	// allow reentrant, disable on trigger, startDisabled		
+				false, false, false, false, true);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer		
 	}
 	
 	/**
@@ -301,16 +374,17 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 				null, MA, false, 		// method sig, method sig pattern, target method annot 
 				MI, 0, 					// enum index, bit mask
 				"foo/snafu/put",  	// method template
-				false, false, false);  	// allow reentrant, disable on trigger, startDisabled		
+				false, false, false, false, true);  	// allow reentrant, disable on trigger, startDisabled, batchTransform, residentTransformer		
 		
-		//log("Cleanup Complete");
-		for(int i = 0; i < 10000; i++) {
-			System.gc();
-			log("Loop #%s  MemBuffer Instances: %s   Highwater: %s  Destroys: %s  IsClReg: %s", i, BufferManager.getInstance().getMemBufferInstances(), BufferManager.getInstance().getMemBufferInstanceHighwater(), BufferManager.getInstance().getMemBufferDestroys(), JMXHelper.isRegistered(on));
-			try { Thread.currentThread().join(5000); } catch (Exception ex) {/* No Op*/}
-			if(i==10) url = null;
-			
-		}
+//		//log("Cleanup Complete");
+//		for(int i = 0; i < 10000; i++) {
+//			//System.gc();
+//			log("Loop #%s  MemBuffer Instances: %s   Highwater: %s  Destroys: %s  IsClReg: %s", i, BufferManager.getInstance().getMemBufferInstances(), BufferManager.getInstance().getMemBufferInstanceHighwater(), BufferManager.getInstance().getMemBufferDestroys(), JMXHelper.isRegistered(on));
+//			try { Thread.currentThread().join(5000); } catch (Exception ex) {/* No Op*/}
+//			if(i==10) url = null;
+//			if(i==20) JMXHelper.unregisterMBean(on);
+//			
+//		}
 		
 	}
 	

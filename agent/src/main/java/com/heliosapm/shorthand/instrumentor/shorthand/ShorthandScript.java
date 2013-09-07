@@ -225,6 +225,13 @@ public class ShorthandScript  {
 	protected boolean disableOnTrigger = false;
 	/** Indicates if the instrumentation should be disabled at start time (and require intervention to activate) */
 	protected boolean startDisabled = false;
+	/** Indicates if the instrumentation should batch transform (see {@link InvocationOption#TRANSFORMER_BATCH}) */
+	protected boolean batchTransform = false;
+	/** Indicates if the instrumentation's classfile transformer should stay resident (see {@link InvocationOption#TRANSFORMER_RESIDENT}) */
+	protected boolean residentTransformer = false;
+	
+
+
 	
 	
 	//==============================================================================================
@@ -407,6 +414,12 @@ public class ShorthandScript  {
 		allowReentrant = InvocationOption.isAllowReentrant(parsedInvocationOptions);
 		disableOnTrigger = InvocationOption.isDisableOnTrigger(parsedInvocationOptions);
 		startDisabled = InvocationOption.isStartDisabled(parsedInvocationOptions);
+		// ==========================
+		batchTransform = InvocationOption.isBatchTransform(parsedInvocationOptions);
+		residentTransformer = InvocationOption.isResidentTransformer(parsedInvocationOptions);
+		if(!batchTransform && !residentTransformer) {
+			residentTransformer = true;
+		}
 	}
 
 	
@@ -826,6 +839,24 @@ public class ShorthandScript  {
 	public boolean isAllowReentrant() {
 		return allowReentrant;
 	}
+	
+	/**
+	 * Indicates if the instrumentation should batch transform (see {@link InvocationOption#TRANSFORMER_BATCH}) 
+	 * @return true for batch transform, false otherwise
+	 */
+	public boolean isBatchTransform() {
+		return batchTransform;
+	}
+
+
+	/**
+	 * Indicates if the instrumentation's classfile transformer should stay resident (see {@link InvocationOption#TRANSFORMER_RESIDENT})
+	 * @return true for resident, false otherwise
+	 */
+	public boolean isResidentTransformer() {
+		return residentTransformer;
+	}
+	
 
 	/**
 	 * Indicates if all intrumentation should be disabled for the current thread until this method exits

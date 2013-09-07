@@ -22,11 +22,18 @@ import com.heliosapm.shorthand.util.enums.IntBitMaskedEnum;
 
 public enum InvocationOption implements IntBitMaskedEnum {
 	/** Allows the method injected instrumentation to be invoked reentrantly instead of being disabled if the cflow > 1 */
-	ALLOW_REENTRANT("r"),
+	ALLOW_REENTRANT("a"),
 	/** Disables all instrumentation on the current thread when the instrumented method is invoked */
 	DISABLE_ON_TRIGGER("d"),
 	/** Creates but does not install the instrumentation */
-	START_DISABLED("s");
+	START_DISABLED("s"),
+	/** The transformation process finds all the visible joinpoints and transforms them.
+	 * If {@link #TRANSFORMER_RESIDENT} is not enabled, the transformer will be removed once the batch transform is complete. */
+	TRANSFORMER_BATCH("b"),
+	/** The transformer stays resident, transforming matching classes as they are initially classloaded */
+	TRANSFORMER_RESIDENT("r");
+	
+	
 	
 	/** A map of the method attribute enums keyed by the lower name and aliases */
 	public static final Map<String, InvocationOption> ALIAS2ENUM;
@@ -45,11 +52,37 @@ public enum InvocationOption implements IntBitMaskedEnum {
 		ALIAS2ENUM = Collections.unmodifiableMap(tmp);
 	}
 	
-//	protected boolean allowReentrant = false;
-//	/** Indicates if all instrumentation on the current thread should be disabled when the method is invoked */
-//	protected boolean disableOnTrigger = false;
-//	/** Indicates if the instrumentation should be disabled at start time (and require intervention to activate) */
-//	protected boolean startDisabled = false;
+	
+	/**
+	 * Indicates if the passed option string indicates that batch transformation should occur. (See {@link #TRANSFORMER_BATCH})
+	 * @param opts The option string from the shorthand script
+	 * @return true if enabled, false otherwise
+	 */
+	public static boolean isBatchTransform(String opts) {
+		if(opts==null || opts.trim().isEmpty()) return false;
+		for(char c: opts.toCharArray()) {
+			String opt = new String(new char[]{c});
+			if(TRANSFORMER_BATCH.aliases.contains(opt)) return true;
+		}
+		return false;
+	}
+	
+	/**
+	 * Indicates if the passed option string indicates that the class file transformer should stay
+	 * resident and continue to transform new classes as they are loaded. (See {@link #TRANSFORMER_RESIDENT})
+	 * @param opts The option string from the shorthand script
+	 * @return true if enabled, false otherwise
+	 */
+	public static boolean isResidentTransformer(String opts) {
+		if(opts==null || opts.trim().isEmpty()) return false;
+		for(char c: opts.toCharArray()) {
+			String opt = new String(new char[]{c});
+			if(TRANSFORMER_RESIDENT.aliases.contains(opt)) return true;
+		}
+		return false;
+	}
+	
+	
 	
 	/**
 	 * Indicates if the passed option string indicates that a method should allow reentrant enabled instrumentation
