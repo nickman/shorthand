@@ -22,14 +22,14 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.shorthand.instrumentor.shorthand.compiled;
+package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
 /**
  * <p>Title: MetricNameProvider</p>
  * <p>Description: A compiled {@link com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScript} metric template translator to produce runtime metric names </p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.compiled.MetricNameProvider</code></p>
+ * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.naming.MetricNameProvider</code></p>
  */
 
 public interface MetricNameProvider {

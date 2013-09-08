@@ -22,20 +22,18 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.shorthand.instrumentor.shorthand;
-
-import com.heliosapm.shorthand.instrumentor.shorthand.naming.MetricNameProvider;
+package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
 /**
- * <p>Title: CompiledShorthandScript</p>
- * <p>Description: A container for the dynamically compiled components of a {@link ShorthandScript}.
- * Normally there will be one of these per join-point identified by the script's criteria.</p> 
+ * <p>Title: MetricNameCompiler</p>
+ * <p>Description: The javassist compiler to convert a metric template expression to a metric name</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.CompiledShorthandScript</code></p>
+ * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.naming.MetricNameCompiler</code></p>
  */
 
-public class CompiledShorthandScript {
-	/** The metric name provider that provides the metric name at each invocation */
-	protected MetricNameProvider metricNameProvider;
+public class MetricNameCompiler {
+	// examine template
+	// if there are no runtime tokens, generate a method returning a statically compiled value
+	// otherwise generate a method extracting the runtime tokens
 }

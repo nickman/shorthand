@@ -2,7 +2,7 @@
 * Helios Development Group LLC, 2013. 
  *
  */
-package com.heliosapm.shorthand.instrumentor.shorthand;
+package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
 /**
  * <p>Title: MetricNameFragment</p>

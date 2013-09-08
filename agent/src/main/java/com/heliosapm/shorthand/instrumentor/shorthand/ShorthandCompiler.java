@@ -8,6 +8,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.heliosapm.shorthand.instrumentor.shorthand.naming.MetricNamingToken;
+
 /**
  * <p>Title: ShorthandCompiler</p>
  * <p>Description: A byteman script shorthand compiler</p> 

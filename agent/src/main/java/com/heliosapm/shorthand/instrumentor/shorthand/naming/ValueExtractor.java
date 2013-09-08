@@ -22,18 +22,25 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.shorthand.instrumentor.shorthand.compiled;
+package com.heliosapm.shorthand.instrumentor.shorthand.naming;
+
+import java.lang.reflect.Method;
 
 /**
- * <p>Title: MetricNameCompiler</p>
- * <p>Description: The javassist compiler to convert a metric template expression to a metric name</p> 
+ * <p>Title: ValueExtractor</p>
+ * <p>Description: Defines a static value extractor for a given MetricNamingToken for a passed class and method</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.compiled.MetricNameCompiler</code></p>
+ * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.MetricNamingToken.ValueExtractor</code></p>
  */
-
-public class MetricNameCompiler {
-	// examine template
-	// if there are no runtime tokens, generate a method returning a statically compiled value
-	// otherwise generate a method extracting the runtime tokens
+interface ValueExtractor {
+	/**
+	 * Returns a static metric name part for the passed class and method
+	 * @param expression The token expression
+	 * @param clazz The target class
+	 * @param method The target method
+	 * @param qualifiers Additional reference qualifiers such as indexes
+	 * @return the static metric name part
+	 */
+	public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers);
 }
