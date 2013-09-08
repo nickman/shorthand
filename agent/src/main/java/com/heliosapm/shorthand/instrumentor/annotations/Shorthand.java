@@ -22,16 +22,24 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.shorthand.instrumentor.shorthand;
+package com.heliosapm.shorthand.instrumentor.annotations;
+
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
 /**
- * <p>Title: ShorthandDirectiveRepository</p>
- * <p>Description: </p> 
+ * <p>Title: Shorthand</p>
+ * <p>Description: A type level annotation applied to classes when they have been instrumented by Shorthand.</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.instrumentor.shorthand.ShorthandDirectiveRepository</code></p>
+ * <p><code>com.heliosapm.shorthand.instrumentor.annotations.Shorthand</code></p>
  */
-
-public class ShorthandDirectiveRepository {
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+@Documented
+public @interface Shorthand {
 
 }

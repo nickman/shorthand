@@ -183,7 +183,7 @@ Match on [java.lang.Object+ (pub,pri) equals(Object) [3] 'java/lang/Object']
 	 * @return the byteman source
 	 * @throws ShorthandException Thrown if the expression cannot be parsed
 	 */
-	public static ShorthandDirective compile(CharSequence source) throws ShorthandException {
+	public static void compile(CharSequence source) throws ShorthandException {
 		String _source = null;
 		try {
 			if(source==null) throw new ShorthandException("The passed source was null", "<null>");
@@ -230,10 +230,10 @@ Match on [java.lang.Object+ (pub,pri) equals(Object) [3] 'java/lang/Object']
 			if(metricExpression==null || metricExpression.trim().isEmpty()) throw new ShorthandException("Invalid metric name expression [" + metricExpression + "]" , _source);
 			int tokenCount = 0;
 			for(String s: DELIM_SPLITTER.split(metricExpression)) {
-				JavassistToken t = JavassistToken.getJavassistTokenOrNull(s); 
+				MetricNamingToken t = MetricNamingToken.getJavassistTokenOrNull(s); 
 				if(t!=null) {
 					tokenCount++;
-					if(t==JavassistToken.$METHOD && methodNamePattern==null) {
+					if(t==MetricNamingToken.$METHOD && methodNamePattern==null) {
 						metricExpression = metricExpression.replace(t.actual, methodName);
 					}
 				}
@@ -252,7 +252,7 @@ Match on [java.lang.Object+ (pub,pri) equals(Object) [3] 'java/lang/Object']
 //					bitmask, metricExpression, "", false, false); 
 //				
 				
-				return null;
+				return ;
 		} catch (Exception ex) {
 			throw new ShorthandException("Unexpected compilation error", (_source==null ? source.toString() : _source), ex);
 		}		
