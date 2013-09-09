@@ -54,7 +54,7 @@ public class DemoTransformer implements ClassFileTransformer {
 	 * @param methodSignature A regular expression matching the method signature
 	 */
 	public DemoTransformer(ClassLoader classLoader, String className, String methodName, String methodSignature) {
-		this.className = className;
+		this.className = className.replace('.', '/');
 		this.classLoader = classLoader;
 		this.methodName = methodName;
 		this.methodSignature = methodSignature;
@@ -68,7 +68,9 @@ public class DemoTransformer implements ClassFileTransformer {
 	public byte[] transform(ClassLoader loader, String className,
 			Class<?> classBeingRedefined, ProtectionDomain protectionDomain,
 			byte[] classfileBuffer) throws IllegalClassFormatException {
-		if(className.equals(this.className) && loader.equals(classLoader)) {
+		System.out.println("Examining class [" + className + "]");
+		if(className.equals(this.className)  && loader.equals(classLoader)) {
+			System.out.println("Instrumenting class [" + className + "]");
 			return ModifyMethodTest.instrument(className, methodName, methodSignature, loader, classfileBuffer);
 		}
 		return classfileBuffer;

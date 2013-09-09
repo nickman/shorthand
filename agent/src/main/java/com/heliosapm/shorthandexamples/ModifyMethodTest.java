@@ -58,17 +58,21 @@ public class ModifyMethodTest {
 			cPool.appendClassPath(new LoaderClassPath(classLoader));
 			cPool.appendClassPath(new ByteArrayClassPath(binName, byteCode));
 			CtClass ctClazz = cPool.get(binName);
-			Pattern sigPattern = Pattern.compile((methodSignature==null|methodSignature.trim().isEmpty()) ? ".*" : methodSignature);
+			Pattern sigPattern = Pattern.compile((methodSignature==null || methodSignature.trim().isEmpty()) ? ".*" : methodSignature);
 			int modifies = 0;
 			for(CtMethod method: ctClazz.getDeclaredMethods()) {
 				if(method.getName().equals(methodName)) {
 					if(sigPattern.matcher(method.getSignature()).matches()) {
-						method.insertBefore("System.out.println(\"\n\t-->Invoked method [" + binName + "." + method.toString() + "]\");");
+						ctClazz.removeMethod(method);
+						String newCode = "System.out.println(\"\\n\\t-->Invoked method [" + binName + "." + method.getName() + "(" + method.getSignature() + ")]\");";
+						System.out.println("[ModifyMethodTest] Adding [" + newCode + "]");
+						method.insertBefore(newCode);
 						ctClazz.addMethod(method);
 						modifies++;
 					}
 				}
 			}
+			
 			System.out.println("[ModifyMethodTest] Intrumented [" + modifies + "] methods");
 			return ctClazz.toBytecode();
 		} catch (Exception ex) {

@@ -40,6 +40,12 @@ import javax.management.ObjectName;
 
 public class AgentMain {
 	
+	/**
+	 * Installs the transformation service
+	 * @param agentArgs None supported
+	 * @param inst The instrumentation instance
+	 * @throws Exception thrown on any error
+	 */
 	public static void agentmain (String agentArgs, Instrumentation inst) throws Exception {
 		System.out.println("Installing AgentMain...");
 		TransformerService ts = new TransformerService(inst);

@@ -30,6 +30,8 @@ import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.heliosapm.shorthand.util.JSExpressionEvaluator;
+
 
 /**
  * <p>Title: Extractors</p>
@@ -114,9 +116,30 @@ public class Extractors {
 		}
 	}
 	
+//	/** Represents the simple <b><i><code>Class</code></i></b> name of the class containing the instrumented method */
+//	$CLASS("\\$\\{class\\}", false, Extractors.CLASS),
+//	/** Represents the <b><i><code>Method</code></i></b> name of the instrumented method */
+//	$METHOD("\\$\\{method\\}", false, Extractors.METHOD),
+//	/** Represents the <b><i><code>Package</code></i></b> name of the class containing the instrumented method */
+//	$PACKAGE("\\$\\{package\\}|\\$\\{package\\[(\\d+)\\]\\}", false, Extractors.PACKAGE),
+//	/** Represents the <b><i><code>Package</code></i></b> name of the class containing the instrumented method */
+//	$ANNOTATION("\\$\\{annotation\\((.*?)\\)(?:(.*?))\\}", false, Extractors.ANNOTATION),
+//	
+//
+//	// =====================================================================================
+//	//   Runtime Tokens
+//	// =====================================================================================	
+//	/** Represents the <b><i><code>this</code></i></b> object instance */
+//	$THIS("\\$\\{this(?:.*?)?|\\$0(?:.*?)?\\}", true, Extractors.THIS),
+//	/** Represents the indexed argument to a method. e.g. <b><i><code>$1</code></i></b> is the value of the first argument */
+//	$ARG("\\$\\{arg\\[([1-9]+)\\](?:(.*?))\\}", true, Extractors.ARG),
+//	/** Represents the return value of the method invocation */
+//	$RETURN("\\$\\{return(?:(.*?))\\}", true, Extractors.RETURN);
+	
+	
 			
 	
-	/** Value extractor to return the {@link #toString()} of the "this" object or a field / attribute notation value */
+	/** Value extractor to return the {@link #toString()} of the "this" object or a field / attribute notation value. Pattern is [&nbsp;<b><code>\\$\\{this(?:.*?)?|\\$0(?:.*?)?\\}</code></b>&nbsp;] */
 	public static final ValueExtractor THIS = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
@@ -223,7 +246,8 @@ public class Extractors {
 	
 	// \\$annotation\\((.*)?),(.*)?\\)
 	
-	/** Value extractor to return the {@link #toString()} of the value of the annotation attribute on the method (or failing that, on the class) or a field/attribute notation value */
+	/** Value extractor to return the {@link #toString()} of the value of the annotation attribute on the method (or failing that, on the class) or a field/attribute notation value.
+	  Pattern is <b><code>[&nbsp;\\$\\{(.*?)@\\((.*?)\\)(.*?)\\}&nbsp;]</code></b>  */
 	public static final ValueExtractor ANNOTATION = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
@@ -232,50 +256,35 @@ public class Extractors {
 		@Override
 		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
-			Matcher matcher = MetricNamingToken.$ANNOTATION.pattern.matcher(expression);
-			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing expression [" + expression + "]");
-			String annotationName = matcher.group(1);
-			String attributeName = matcher.group(2);
+			Matcher matcher = MetricNamingToken.$ANNOTATION.pattern.matcher(expr);
+			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $ANNOTATION expression [" + expr + "]");
+			String preAnnotationCode = matcher.group(1);
+			String annotationName = matcher.group(2);
+			String postAnnotationCode = matcher.group(3);
 			
 			Annotation ann = getAnnotation(annotationName, method);
 			if(ann==null) {
-				throw new RuntimeException("No annotation named [" + annotationName + "] found on  [" + clazz.getName() + "." + method.getName() + "] for expression [" + expression + "]");
-			}
-			Class<?> annotationType = ann.annotationType();
-			
-			int indexofDot = attributeName.indexOf('.');
-			int indexofBr = attributeName.indexOf("()");
-			if(indexofDot==-1) {
-				String longName = String.format("$annotation(%s,%s)", annotationType.getName(), attributeName);
-				String shortName = String.format("$annotation(%s,%s)", annotationType.getSimpleName(), attributeName);
-				if(expr.equals(longName) || expr.equals(shortName)) {
-					
-				}
-				
+				throw new RuntimeException("No annotation named [" + annotationName + "] found on  [" + clazz.getName() + "." + method.getName() + "] for expression [" + expr + "]");
 			}
 			
+			if(preAnnotationCode==null) preAnnotationCode=""; else preAnnotationCode = preAnnotationCode.trim();
+			if(postAnnotationCode==null) postAnnotationCode=""; else postAnnotationCode = postAnnotationCode.trim();
 			
-			
-			if(!isMethod(annotationType, attributeName)) {
-				throw new RuntimeException("No attribute named [" + attributeName + "] found for annotation  [" + annotationType.getName() + "] for expression [" + expression + "]");
+			Object result = null;
+			try {
+				result = JSExpressionEvaluator.getInstance().evaluate(String.format("%s##0##%s", preAnnotationCode, postAnnotationCode), ann);
+			} catch (Exception ex) {
+				throw new RuntimeException("Failed to evaluate $ANNOTATION expression [" + expr + "]", ex);
 			}
 			
-			if(indexofDot==-1) throw new RuntimeException("Unrecognized $RETURN expression [" + expression + "]");
-			if(indexofBr!=-1) {
-				String methodName = expr.substring(indexofDot+1, indexofBr);
-				if(isMethod(annotationType, methodName)) {
-					return expr + ".toString()";
-				}
-			}
-			String fieldName = expr.substring(indexofDot+1);
-			if(isField(annotationType, fieldName)) {
-				return expr + ".toString()";
-			}
-			throw new RuntimeException("Unrecognized $RETURN expression [" + expression + "]");
+			if(result==null) throw new RuntimeException("$ANNOTATION expression [" + expr + "] returned null");
+			
+			return result.toString();
 		}
+			
 	};
 	
-	/** A package name or member value extractor */
+	/** A package name or member value extractor. Pattern is <b><code>[&nbsp;\\$\\{package(?:\\[(\\d+)\\])?\\}&nbsp;]</code></b> */
 	public static final ValueExtractor PACKAGE = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
@@ -283,8 +292,18 @@ public class Extractors {
 		 */
 		@Override
 		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object... args) {
-			if(args==null || args.length==0) return clazz.getPackage().getName().replace('.', '/');
-			int index = (Integer)args[0];
+			Matcher matcher = MetricNamingToken.$PACKAGE.pattern.matcher(expression);
+			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $PACKAGE expression [" + expression + "]");
+			String strIndex = matcher.group(1); 
+			if(strIndex==null || strIndex.trim().isEmpty()) {
+				return clazz.getPackage().getName().replace('.', '/');
+			}
+			int index = -1;
+			try {
+				index = Integer.parseInt(matcher.group(1));
+			} catch (Exception ex) {
+				throw new RuntimeException("Failed to extract index from  $PACKAGE expression [" + expression + "]", ex);
+			}
 			return DOT_SPLITTER.split(clazz.getPackage().getName())[index];
 		}
 	};
@@ -315,3 +334,35 @@ public class Extractors {
 
 	
 }
+
+
+/*
+	Some Test Groovy for these patterns
+*/
+
+/*
+==================================================================================
+	$PACKAGE
+==================================================================================
+import java.util.regex.*;
+p = Pattern.compile('\\$\\{package(?:\\[(\\d+)\\])?\\}');
+v = 'foo.bar.snafu';
+expr = '${package[0]}';
+
+m = p.matcher(expr);
+if(!m.matches()) {
+    println "No Match";
+} else {
+    ind = m.group(1);
+    if(ind==null || ind.trim().isEmpty()) {
+        println "--->[${v.replace('.', '/')}]";
+    } else {
+        int index = Integer.parseInt(ind.trim());
+        println "--->[${v.split("\\.")[index]}]";
+        
+    }
+}
+
+
+
+*/

@@ -36,16 +36,10 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 
-import javax.management.MBeanServer;
-import javax.management.MBeanServerConnection;
-import javax.management.MBeanServerInvocationHandler;
 import javax.management.ObjectName;
-import javax.management.remote.JMXConnector;
-import javax.management.remote.JMXConnectorFactory;
-import javax.management.remote.JMXServiceURL;
 
-import com.heliosapm.shorthand.attach.vm.VirtualMachine;
-import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
+import com.sun.tools.attach.VirtualMachine;
+
 
 /**
  * <p>Title: AgentInstaller</p>
@@ -56,81 +50,34 @@ import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
  */
 
 public class AgentInstaller {
-	/**
-	 * Installs the loader agent on the target JVM identified in <code>args[0]</code>
-	 * and then transforms all the classes identified in <code>args[1..n]</code>.
-	 * @param args The target JVM pid in [0] followed by the classnames to transform
-	 */
-	public static void mainX(String[] args)  {
-		String agentPath = "D:\\work\\workspace\\myjar\\loaded.jar";
-	    String vid = args[0]; 
-	    VirtualMachine vm = VirtualMachine.attach(vid);
-	    // Check to see if transformer agent is installed
-	    if(!vm.getSystemProperties().contains("demo.agent.installed")) {
-	    	vm.loadAgent(agentPath);  
-	    	// that property will be set now, 
-	    	// and the transformer MBean will be installed
-	    }
-	    // Check to see if connector is installed
-	    String connectorAddress = vm.getAgentProperties().getProperty("com.sun.management.jmxremote.localConnectorAddress", null);
-	    if(connectorAddress==null) {
-	    	// It's not, so install the management agent
-	    	String javaHome = vm.getSystemProperties().getProperty("java.home");
-	    	File managementAgentJarFile = new File(javaHome + File.separator + "lib" + File.separator + "management-agent.jar");
-			vm.loadAgent(managementAgentJarFile.getAbsolutePath());
-			connectorAddress = vm.getAgentProperties().getProperty("com.sun.management.jmxremote.localConnectorAddress", null);
-			// Now it's installed
-	    }
-	    // Now connect and transform the classnames provided in the remaining args.
-	    JMXConnector connector = null;
-	    try {
-		    // This is the ObjectName of the MBean registered when loaded.jar was installed.
-		    ObjectName on = new ObjectName("transformer:service=DemoTransformer");
-		    // Here we're connecting to the target JVM through the management agent
-	    	connector = JMXConnectorFactory.connect(new JMXServiceURL(connectorAddress));
-	    	MBeanServerConnection server = connector.getMBeanServerConnection();
-	    	for(int i = 1; i < args.length; i++) {
-	    		String className = args[i];
-	    		// Call transformClass on the transformer MBean
-	    		server.invoke(on, "transformClass", new Object[]{className}, new String[]{String.class.getName()});
-	    	}
-	    } catch (Exception ex) {
-	    	ex.printStackTrace(System.err);
-	    } finally {
-	    	if(connector!=null) try { connector.close(); } catch (Exception e) {}
-	    }
-		// Done. (Hopefully)
-	}
 	
 	/** The created agent jar file name */
 	protected static final AtomicReference<String> agentJar = new AtomicReference<String>(null); 
 	
 	/**
-	 * Simple example of the install commands executed.
+	 * Self installs the agent, then runs a person sayHello in a loop
 	 * @param args None
 	 */
 	public static void main(String[] args) {
 		try {
-			
+			// Get this JVM's PID
 			String pid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
+			// Attach (to ourselves)
 		    VirtualMachine vm = VirtualMachine.attach(pid);
-		    // Check to see if transformer agent is installed
-		    if(!vm.getSystemProperties().contains("demo.agent.installed")) {
-		    	String fileName = createAgent();
-		    	vm.loadAgent(fileName);  
-		    	// that property will be set now, 
-		    	// and the transformer MBean will be installed
-		    }
+		    // Create an agent jar (since we're in DEV mode)
+	    	String fileName = createAgent();
+	    	// Load the agent into this JVM
+	    	vm.loadAgent(fileName);
+	    	System.out.println("Agent Loaded");
 			ObjectName on = new ObjectName("transformer:service=DemoTransformer");
 			System.out.println("Instrumentation Deployed:" + ManagementFactory.getPlatformMBeanServer().isRegistered(on));
-	    	MBeanServer server = ManagementFactory.getPlatformMBeanServer();
-	    	Person person = new Person();
-	    	person.sayHello(10);
-	    	TransformerServiceMBean transformer = MBeanServerInvocationHandler.newProxyInstance(server, on, TransformerServiceMBean.class, false);
-	    	transformer.transformClass(Person.class.getName(), "sayHello", null);
-	    	System.out.println("Transformed [" + Person.class.getName() + "]");
-	    	person.sayHello(10);
-	    	//server.invoke(on, "transformClass", new Object[]{className}, new String[]{String.class.getName()});
+	    	// Run sayHello in a loop
+			Person person = new Person();
+			for(int i = 0; i < 1000; i++) {
+				person.sayHello(i);
+				person.sayHello("" + (i*-1));
+				Thread.currentThread().join(5000);
+			}
 		} catch (Exception ex) {
 			System.err.println("Agent Installation Failed. Stack trace follows...");
 			ex.printStackTrace(System.err);
@@ -149,7 +96,7 @@ public class AgentInstaller {
 					FileOutputStream fos = null;
 					JarOutputStream jos = null;
 					try {
-						File tmpFile = File.createTempFile(LocalAgentInstaller.class.getName(), ".jar");
+						File tmpFile = File.createTempFile(AgentMain.class.getName(), ".jar");
 						System.out.println("Temp File:" + tmpFile.getAbsolutePath());
 						tmpFile.deleteOnExit();		
 						StringBuilder manifest = new StringBuilder();

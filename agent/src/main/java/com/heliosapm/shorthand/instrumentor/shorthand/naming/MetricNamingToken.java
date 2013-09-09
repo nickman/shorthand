@@ -3,12 +3,9 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
-import java.lang.reflect.Method;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -24,24 +21,24 @@ public enum MetricNamingToken {
 	//   Static Tokens
 	// =====================================================================================
 	/** Represents the simple <b><i><code>Class</code></i></b> name of the class containing the instrumented method */
-	$CLASS("\\$class", false, Extractors.CLASS),
+	$CLASS("\\$\\{class\\}", false, Extractors.CLASS),
 	/** Represents the <b><i><code>Method</code></i></b> name of the instrumented method */
-	$METHOD("\\$method", false, Extractors.METHOD),
+	$METHOD("\\$\\{method\\}", false, Extractors.METHOD),
 	/** Represents the <b><i><code>Package</code></i></b> name of the class containing the instrumented method */
-	$PACKAGE("\\$package|\\$package\\[(\\d+)\\]", false, Extractors.PACKAGE),
+	$PACKAGE("\\$\\{package(?:\\[(\\d+)\\])?\\}", false, Extractors.PACKAGE),
 	/** Represents the <b><i><code>Package</code></i></b> name of the class containing the instrumented method */
-	$ANNOTATION("\\$annotation\\((.*)?),(.*)?\\)", false, Extractors.PACKAGE),
+	$ANNOTATION("\\$\\{(.*?)@\\((.*?)\\)(.*?)\\}", false, Extractors.ANNOTATION),
 	
 
 	// =====================================================================================
 	//   Runtime Tokens
 	// =====================================================================================	
 	/** Represents the <b><i><code>this</code></i></b> object instance */
-	$THIS("\\$this(?:.*?)?|\\$0(?:.*?)?", true, Extractors.THIS),
+	$THIS("\\$\\{this(?:.*?)?|\\$0(?:.*?)?\\}", true, Extractors.THIS),
 	/** Represents the indexed argument to a method. e.g. <b><i><code>$1</code></i></b> is the value of the first argument */
-	$ARG("\\$([1-9]+)", true, Extractors.ARG),
+	$ARG("\\$\\{arg\\[([1-9]+)\\](?:(.*?))\\}", true, Extractors.ARG),
 	/** Represents the return value of the method invocation */
-	$RETURN("\\$_", true, Extractors.RETURN);
+	$RETURN("\\$\\{return(?:(.*?))\\}", true, Extractors.RETURN);
 	
 //	/** Represents the all the argument to a methods as a <b><i><code>Object[]</code></i></b> */
 //	$ARGS(null, "$args"),

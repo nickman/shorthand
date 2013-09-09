@@ -24,13 +24,14 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
-import javax.script.Invocable;
+import java.util.regex.*;
+
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
-import javax.script.ScriptException;
 import javax.script.SimpleBindings;
 
 import com.heliosapm.shorthand.instrumentor.annotations.Instrumented;
+
 
 
 /**
@@ -54,33 +55,28 @@ public class EvalPoc {
 		try {
 			Object annotation = Foo.class.getDeclaredMethod("getBar", int.class).getAnnotation(Instrumented.class);
 			log("Annotation:%s --> %s", annotation, ((Instrumented)annotation).lastInstrumented());
-			//String expr = "java.util.Arrays.toString(obj.types())"; //  + obj.version()
-			String expr = "(obj.lastInstrumented() + obj.version())";
-			SimpleBindings bindings = new SimpleBindings();
-			bindings.put("obj", annotation);
-			engine.eval(expr, bindings);
-			Object result = engine.eval(expr, bindings);
-			log("Result: [%s] Type:%s", result, result.getClass().getName());
+			
+			//    \\$\\{annotation\\((.*?)\\)(?:(.*))?\\}
+			//Matcher m = p.matcher(("${annotation(Instrumentation).types().length}"));
+			//Matcher m = MetricNamingToken.$ANNOTATION.pattern.matcher(("${annotation(Instrumentation)}"));
+			Matcher m = MetricNamingToken.$ANNOTATION.pattern.matcher(("${annotation(Instrumentation).types().length}"));
+			if(!m.matches()) throw new RuntimeException("No match");
+			String annotationName = m.group(1);
+			String annotationOp = m.group(2).trim();
+			log("Annotation Name [%s]   Op:[%s]", annotationName, annotationOp);
+			if(annotationOp==null || annotationOp.isEmpty()) {
+				log("No Annotation Op");
+			} else {
+				SimpleBindings bindings = new SimpleBindings();
+				bindings.put("obj", annotation);
+				
+				Object result = engine.eval("obj" + annotationOp, bindings);
+				log("Result: [%s] Type:%s", result, result.getClass().getName());
+			}
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		}
 
-	}
-	
-	public static void calc() throws ScriptException, NoSuchMethodException {
-		ScriptEngineManager mgr = new ScriptEngineManager();
-	    ScriptEngine engine = mgr.getEngineByName("js");
-	     
-	    String script = "function sum(a, b) {" +
-	                    "   var result = a + b;" +
-	                    "   return result;" +
-	                    "}";
-	    engine.eval(script);
-	 
-	    Invocable invocableEngine = (Invocable) engine;
-	    Number result = 
-	            (Number) invocableEngine.invokeFunction("sum", 2, 3);
-	    System.out.println(result); 		
 	}
 	
 	class Foo {
