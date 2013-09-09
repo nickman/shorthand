@@ -50,17 +50,17 @@ public class TransformerService implements TransformerServiceMBean {
 
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthandexamples.TransformerServiceMBean#transformClass(java.lang.String)
+	 * @see com.heliosapm.shorthandexamples.TransformerServiceMBean#transformClass(java.lang.String, java.lang.String, java.lang.String)
 	 */
 	@Override
-	public void transformClass(String className) {
+	public void transformClass(String className, String methodName, String methodSignature) {
 		Class<?> targetClazz = null;
 		ClassLoader targetClassLoader = null;
 		// first see if we can locate the class through normal means
 		try {
 			targetClazz = Class.forName(className);
 			targetClassLoader = targetClazz.getClassLoader();
-			transform(targetClazz, targetClassLoader);
+			transform(targetClazz, targetClassLoader, methodName, methodSignature);
 			return;
 		} catch (Exception ex) { /* Nope */ }
 		// now try the hard/slow way
@@ -68,7 +68,7 @@ public class TransformerService implements TransformerServiceMBean {
 			if(clazz.getName().equals(className)) {
 				targetClazz = clazz;
 				targetClassLoader = targetClazz.getClassLoader();
-				transform(targetClazz, targetClassLoader);
+				transform(targetClazz, targetClassLoader, methodName, methodSignature);
 				return;				
 			}
 		}
@@ -79,9 +79,11 @@ public class TransformerService implements TransformerServiceMBean {
 	 * Registers a transformer and executes the transform
 	 * @param clazz The class to transform
 	 * @param classLoader The classloader the class was loaded from
+	 * @param methodName The method name to instrument
+	 * @param methodSignature The method signature to match
 	 */
-	protected void transform(Class<?> clazz, ClassLoader classLoader) {
-		DemoTransformer dt = new DemoTransformer(clazz.getName(), classLoader);
+	protected void transform(Class<?> clazz, ClassLoader classLoader, String methodName, String methodSignature) {
+		DemoTransformer dt = new DemoTransformer(classLoader, clazz.getName(), methodName, methodSignature);
 		instrumentation.addTransformer(dt, true);
 		try {
 			instrumentation.retransformClasses(clazz);

@@ -37,18 +37,27 @@ import java.security.ProtectionDomain;
  */
 
 public class DemoTransformer implements ClassFileTransformer {
-	/** The internal form class name of the class to transform */
+	/** The normal form class name of the class to transform */
 	protected String className;
 	/** The class loader of the class */
 	protected ClassLoader classLoader;
+	/** The method name */
+	protected String methodName;
+	/** The method signature */
+	protected String methodSignature;
+	
 	/**
 	 * Creates a new DemoTransformer
+	 * @param classLoader The classloader to match
 	 * @param className The binary class name of the class to transform
-	 * @param classLoader The class loader of the class
+	 * @param methodName The method name
+	 * @param methodSignature A regular expression matching the method signature
 	 */
-	public DemoTransformer(String className, ClassLoader classLoader) {
-		this.className = className.replace('.', '/');
+	public DemoTransformer(ClassLoader classLoader, String className, String methodName, String methodSignature) {
+		this.className = className;
 		this.classLoader = classLoader;
+		this.methodName = methodName;
+		this.methodSignature = methodSignature;
 	}
 
 	/**
@@ -60,7 +69,7 @@ public class DemoTransformer implements ClassFileTransformer {
 			Class<?> classBeingRedefined, ProtectionDomain protectionDomain,
 			byte[] classfileBuffer) throws IllegalClassFormatException {
 		if(className.equals(this.className) && loader.equals(classLoader)) {
-			return new ModifyMethodTest(classfileBuffer).modiySleepMethod();
+			return ModifyMethodTest.instrument(className, methodName, methodSignature, loader, classfileBuffer);
 		}
 		return classfileBuffer;
 	}

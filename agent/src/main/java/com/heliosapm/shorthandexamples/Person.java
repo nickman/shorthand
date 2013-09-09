@@ -24,21 +24,21 @@
  */
 package com.heliosapm.shorthandexamples;
 
-
 /**
- * <p>Title: TransformerServiceMBean</p>
- * <p>Description: </p> 
+ * <p>Title: Person</p>
+ * <p>Description: Test instrumentation class</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthandexamples.TransformerServiceMBean</code></p>
+ * <p><code>com.heliosapm.shorthandexamples.Person</code></p>
  */
 
-public interface TransformerServiceMBean {
-	/**
-	 * Transforms the target class name
-	 * @param className The binary name of the target class
-	 * @param methodName  The name of the method to transform
-	 * @param methodSignature A regular expression to match the method signature. (if null, matches ".*")
-	 */
-	public void transformClass(String className, String methodName, String methodSignature);
+public class Person {
+	public void sayHello(String name) {
+		System.out.println("Hello [" + name + "]");
+	}
+	
+	public void sayHello(int x) {
+		System.out.println("Hello [" + x + "]");
+	}
+
 }
