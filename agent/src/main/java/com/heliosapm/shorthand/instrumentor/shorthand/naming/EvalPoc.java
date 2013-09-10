@@ -25,6 +25,7 @@
 package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 
 import com.heliosapm.shorthand.instrumentor.annotations.Instrumented;
 
@@ -47,30 +48,32 @@ public class EvalPoc {
 		try {
 			Method method = Foo.class.getDeclaredMethod("getBar", int.class);
 			//    \\$\\{(.*)?@\\((.*)?\\)(.*)?\\}
-			String replacement = Extractors.ANNOTATION.getStaticValue("${@(Instrumented).version()}", Foo.class, method);
-			log("Replacement:[%s]", replacement);
+			String replacement[] = Extractors.ANNOTATION.getStringReplacement("${@(Instrumented).version()}", Foo.class, method);
+			log("Replacement:[%s]", Arrays.toString(replacement));
 			
-			replacement = Extractors.THIS.getStaticValue("${this}", Foo.class, method);
-			log("Replacement:[%s]", replacement);
-			replacement = Extractors.THIS.getStaticValue("${this:}", Foo.class, method);
-			log("Replacement:[%s]", replacement); 
-			replacement = Extractors.THIS.getStaticValue("${this: $0.toString().toUpperCase()}", Foo.class, method);
-			log("Replacement:[%s]", replacement);
+			replacement = Extractors.THIS.getStringReplacement("${this}", Foo.class, method);
+			log("Replacement:[%s]", Arrays.toString(replacement));
+			replacement = Extractors.THIS.getStringReplacement("${this:}", Foo.class, method);
+			log("Replacement:[%s]", Arrays.toString(replacement)); 
+			replacement = Extractors.THIS.getStringReplacement("${this: $0.toString().toUpperCase()}", Foo.class, method);
+			log("Replacement:[%s]", Arrays.toString(replacement));
 			
-			replacement = Extractors.ARG.getStaticValue("${arg[0]}", Foo.class, method);
-			log("Replacement:[%s]", replacement);			
-			replacement = Extractors.ARG.getStaticValue("${arg:(\"\" + ($1 + $1))}", Foo.class, method);
-			log("Replacement:[%s]", replacement);
+			replacement = Extractors.ARG.getStringReplacement("${arg[0]}", Foo.class, method);
+			log("Replacement:[%s]", Arrays.toString(replacement));			
+			replacement = Extractors.ARG.getStringReplacement("${arg:(\"\" + ($1 + $1))}", Foo.class, method);
+			log("Replacement:[%s]", Arrays.toString(replacement));
 			
 
-			replacement = Extractors.RETURN.getStaticValue("${return}", Foo.class, method);
-			log("Return Replacement:[%s]", replacement);			
-			replacement = Extractors.RETURN.getStaticValue("${return:$_.toUpperCase()}", Foo.class, method);
-			log("Return Replacement:[%s]", replacement);			
+			replacement = Extractors.RETURN.getStringReplacement("${return}", Foo.class, method);
+			log("Return Replacement:[%s]", Arrays.toString(replacement));			
+			replacement = Extractors.RETURN.getStringReplacement("${return:$_.toUpperCase()}", Foo.class, method);
+			log("Return Replacement:[%s]", Arrays.toString(replacement));			
 
 			
-			replacement = Extractors.JAVA.getStaticValue("${java:$_ + $1}", Foo.class, method);
-			log("JAVA Replacement:[%s]", replacement);			
+			replacement = Extractors.JAVA.getStringReplacement("${java:$_ + $1}", Foo.class, method);
+			log("JAVA Replacement:[%s]", Arrays.toString(replacement));		
+			
+			MetricNameProvider mnp = MetricNameCompiler.getMetricNameProvider(Foo.class, method, "${package}/${class}/${method}");
 
 
 		} catch (Exception ex) {

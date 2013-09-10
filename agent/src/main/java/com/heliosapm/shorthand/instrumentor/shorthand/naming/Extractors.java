@@ -31,14 +31,10 @@ import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.omg.CORBA.portable.Streamable;
-
-import sun.util.logging.resources.logging;
 import javassist.ClassClassPath;
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.CtMethod;
-import javassist.bytecode.stackmap.BasicBlock.Catch;
 
 import com.heliosapm.shorthand.util.JSExpressionEvaluator;
 import com.heliosapm.shorthand.util.StringHelper;
@@ -134,10 +130,10 @@ public class Extractors {
 	public static final ValueExtractor THIS = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStaticValue(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Matcher matcher = MetricNamingToken.$THIS.pattern.matcher(expr);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $THIS expression [" + expression + "]");
@@ -150,7 +146,7 @@ public class Extractors {
 				extract = codePoint;
 			}
 			validateCodePoint("$THIS", clazz, method, extract + ";");
-			return extract;			
+			return toArray("%s", extract);	
 		}
 	};
 	
@@ -186,10 +182,10 @@ public class Extractors {
 	public static final ValueExtractor ARG = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStaticValue(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Matcher matcher = MetricNamingToken.$ARG.pattern.matcher(expr);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $ARG expression [" + expression + "]");
@@ -216,7 +212,7 @@ public class Extractors {
 			}
 			log("Extract:[%s]", extract);
 			validateCodePoint("$ARG", clazz, method, extract + ";");
-			return extract;			
+			return toArray("%s", extract);			
 		}
 	};
 	
@@ -226,10 +222,10 @@ public class Extractors {
 	public static final ValueExtractor RETURN = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStaticValue(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Class<?> returnType = method.getReturnType();
 			if(returnType==Void.class || returnType==void.class) {
@@ -248,7 +244,7 @@ public class Extractors {
 				extract = matcher.group(1);
 			}
 			validateCodePoint("$RETURN", clazz, method, extract + ";");
-			return extract;			
+			return toArray("%s", extract);			
 		}
 	};
 	
@@ -261,16 +257,16 @@ public class Extractors {
 	public static final ValueExtractor JAVA = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStaticValue(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Matcher matcher = MetricNamingToken.$JAVA.pattern.matcher(expr);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $JAVAexpression [" + expression + "]");
 			String extract = String.format("(\"\" + (%s))",  matcher.group(1));
 			validateCodePoint("$JAVA", clazz, method, extract + ";");
-			return extract;			
+			return toArray("%s", extract);			
 		}
 	};
 	
@@ -279,10 +275,10 @@ public class Extractors {
 	public static final ValueExtractor ANNOTATION = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStaticValue(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Matcher matcher = MetricNamingToken.$ANNOTATION.pattern.matcher(expr);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $ANNOTATION expression [" + expr + "]");
@@ -307,7 +303,7 @@ public class Extractors {
 			
 			if(result==null) throw new RuntimeException("$ANNOTATION expression [" + expr + "] returned null");
 			
-			return result.toString();
+			return toArray(result.toString());
 		}
 			
 	};
@@ -316,15 +312,15 @@ public class Extractors {
 	public static final ValueExtractor PACKAGE = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStaticValue(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object... args) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object... args) {
 			Matcher matcher = MetricNamingToken.$PACKAGE.pattern.matcher(expression);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $PACKAGE expression [" + expression + "]");
 			String strIndex = matcher.group(1); 
 			if(strIndex==null || strIndex.trim().isEmpty()) {
-				return clazz.getPackage().getName().replace('.', '/');
+				return toArray(clazz.getPackage().getName().replace('.', '/'));
 			}
 			int index = -1;
 			try {
@@ -332,7 +328,7 @@ public class Extractors {
 			} catch (Exception ex) {
 				throw new RuntimeException("Failed to extract index from  $PACKAGE expression [" + expression + "]", ex);
 			}
-			return DOT_SPLITTER.split(clazz.getPackage().getName())[index];
+			return toArray(DOT_SPLITTER.split(clazz.getPackage().getName())[index]);
 		}
 	};
 	
@@ -340,11 +336,11 @@ public class Extractors {
 	public static final ValueExtractor CLASS = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStaticValue(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object... args) {
-			return clazz.getSimpleName();
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object... args) {
+			return toArray(clazz.getSimpleName());
 		}
 	};
 	
@@ -352,13 +348,22 @@ public class Extractors {
 	public static final ValueExtractor METHOD = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStaticValue(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object... args) {
-			return method.getName();
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object... args) {
+			return toArray(method.getName());
 		}		
 	};
+	
+	/**
+	 * Convenience method to return a varg as a first class array
+	 * @param strings The strings to return as an array
+	 * @return a string array
+	 */
+	public static String[] toArray(String...strings) {
+		return strings;
+	}
 	
 	/**
 	 * Simple out formatted logger

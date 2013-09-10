@@ -4,11 +4,12 @@
  */
 package com.heliosapm.shorthand.instrumentor;
 
+import java.io.File;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
+
 import java.security.ProtectionDomain;
 import java.util.Arrays;
 import java.util.Date;
@@ -18,6 +19,7 @@ import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.CtField;
 import javassist.CtMethod;
+import javassist.Modifier;
 import javassist.bytecode.AnnotationsAttribute;
 import javassist.bytecode.ConstPool;
 import javassist.bytecode.annotation.Annotation;
@@ -29,7 +31,6 @@ import javassist.bytecode.annotation.StringMemberValue;
 
 import javax.annotation.Nullable;
 
-import org.junit.internal.runners.TestClass;
 import org.reflections.Reflections;
 import org.reflections.scanners.MethodParameterScanner;
 import org.reflections.util.ConfigurationBuilder;
@@ -56,6 +57,17 @@ public class Interceptor {
 		// TODO Auto-generated constructor stub
 	}
 
+	protected static class TestClass {
+		private static int getFileCount(String fileName, final boolean includeDirs) {
+			return new File(fileName).listFiles().length;
+		}
+		
+		static class Foo {
+			
+		}
+	}
+	
+	
 	/**
 	 * @param args
 	 */
@@ -64,7 +76,7 @@ public class Interceptor {
 		TestClass tc = new TestClass();
 		int i = -1;
 		try {
-			i = tc.getFileCount("/home/nwhitehead", false);
+			i = tc.getFileCount(System.getProperty("user.home"), true);
 			log("File Count:" + i);
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
@@ -76,18 +88,39 @@ public class Interceptor {
 			cp.appendClassPath(new ClassClassPath(tc.getClass()));
 			CtClass target = cp.get(tc.getClass().getName());
 			log("Target CtClass:" + target);
-			CtMethod targetMethod = target.getDeclaredMethod("getFileCount", new CtClass[]{cp.get(String.class.getName()), CtClass.booleanType});			
+			CtMethod targetMethod = target.getDeclaredMethod("getFileCount", new CtClass[]{cp.get(String.class.getName()), CtClass.booleanType});
+			if(Modifier.isPrivate(targetMethod.getModifiers())) {
+				targetMethod.setModifiers(targetMethod.getModifiers() & ~Modifier.PRIVATE);
+			}
+
+			final boolean isTargetMethodStatic = Modifier.isStatic(targetMethod.getModifiers());
 			log("Target Method:" + targetMethod);
 			
+			log("Nested Classes:    (" + target.getClass().getName() + ")");
+			for(CtClass nc: target.getNestedClasses()) {
+				log("\t" + nc.getName());
+			}
 			
 			
 			
 			
 			
-			CtClass ihandler = cp.makeClass("x.Invoker");
+			String invokerName = null;
+			int dollarIndex = target.getSimpleName().lastIndexOf('$');
+			if(dollarIndex!=-1) {
+				invokerName = target.getSimpleName().substring(dollarIndex+1);
+			} else {
+				invokerName = target.getSimpleName();
+			}
+			
+			CtClass ihandler = cp.makeClass(target.getPackageName() + "._" + invokerName + "_ShorthandInvoker_");
+			//CtClass ihandler = cp.makeClass(target.getPackageName() + ".TestClass$_" + invokerName + "_ShorthandInvoker_");
+			
 			CtMethod ihanderMethod = new CtMethod(targetMethod, ihandler, null);
 			ihanderMethod.setModifiers(ihanderMethod.getModifiers() | Modifier.STATIC);
-			ihanderMethod.insertParameter(target);
+			if(!isTargetMethodStatic) {
+				ihanderMethod.insertParameter(target);
+			}
 			CtClass threadLocalClazz = cp.get(ThreadLocal.class.getName());
 			CtField cf = new CtField(threadLocalClazz, "xThreadLocal", ihandler);
 			cf.setModifiers(cf.getModifiers() | Modifier.STATIC);
@@ -97,21 +130,31 @@ public class Interceptor {
 			StringBuilder b = new StringBuilder();
 			b.append("{try {");
 			b.append("System.out.println(\"Intercepted!\");");
-			b.append("return $1.getFileCount($2, $3);");
+			if(!isTargetMethodStatic) {
+				b.append("return $1.getFileCount($2, $3);");
+			} else {
+				b.append("return " + target.getName() + ".getFileCount($1, $2);");
+			}
 			b.append("} catch (Throwable t) {");
-			b.append("System.err.println(\"Interception failed !\"); com.heliosapm.shorthand.test.StaticUnsafe.UNSAFE.throwException(t); return -1;");
+			b.append("System.err.println(\"Interception failed !\"); com.heliosapm.shorthand.util.unsafe.UnsafeAdapter.throwException(t); return -1;");
 //			b.append("if(t instanceof java.lang.RuntimeException) throw (java.lang.RuntimeException)t;");
 //			b.append("else throw (java.io.FileNotFoundException)t;");
 			b.append("} }");
 			//ihanderMethod.setBody("{System.out.println(\"Intercepted!\"); return $1.getFileCount($2, $3);}");
 			ihanderMethod.setBody(b.toString());
-			
 			ihandler.addMethod(ihanderMethod);
-			ihandler.writeFile("/tmp/js");
-			Class<?> clazz = ihandler.toClass();
+			ihandler.writeFile("c:\\temp\\js");
 			
+			byte[] ihandlerByteCode = ihandler.toBytecode();
+			
+			Class<?> clazz = ihandler.toClass();
+			cp.importPackage(target.getPackageName());
 			//targetMethod.useCflow("x");
-			targetMethod.insertBefore("{if(x.Invoker.xThreadLocal.get()==null) { x.Invoker.xThreadLocal.set(new Object()); return x.Invoker.getFileCount($0, $1, $2);} else { x.Invoker.xThreadLocal.remove(); }}");
+			if(!isTargetMethodStatic) {
+				targetMethod.insertBefore("{if(_TestClass_ShorthandInvoker_.xThreadLocal.get()==null) { _TestClass_ShorthandInvoker_.xThreadLocal.set(new Object()); return _TestClass_ShorthandInvoker_.getFileCount($0, $1, $2);} else { _TestClass_ShorthandInvoker_.xThreadLocal.remove(); }}");
+			} else {
+				targetMethod.insertBefore("{if(_TestClass_ShorthandInvoker_.xThreadLocal.get()==null) { _TestClass_ShorthandInvoker_.xThreadLocal.set(new Object()); return _TestClass_ShorthandInvoker_.getFileCount($1, $2);} else { _TestClass_ShorthandInvoker_.xThreadLocal.remove(); }}");
+			}
 			ConstPool constpool = targetMethod.getMethodInfo().getConstPool();
 			target.removeMethod(targetMethod);
 			AnnotationsAttribute attr = new AnnotationsAttribute(constpool, AnnotationsAttribute.visibleTag);
@@ -125,9 +168,10 @@ public class Interceptor {
 			attr.addAnnotation(annot);		
 			targetMethod.getMethodInfo().addAttribute(attr);
 			target.addMethod(targetMethod);
+			target.setAttribute("_" + invokerName + "_ShorthandInvoker_", ihandlerByteCode);
 
 			
-			target.writeFile("/tmp/js");
+			target.writeFile("c:\\temp\\js");
 			final byte[] byteCode = target.toBytecode();
 			final String bname = tc.getClass().getName().replace('.', '/');
 			instr.addTransformer(new ClassFileTransformer(){
@@ -153,9 +197,9 @@ public class Interceptor {
 			e.printStackTrace(System.err);
 		}
 		try {
-			i = tc.getFileCount("/home/nwhitehead", false);
+			i = tc.getFileCount(System.getProperty("user.home"), false);
 			log("File Count:" + i);
-			i = tc.getFileCount("/home/x", false);
+			i = tc.getFileCount(System.getProperty("user.home"), false);
 			log("File Count:" + i);
 			
 		} catch (Exception ex) {
@@ -208,3 +252,127 @@ public class Interceptor {
 	}
 
 }
+
+
+/*
+//=======================================================================
+//  Generated Code - NON STATIC
+//=======================================================================
+
+import java.io.File;
+import x.Invoker;
+
+public static class Interceptor$TestClass
+{
+
+    @Instrumented(types={"MetricCollection-7"}, version=0x00000022, lastInstrumented=156115433)
+    public int getFileCount(String fileName, boolean includeDirs)
+    {
+        if(Invoker.xThreadLocal.get() == null)
+        {
+            Invoker.xThreadLocal.set(new Object());
+            return Invoker.getFileCount(this, fileName, includeDirs);
+        } else
+        {
+            Invoker.xThreadLocal.remove();
+            return (new File(fileName)).listFiles().length;
+        }
+    }
+
+    public Interceptor$TestClass()
+    {
+    }
+}
+
+
+
+public class Invoker
+{
+
+    public static int getFileCount(com.heliosapm.shorthand.instrumentor.Interceptor.TestClass testclass, String s, boolean flag)
+    {
+        try
+        {
+            System.out.println("Intercepted!");
+            com.heliosapm.shorthand.instrumentor.Interceptor.TestClass _tmp = testclass;
+            return com.heliosapm.shorthand.instrumentor.Interceptor.TestClass.getFileCount(s, flag);
+        }
+        catch(Throwable throwable)
+        {
+            System.err.println("Interception failed !");
+            UnsafeAdapter.throwException(throwable);
+            return -1;
+        }
+    }
+
+    public Invoker()
+    {
+    }
+
+    public static final ThreadLocal xThreadLocal = new ThreadLocal();
+
+}
+
+//=======================================================================
+//  Generated Code - STATIC
+//=======================================================================
+
+import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
+import java.io.PrintStream;
+
+public class Invoker
+{
+
+    public static int getFileCount(String s, boolean flag)
+    {
+        try
+        {
+            System.out.println("Intercepted!");
+            return com.heliosapm.shorthand.instrumentor.Interceptor.TestClass.getFileCount(s, flag);
+        }
+        catch(Throwable throwable)
+        {
+            System.err.println("Interception failed !");
+            UnsafeAdapter.throwException(throwable);
+            return -1;
+        }
+    }
+
+    public Invoker()
+    {
+    }
+
+    public static final ThreadLocal xThreadLocal = new ThreadLocal();
+
+}
+
+
+
+import java.io.File;
+import x.Invoker;
+
+
+public static class Interceptor$TestClass
+{
+
+    @Instrumented(types={"MetricCollection-7"}, version=0x00000022, lastInstrumented=157470165)
+    public static int getFileCount(String fileName, boolean includeDirs)
+    {
+        if(Invoker.xThreadLocal.get() == null)
+        {
+            Invoker.xThreadLocal.set(new Object());
+            return Invoker.getFileCount(fileName, includeDirs);
+        } else
+        {
+            Invoker.xThreadLocal.remove();
+            return (new File(fileName)).listFiles().length;
+        }
+    }
+
+    public Interceptor$TestClass()
+    {
+    }
+}
+
+
+*/

@@ -33,15 +33,15 @@ package com.heliosapm.shorthand.instrumentor.shorthand.naming;
  */
 
 public interface MetricNameProvider {
-	/**
-	 * Determines the method interception metric name as specified by the related {@link com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScript}.
-	 * The two parameters are the only values that might be used to qualify a metric name at runtime.
-	 * All other metric name fragments should be determined at compile time
-	 * @param returnValue The return value of the method invocation
-	 * @param methodArgs The arguments to the method invocation
-	 * @return the metric name
-	 */
-	public String getMetricName(Object returnValue, Object...methodArgs);
+//	/**
+//	 * Determines the method interception metric name as specified by the related {@link com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScript}.
+//	 * The two parameters are the only values that might be used to qualify a metric name at runtime.
+//	 * All other metric name fragments should be determined at compile time
+//	 * @param returnValue The return value of the method invocation
+//	 * @param methodArgs The arguments to the method invocation
+//	 * @return the metric name
+//	 */
+//	public String getMetricName(Object returnValue, Object...methodArgs);
 	
 	/**
 	 * Returns the pre-compiled metric name for which the the related {@link com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScript}

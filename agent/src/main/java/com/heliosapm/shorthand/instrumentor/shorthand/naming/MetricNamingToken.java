@@ -37,8 +37,15 @@ public enum MetricNamingToken {
 	$THIS("\\$\\{this\\}|\\$\\{this:(.*?)\\}", true, Extractors.THIS),  // Example:  ${this}   or   ${this: $0.toString().toUpperCase()}
 	/** Represents the indexed argument to a method. e.g. <b><i><code>$1</code></i></b> is the value of the first argument */
 	$ARG("\\$\\{arg\\[(\\d+)\\]\\}|\\$\\{arg:(.*?)\\}", true, Extractors.ARG),  // Example:  ${arg[2]}   or ${arg:(\"\" + ($1 + $1))}
-	/** Represents the return value of the method invocation */
-	$RETURN("\\$\\{return(?:\\:(.*))?\\}", true, Extractors.RETURN),
+	
+	// ==================
+	// This is a problem when the method error-exits because there's no return value.
+	//  Commenting until we can modify to replace the $_ "non-value" with some error indicator (like "error")
+	// ==================
+//	/** Represents the return value of the method invocation */
+//	$RETURN("\\$\\{return(?:\\:(.*))?\\}", true, Extractors.RETURN),
+	
+	
 	/** A free form naming token built using qualified Java source and Javassist tokens */
 	$JAVA("\\$\\{java:(.*?)\\}", true, Extractors.JAVA);
 	
@@ -51,10 +58,16 @@ public enum MetricNamingToken {
 		log("======== All Patterns in One ========");
 		StringBuilder b = new StringBuilder();
 		for(MetricNamingToken mt: MetricNamingToken.values()) {
-			b.append("(?:").append(mt.pattern.pattern().replace("\\",  "\\\\")).append(")|");
+			//b.append("(?:").append(mt.pattern.pattern().replace("\\",  "\\\\")).append(")|");
+			b.append("(?:").append(mt.pattern.pattern()).append(")|");
 		}
 		b.deleteCharAt(b.length()-1);
 		log(b.toString());
+		try {
+			Pattern.compile(b.toString());
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+		}
 	}
 	
 	/**
@@ -65,13 +78,7 @@ public enum MetricNamingToken {
 	public static void log(String fmt, Object...args) {
 		System.out.println(String.format(fmt, args));
 	}
-	
-//	/** Represents the all the argument to a methods as a <b><i><code>Object[]</code></i></b> */
-//	$ARGS(null, "$args"),
-//	/** Represents the method return value */
-//	$RETURN(null, "$_");
-	
-	
+
 	
 	
 	
@@ -80,16 +87,23 @@ public enum MetricNamingToken {
 	/** A map of runtime tokens keyed by the pattern */
 	public static final Map<Pattern, MetricNamingToken> RT_PATTERN2ENUM;
 	
+	/** An aggregated patttern to match all tokens. */
+	public static final Pattern ALL_PATTERNS;
+	
 	static {
 		MetricNamingToken[] values = MetricNamingToken.values();
+		StringBuilder b = new StringBuilder();
 		Map<Pattern, MetricNamingToken> tmp = new HashMap<Pattern, MetricNamingToken>(values.length);
 		Map<Pattern, MetricNamingToken> tmp2 = new HashMap<Pattern, MetricNamingToken>(values.length);
 		for(MetricNamingToken jt: values) {
+			b.append("(?:").append(jt.pattern.pattern()).append(")|");
 			tmp.put(jt.pattern, jt);
 			if(jt.runtime) {
 				tmp2.put(jt.pattern, jt);
 			}
 		}
+		b.deleteCharAt(b.length()-1);
+		ALL_PATTERNS = Pattern.compile(b.toString());
 		PATTERN2ENUM = Collections.unmodifiableMap(tmp);
 		RT_PATTERN2ENUM = Collections.unmodifiableMap(tmp2);
 	}
@@ -107,7 +121,19 @@ public enum MetricNamingToken {
 	/** The value extractor */
 	public final ValueExtractor extractor;
 	
-	
+	/**
+	 * Matches the passed expression to a MetricNamingToken
+	 * @param expression The expression to evaluate
+	 * @return The matching MetricNamingToken
+	 */
+	public static MetricNamingToken matchToken(CharSequence expression) {
+		if(expression==null || expression.toString().trim().isEmpty()) throw new IllegalArgumentException("The passed expression was null or empty");
+		String expr = expression.toString().trim();
+		for(MetricNamingToken jt: MetricNamingToken.values()) {
+			if(jt.pattern.matcher(expr).matches()) return jt;
+		}
+		throw new RuntimeException("Failed to match a MetricNamingToken for expression [" + expression + "]");
+	}
 	
 	
 //	public static final ValueExtractor classExtractor = new ValueExtractor {

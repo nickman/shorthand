@@ -40,7 +40,7 @@ interface ValueExtractor {
 	 * @param clazz The target class
 	 * @param method The target method
 	 * @param qualifiers Additional reference qualifiers such as indexes
-	 * @return the static metric name part
+	 * @return the static metric name part or the "%s" runtime replacement token and the Java expression that will replace it.
 	 */
-	public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers);
+	public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers);
 }
