@@ -38,7 +38,10 @@ public enum MetricNamingToken {
 	/** Represents the indexed argument to a method. e.g. <b><i><code>$1</code></i></b> is the value of the first argument */
 	$ARG("\\$\\{arg\\[(\\d+)\\]\\}|\\$\\{arg:(.*?)\\}", true, Extractors.ARG),  // Example:  ${arg[2]}   or ${arg:(\"\" + ($1 + $1))}
 	/** Represents the return value of the method invocation */
-	$RETURN("\\$\\{return(?::(.*))?\\}", true, Extractors.RETURN);
+	$RETURN("\\$\\{return(?:\\:(.*))?\\}", true, Extractors.RETURN),
+	/** A free form naming token built using qualified Java source and Javassist tokens */
+	$JAVA("\\$\\{java:(.*?)\\}", true, Extractors.JAVA);
+	
 	
 	/**
 	 * Some quicke helper tests

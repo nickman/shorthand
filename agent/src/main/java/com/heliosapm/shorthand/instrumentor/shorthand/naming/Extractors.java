@@ -127,27 +127,6 @@ public class Extractors {
 		}
 	}
 	
-//	/** Represents the simple <b><i><code>Class</code></i></b> name of the class containing the instrumented method */
-//	$CLASS("\\$\\{class\\}", false, Extractors.CLASS),
-//	/** Represents the <b><i><code>Method</code></i></b> name of the instrumented method */
-//	$METHOD("\\$\\{method\\}", false, Extractors.METHOD),
-//	/** Represents the <b><i><code>Package</code></i></b> name of the class containing the instrumented method */
-//	$PACKAGE("\\$\\{package\\}|\\$\\{package\\[(\\d+)\\]\\}", false, Extractors.PACKAGE),
-//	/** Represents the <b><i><code>Package</code></i></b> name of the class containing the instrumented method */
-//	$ANNOTATION("\\$\\{annotation\\((.*?)\\)(?:(.*?))\\}", false, Extractors.ANNOTATION),
-//	
-//
-//	// =====================================================================================
-//	//   Runtime Tokens
-//	// =====================================================================================	
-//	/** Represents the <b><i><code>this</code></i></b> object instance */
-//	$THIS("\\$\\{this(?:.*?)?|\\$0(?:.*?)?\\}", true, Extractors.THIS),
-//	/** Represents the indexed argument to a method. e.g. <b><i><code>$1</code></i></b> is the value of the first argument */
-//	$ARG("\\$\\{arg\\[([1-9]+)\\](?:(.*?))\\}", true, Extractors.ARG),
-//	/** Represents the return value of the method invocation */
-//	$RETURN("\\$\\{return(?:(.*?))\\}", true, Extractors.RETURN);
-	
-	
 			
 	
 	/** Value extractor to return the {@link #toString()} of the "this" object or a field / attribute notation value. 
@@ -190,7 +169,7 @@ public class Extractors {
 			ctClass = cPool.get(clazz.getName());
 			CtMethod ctMethod = ctClass.getMethod(method.getName(), StringHelper.getMethodDescriptor(method));
 			ctClass.removeMethod(ctMethod);
-			ctMethod.insertBefore(codePoint);
+			ctMethod.insertAfter(codePoint);
 			ctClass.addMethod(ctMethod);
 			ctClass.writeFile(System.getProperty("java.io.tmpdir") + File.separator + "js");
 			ctClass.toBytecode();
@@ -256,26 +235,44 @@ public class Extractors {
 			if(returnType==Void.class || returnType==void.class) {
 				throw new RuntimeException("Invalid use of $RETURN token since method [" + clazz.getName() + "." + method.getName() + "] has a void return type");
 			}
-			if(expr.equals("$_")) return expr;
-			
-			int indexofDot = expr.indexOf('.');
-			int indexofBr = expr.indexOf("()");
-			if(indexofDot==-1) throw new RuntimeException("Unrecognized $RETURN expression [" + expression + "]");
-			if(indexofBr!=-1) {
-				String methodName = expr.substring(indexofDot+1, indexofBr);
-				if(isMethod(returnType, methodName)) {
-					return expr + ".toString()";
+			String extract = null;
+			if(expr.equals("${return}") || expr.equals("${return:}")) {
+				if(returnType.isPrimitive()) {
+					extract = "$_";
+				} else {
+					extract = "($_==null ? \"\" : $_.toString())";
 				}
+			} else {
+				Matcher matcher = MetricNamingToken.$RETURN.pattern.matcher(expr);
+				if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $RETURN expression [" + expression + "]");
+				extract = matcher.group(1);
 			}
-			String fieldName = expr.substring(indexofDot+1);
-			if(isField(returnType, fieldName)) {
-				return expr + ".toString()";
-			}
-			throw new RuntimeException("Unrecognized $RETURN expression [" + expression + "]");
+			validateCodePoint("$RETURN", clazz, method, extract + ";");
+			return extract;			
 		}
 	};
 	
-	// \\$annotation\\((.*)?),(.*)?\\)
+	
+
+
+	/** Value extractor to validate and return the code point of a freeform $JAVA naming token 
+	 *   Pattern is <b><code>[&nbsp;\\$\\{java(?::(.*))?\\}&nbsp;]</code></b>
+	 * */
+	public static final ValueExtractor JAVA = new ValueExtractor() {
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStaticValue(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+		 */
+		@Override
+		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
+			Matcher matcher = MetricNamingToken.$JAVA.pattern.matcher(expr);
+			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $JAVAexpression [" + expression + "]");
+			String extract = String.format("(\"\" + (%s))",  matcher.group(1));
+			validateCodePoint("$JAVA", clazz, method, extract + ";");
+			return extract;			
+		}
+	};
 	
 	/** Value extractor to return the {@link #toString()} of the value of the annotation attribute on the method (or failing that, on the class) or a field/attribute notation value.
 	  Pattern is <b><code>[&nbsp;\\$\\{(.*?)@\\((.*?)\\)(.*?)\\}&nbsp;]</code></b>  */
