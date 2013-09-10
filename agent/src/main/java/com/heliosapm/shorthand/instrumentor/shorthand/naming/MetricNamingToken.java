@@ -25,20 +25,43 @@ public enum MetricNamingToken {
 	/** Represents the <b><i><code>Method</code></i></b> name of the instrumented method */
 	$METHOD("\\$\\{method\\}", false, Extractors.METHOD),
 	/** Represents the <b><i><code>Package</code></i></b> name of the class containing the instrumented method */
-	$PACKAGE("\\$\\{package(?:\\[(\\d+)\\])?\\}", false, Extractors.PACKAGE),
+	$PACKAGE("\\$\\{package(?:\\[(\\d+)\\])?\\}", false, Extractors.PACKAGE),  // Example:  ${package} or ${package[2]}
 	/** Represents the <b><i><code>Package</code></i></b> name of the class containing the instrumented method */
-	$ANNOTATION("\\$\\{(.*?)@\\((.*?)\\)(.*?)\\}", false, Extractors.ANNOTATION),
+	$ANNOTATION("\\$\\{(.*?)@\\((.*?)\\)(.*?)\\}", false, Extractors.ANNOTATION),  // Example: ${@(Instrumented).version()}
 	
 
 	// =====================================================================================
 	//   Runtime Tokens
 	// =====================================================================================	
 	/** Represents the <b><i><code>this</code></i></b> object instance */
-	$THIS("\\$\\{this(?:.*?)?|\\$0(?:.*?)?\\}", true, Extractors.THIS),
+	$THIS("\\$\\{this\\}|\\$\\{this:(.*?)\\}", true, Extractors.THIS),  // Example:  ${this}   or   ${this: $0.toString().toUpperCase()}
 	/** Represents the indexed argument to a method. e.g. <b><i><code>$1</code></i></b> is the value of the first argument */
-	$ARG("\\$\\{arg\\[([1-9]+)\\](?:(.*?))\\}", true, Extractors.ARG),
+	$ARG("\\$\\{arg\\[(\\d+)\\]\\}|\\$\\{arg:(.*?)\\}", true, Extractors.ARG),  // Example:  ${arg[2]}   or ${arg:(\"\" + ($1 + $1))}
 	/** Represents the return value of the method invocation */
-	$RETURN("\\$\\{return(?:(.*?))\\}", true, Extractors.RETURN);
+	$RETURN("\\$\\{return(?::(.*))?\\}", true, Extractors.RETURN);
+	
+	/**
+	 * Some quicke helper tests
+	 * @param args None
+	 */
+	public static void main(String[] args) {
+		log("======== All Patterns in One ========");
+		StringBuilder b = new StringBuilder();
+		for(MetricNamingToken mt: MetricNamingToken.values()) {
+			b.append("(?:").append(mt.pattern.pattern().replace("\\",  "\\\\")).append(")|");
+		}
+		b.deleteCharAt(b.length()-1);
+		log(b.toString());
+	}
+	
+	/**
+	 * Simple out formatted logger
+	 * @param fmt The format of the message
+	 * @param args The message arguments
+	 */
+	public static void log(String fmt, Object...args) {
+		System.out.println(String.format(fmt, args));
+	}
 	
 //	/** Represents the all the argument to a methods as a <b><i><code>Object[]</code></i></b> */
 //	$ARGS(null, "$args"),

@@ -24,15 +24,9 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
-import java.util.regex.*;
-
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
-import javax.script.SimpleBindings;
+import java.lang.reflect.Method;
 
 import com.heliosapm.shorthand.instrumentor.annotations.Instrumented;
-
-
 
 /**
  * <p>Title: EvalPoc</p>
@@ -50,29 +44,47 @@ public class EvalPoc {
 	 */
 	public static void main(String[] args) {
 		log("EvalPOC");
-		ScriptEngineManager sec = new ScriptEngineManager();
-		ScriptEngine engine = sec.getEngineByExtension("js");
 		try {
-			Object annotation = Foo.class.getDeclaredMethod("getBar", int.class).getAnnotation(Instrumented.class);
-			log("Annotation:%s --> %s", annotation, ((Instrumented)annotation).lastInstrumented());
+			Method method = Foo.class.getDeclaredMethod("getBar", int.class);
+			//    \\$\\{(.*)?@\\((.*)?\\)(.*)?\\}
+			String replacement = Extractors.ANNOTATION.getStaticValue("${@(Instrumented).version()}", Foo.class, method);
+			log("Replacement:[%s]", replacement);
 			
-			//    \\$\\{annotation\\((.*?)\\)(?:(.*))?\\}
-			//Matcher m = p.matcher(("${annotation(Instrumentation).types().length}"));
-			//Matcher m = MetricNamingToken.$ANNOTATION.pattern.matcher(("${annotation(Instrumentation)}"));
-			Matcher m = MetricNamingToken.$ANNOTATION.pattern.matcher(("${annotation(Instrumentation).types().length}"));
-			if(!m.matches()) throw new RuntimeException("No match");
-			String annotationName = m.group(1);
-			String annotationOp = m.group(2).trim();
-			log("Annotation Name [%s]   Op:[%s]", annotationName, annotationOp);
-			if(annotationOp==null || annotationOp.isEmpty()) {
-				log("No Annotation Op");
-			} else {
-				SimpleBindings bindings = new SimpleBindings();
-				bindings.put("obj", annotation);
-				
-				Object result = engine.eval("obj" + annotationOp, bindings);
-				log("Result: [%s] Type:%s", result, result.getClass().getName());
-			}
+			replacement = Extractors.THIS.getStaticValue("${this}", Foo.class, method);
+			log("Replacement:[%s]", replacement);
+			replacement = Extractors.THIS.getStaticValue("${this:}", Foo.class, method);
+			log("Replacement:[%s]", replacement); 
+			replacement = Extractors.THIS.getStaticValue("${this: $0.toString().toUpperCase()}", Foo.class, method);
+			log("Replacement:[%s]", replacement);
+			
+			replacement = Extractors.ARG.getStaticValue("${arg[0]}", Foo.class, method);
+			log("Replacement:[%s]", replacement);
+			
+			replacement = Extractors.ARG.getStaticValue("${arg:(\"\" + ($1 + $1))}", Foo.class, method);
+			log("Replacement:[%s]", replacement);
+			
+			
+
+//			Object annotation = Foo.class.getDeclaredMethod("getBar", int.class).getAnnotation(Instrumented.class);
+//			log("Annotation:%s --> %s", annotation, ((Instrumented)annotation).lastInstrumented());
+//			
+//			//    \\$\\{annotation\\((.*?)\\)(?:(.*))?\\}
+//			//Matcher m = p.matcher(("${annotation(Instrumentation).types().length}"));
+//			//Matcher m = MetricNamingToken.$ANNOTATION.pattern.matcher(("${annotation(Instrumentation)}"));
+//			Matcher m = MetricNamingToken.$ANNOTATION.pattern.matcher(("${annotation(Instrumentation).types().length}"));
+//			if(!m.matches()) throw new RuntimeException("No match");
+//			String annotationName = m.group(1);
+//			String annotationOp = m.group(2).trim();
+//			log("Annotation Name [%s]   Op:[%s]", annotationName, annotationOp);
+//			if(annotationOp==null || annotationOp.isEmpty()) {
+//				log("No Annotation Op");
+//			} else {
+//				SimpleBindings bindings = new SimpleBindings();
+//				bindings.put("obj", annotation);
+//				
+//				Object result = engine.eval("obj" + annotationOp, bindings);
+//				log("Result: [%s] Type:%s", result, result.getClass().getName());
+//			}
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		}

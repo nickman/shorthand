@@ -24,13 +24,24 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
+import java.io.File;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.omg.CORBA.portable.Streamable;
+
+import sun.util.logging.resources.logging;
+import javassist.ClassClassPath;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtMethod;
+import javassist.bytecode.stackmap.BasicBlock.Catch;
+
 import com.heliosapm.shorthand.util.JSExpressionEvaluator;
+import com.heliosapm.shorthand.util.StringHelper;
 
 
 /**
@@ -139,7 +150,8 @@ public class Extractors {
 	
 			
 	
-	/** Value extractor to return the {@link #toString()} of the "this" object or a field / attribute notation value. Pattern is [&nbsp;<b><code>\\$\\{this(?:.*?)?|\\$0(?:.*?)?\\}</code></b>&nbsp;] */
+	/** Value extractor to return the {@link #toString()} of the "this" object or a field / attribute notation value. 
+	 * Pattern is <b><code>[&nbsp;\\$\\{this\\}|\\$\\{this:(.*?)\\}&nbsp;]</code></b>  */
 	public static final ValueExtractor THIS = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
@@ -148,27 +160,50 @@ public class Extractors {
 		@Override
 		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
-			if(expr.equals("$0") || expr.equals("$this")) {
-				return expr + ".toString()";
+			Matcher matcher = MetricNamingToken.$THIS.pattern.matcher(expr);
+			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $THIS expression [" + expression + "]");
+			String matchedPattern = matcher.group(0);
+			String codePoint = matcher.group(1);
+			String extract = null;
+			if(matchedPattern.equals("${this}") || matchedPattern.equals("${this:}") ) {
+				extract = "($0==null ? \"\" : $0.toString())";
+			} else {
+				extract = codePoint;
 			}
-			int indexofDot = expr.indexOf('.');
-			int indexofBr = expr.indexOf("()");
-			if(indexofDot==-1) throw new RuntimeException("Unrecognized $THIS expression [" + expression + "]");
-			if(indexofBr!=-1) {
-				String methodName = expr.substring(indexofDot+1, indexofBr);
-				if(isMethod(clazz, methodName)) {
-					return expr + ".toString()";
-				}
-			}
-			String fieldName = expr.substring(indexofDot+1);
-			if(isField(clazz, fieldName)) {
-				return expr + ".toString()";
-			}
-			throw new RuntimeException("Unrecognized $THIS expression [" + expression + "]");
+			validateCodePoint("$THIS", clazz, method, extract + ";");
+			return extract;			
 		}
 	};
 	
-	/** Value extractor to return the {@link #toString()} of the indexed argument object or a field/attribute notation value */
+	/**
+	 * Attempts to compile a snippet to validate a code point
+	 * @param name The extractor name
+	 * @param clazz The class targetted for instrumentation
+	 * @param method The method targetted for instrumentation
+	 * @param codePoint The code point
+	 */
+	private static void validateCodePoint(String name, Class<?> clazz, Method method, String codePoint) {
+		ClassPool cPool = new ClassPool(true);
+		CtClass ctClass = null;
+		cPool.appendClassPath(new ClassClassPath(clazz));
+		try {
+			ctClass = cPool.get(clazz.getName());
+			CtMethod ctMethod = ctClass.getMethod(method.getName(), StringHelper.getMethodDescriptor(method));
+			ctClass.removeMethod(ctMethod);
+			ctMethod.insertBefore(codePoint);
+			ctClass.addMethod(ctMethod);
+			ctClass.writeFile(System.getProperty("java.io.tmpdir") + File.separator + "js");
+			ctClass.toBytecode();
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to validate " + name + "] codepoint for [" + clazz.getName() + "." + method.getName() + "]. Codepoint was [" + codePoint + "]", ex);
+		} finally {
+			if(ctClass!=null) ctClass.detach();
+		}
+	}
+	
+	/** Value extractor to return the {@link #toString()} of the indexed argument object or a field/attribute notation value 
+	 * Pattern is <b><code>[&nbsp;\\$\\{arg\\[(\\d+)\\]\\}|\\$\\{arg:(.*?)\\}&nbsp;]</code></b>
+	 * */
 	public static final ValueExtractor ARG = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
@@ -177,42 +212,38 @@ public class Extractors {
 		@Override
 		public String getStaticValue(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
-			Matcher matcher = MetricNamingToken.$ARG.pattern.matcher(expression);
-			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing expression [" + expression + "]");
+			Matcher matcher = MetricNamingToken.$ARG.pattern.matcher(expr);
+			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $ARG expression [" + expression + "]");
+			String matchedPattern = matcher.group(0);
+			String matchedIndex = matcher.group(1);
+			String codePoint = matcher.group(2);
 			int index = -1;
-			try {
-				index = Integer.parseInt(matcher.group(1));
-			} catch (Exception ex) {
-				throw new RuntimeException("Failed to extract index from expression [" + expression + "]");
-			}
-			if(expr.equals("$0")) {
-				throw new RuntimeException("Zero index from $ARG expression [" + expression + "]. (Hint: $ARGS use a one based index)");
-			}
-			Class<?>[] paramTypes = method.getParameterTypes();
-			if(index-1 > paramTypes.length) {
-				throw new RuntimeException("Invalid $ARG index in expression [" + expression + "]. Method has [" + paramTypes.length + "] parameters.");
-			}
-			if(expr.equals("$" + index)) {
-				return expr + ".toString()";
-			}
-			int indexofDot = expr.indexOf('.');
-			int indexofBr = expr.indexOf("()");
-			if(indexofDot==-1) throw new RuntimeException("Unrecognized $ARG expression [" + expression + "]");
-			if(indexofBr!=-1) {
-				String methodName = expr.substring(indexofDot+1, indexofBr);
-				if(isMethod(paramTypes[index-1], methodName)) {
-					return expr + ".toString()";
+			String extract = null;
+			if(codePoint==null || codePoint.trim().isEmpty()) {
+				try { index = Integer.parseInt(matchedIndex); } catch (Exception x) {
+					throw new RuntimeException("Invalid $ARG expression [" + expression + "]. Neither a code-point or an index were matched");
 				}
+				Class<?> argType = method.getParameterTypes()[index]; 
+				index++;
+				if(argType.isPrimitive()) {
+					extract = String.format("(\"\" + $%s)", index);
+				} else {
+					extract = String.format("($%s==null ? \"\" : $%s.toString())", index, index );
+				}
+				
+				
+			} else {
+				extract = codePoint;
 			}
-			String fieldName = expr.substring(indexofDot+1);
-			if(isField(paramTypes[index-1], fieldName)) {
-				return expr + ".toString()";
-			}
-			throw new RuntimeException("Unrecognized $ARG expression [" + expression + "]");
+			log("Extract:[%s]", extract);
+			validateCodePoint("$ARG", clazz, method, extract + ";");
+			return extract;			
 		}
 	};
 	
-	/** Value extractor to return the {@link #toString()} of the invocation return value object or a field/attribute notation value */
+	/** Value extractor to return the {@link #toString()} of the invocation return value object or a field/attribute notation value 
+	 *   Pattern is <b><code>[&nbsp;\\$\\{return(?::(.*))?\\}&nbsp;]</code></b>
+	 * */
 	public static final ValueExtractor RETURN = new ValueExtractor() {
 		/**
 		 * {@inheritDoc}
@@ -331,6 +362,15 @@ public class Extractors {
 			return method.getName();
 		}		
 	};
+	
+	/**
+	 * Simple out formatted logger
+	 * @param fmt The format of the message
+	 * @param args The message arguments
+	 */
+	public static void log(String fmt, Object...args) {
+		System.out.println(String.format(fmt, args));
+	}
 
 	
 }
