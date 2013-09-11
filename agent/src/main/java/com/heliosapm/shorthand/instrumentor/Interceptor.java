@@ -13,8 +13,8 @@ import java.lang.reflect.Method;
 import java.security.ProtectionDomain;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
 
+import javassist.CannotCompileException;
 import javassist.ClassClassPath;
 import javassist.ClassPool;
 import javassist.CtClass;
@@ -23,9 +23,8 @@ import javassist.CtMethod;
 import javassist.CtNewMethod;
 import javassist.Modifier;
 import javassist.bytecode.AnnotationsAttribute;
-import javassist.bytecode.AttributeInfo;
 import javassist.bytecode.ConstPool;
-import javassist.bytecode.InnerClassesAttribute;
+import javassist.bytecode.InstructionPrinter;
 import javassist.bytecode.analysis.FramePrinter;
 import javassist.bytecode.annotation.Annotation;
 import javassist.bytecode.annotation.ArrayMemberValue;
@@ -33,6 +32,8 @@ import javassist.bytecode.annotation.IntegerMemberValue;
 import javassist.bytecode.annotation.LongMemberValue;
 import javassist.bytecode.annotation.MemberValue;
 import javassist.bytecode.annotation.StringMemberValue;
+import javassist.expr.ExprEditor;
+import javassist.expr.Handler;
 
 import javax.annotation.Nullable;
 
@@ -82,7 +83,15 @@ public class Interceptor {
 				return getTwo();
 			}
 			private void sayHello() {
-				log("Helllo [" + getOne() + "]");
+				try {
+					try {
+						log("Helllo [" + getOne() + "]");
+					} catch (Throwable t) {
+						log("Inner Exception [%s]", t);
+					}
+				} catch (Throwable t) {
+					log("Outer Exception [%s]", t);
+				}
 			}
 		}
 	}
@@ -270,14 +279,29 @@ public class Interceptor {
 			CtClass aclazz = cp.makeClass("A");
 			CtClass fooClass2 = cp.getAndRename(TestClass.Foo.class.getName(), "Foo2");
 			CtMethod acc = fooClass2.getDeclaredMethod("access$0");
+			CtMethod sayHello = fooClass2.getDeclaredMethod("sayHello");
 			FramePrinter fPrinter = new FramePrinter(System.out);
-			fPrinter.print(acc);
+			fPrinter.print(sayHello);
+			
+			fooClass2.instrument(new ExprEditor(){
+				@Override
+				public void edit(Handler h) throws CannotCompileException {
+					try {
+						log("Handler:\n\tLine#:%s\n\tType Handled:%s\n\tisFinally:%s\n\tWhere:%s", h.getLineNumber(), h.getType().getSimpleName(), h.isFinally(), h.where().toString());
+						InstructionPrinter.print((CtMethod)h.where(), System.err);
+					} catch (Exception ex) {
+						log("Handler Editor Exception:" + ex);
+					}
+					super.edit(h);
+				}
+			});
 			
 			//cp.
 			CtMethod aMethod = CtNewMethod.copy(acc, fooClass2, null);
 			aMethod.setModifiers(aMethod.getModifiers() | Modifier.PUBLIC);
 			aMethod.setName("foo");
 			log("Accessor:%s", aMethod.getSignature());
+			InstructionPrinter.print(aMethod, System.err);
 			//aclazz.addMethod(aMethod);
 			//aclazz.writeFile(JS_DEBUG);
 			fooClass2.writeFile(JS_DEBUG);

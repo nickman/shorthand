@@ -24,6 +24,11 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.cliffc.high_scale_lib.Counter;
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
+
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
 
@@ -38,6 +43,12 @@ import com.heliosapm.shorthand.datamapper.IDataMapper;
 public class ShorthandStaticInterceptor {
 	/** A reference to the snapshot accumulator */
 	protected static final MetricSnapshotAccumulator<?> accumulator = MetricSnapshotAccumulator.getInstance();
+	
+	/** Shared and object keyed counters */
+	protected static final NonBlockingHashMap<Object, Counter> counters = new NonBlockingHashMap<Object, Counter>();
+	/** Shared and object keyed flags */
+	protected static final NonBlockingHashMap<Object, AtomicBoolean> flags = new NonBlockingHashMap<Object, AtomicBoolean>(); 
+
 	
 	/**
 	 * Delegates this snapshot collection to the {@link MetricSnapshotAccumulator} 
@@ -56,6 +67,12 @@ public class ShorthandStaticInterceptor {
 	 * public long[] methodEnter(int bitMask);
      * public long[] methodExit(long[] values);			--> snap
      * public long[] methodException(long[] values);	--> snap
+     * 
+     * Extended classes will supply these methods:
+     * 
+     * public static long[] methodEnter()
+     * public static void methodExit(long[])
+     * public static void methodError(long[])
      *  
 	 */
 }

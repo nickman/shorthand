@@ -187,6 +187,19 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	//public void reset(long address, TObjectLongHashMap<ICcomollector<?>> offsets);
 	
 	/**
+	 * Returns a data-mapper implementation for the passed enum-collector index and bitmask
+	 * @param enumIndex The enum collector [index] to generate a data mapper for
+	 * @param bitMask The bit mask
+	 * @return a data mapper
+	 */
+	public IDataMapper<?> getIDataMapper(int enumIndex, int bitMask) {
+		Class<T> clazz = (Class<T>) EnumCollectors.getInstance().type(enumIndex);
+		return getIDataMapper(clazz, bitMask);
+	}
+	
+	
+	/**
+	 * Returns a data-mapper implementation for the passed enum-collector name and bitmask
 	 * @param enumCollectorTypeName The enum collector [class] to generate a data mapper for
 	 * @param bitMask The bit mask
 	 * @return a data mapper
@@ -198,6 +211,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 	
 	
 	/**
+	 * Returns a data-mapper implementation for the passed enum-collector name and bitmask
 	 * @param enumCollectorType The enum collector [class] to generate a data mapper for
 	 * @param bitMask The bit mask
 	 * @return a data mapper
