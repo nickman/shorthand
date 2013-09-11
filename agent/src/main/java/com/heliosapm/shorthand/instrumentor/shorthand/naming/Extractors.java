@@ -219,34 +219,34 @@ public class Extractors {
 	/** Value extractor to return the {@link #toString()} of the invocation return value object or a field/attribute notation value 
 	 *   Pattern is <b><code>[&nbsp;\\$\\{return(?::(.*))?\\}&nbsp;]</code></b>
 	 * */
-	public static final ValueExtractor RETURN = new ValueExtractor() {
-		/**
-		 * {@inheritDoc}
-		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
-		 */
-		@Override
-		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
-			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
-			Class<?> returnType = method.getReturnType();
-			if(returnType==Void.class || returnType==void.class) {
-				throw new RuntimeException("Invalid use of $RETURN token since method [" + clazz.getName() + "." + method.getName() + "] has a void return type");
-			}
-			String extract = null;
-			if(expr.equals("${return}") || expr.equals("${return:}")) {
-				if(returnType.isPrimitive()) {
-					extract = "$_";
-				} else {
-					extract = "($_==null ? \"\" : $_.toString())";
-				}
-			} else {
-				Matcher matcher = MetricNamingToken.$RETURN.pattern.matcher(expr);
-				if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $RETURN expression [" + expression + "]");
-				extract = matcher.group(1);
-			}
-			validateCodePoint("$RETURN", clazz, method, extract + ";");
-			return toArray("%s", extract);			
-		}
-	};
+//	public static final ValueExtractor RETURN = new ValueExtractor() {
+//		/**
+//		 * {@inheritDoc}
+//		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
+//		 */
+//		@Override
+//		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+//			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
+//			Class<?> returnType = method.getReturnType();
+//			if(returnType==Void.class || returnType==void.class) {
+//				throw new RuntimeException("Invalid use of $RETURN token since method [" + clazz.getName() + "." + method.getName() + "] has a void return type");
+//			}
+//			String extract = null;
+//			if(expr.equals("${return}") || expr.equals("${return:}")) {
+//				if(returnType.isPrimitive()) {
+//					extract = "$_";
+//				} else {
+//					extract = "($_==null ? \"\" : $_.toString())";
+//				}
+//			} else {
+//				Matcher matcher = MetricNamingToken.$RETURN.pattern.matcher(expr);
+//				if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $RETURN expression [" + expression + "]");
+//				extract = matcher.group(1);
+//			}
+//			validateCodePoint("$RETURN", clazz, method, extract + ";");
+//			return toArray("%s", extract);			
+//		}
+//	};
 	
 	
 

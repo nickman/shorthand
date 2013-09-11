@@ -5,23 +5,28 @@
 package com.heliosapm.shorthand.instrumentor;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
-
 import java.security.ProtectionDomain;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 
 import javassist.ClassClassPath;
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.CtField;
 import javassist.CtMethod;
+import javassist.CtNewMethod;
 import javassist.Modifier;
 import javassist.bytecode.AnnotationsAttribute;
+import javassist.bytecode.AttributeInfo;
 import javassist.bytecode.ConstPool;
+import javassist.bytecode.InnerClassesAttribute;
+import javassist.bytecode.analysis.FramePrinter;
 import javassist.bytecode.annotation.Annotation;
 import javassist.bytecode.annotation.ArrayMemberValue;
 import javassist.bytecode.annotation.IntegerMemberValue;
@@ -49,7 +54,8 @@ import com.heliosapm.shorthand.instrumentor.annotations.Instrumented;
  */
 
 public class Interceptor {
-
+	/** The Javassist Debug Directory */
+	public static final String JS_DEBUG = System.getProperty("java.io.tmpdir") + File.separator + "js";
 	/**
 	 * Creates a new Interceptor
 	 */
@@ -57,23 +63,47 @@ public class Interceptor {
 		// TODO Auto-generated constructor stub
 	}
 
-	protected static class TestClass {
-		private static int getFileCount(String fileName, final boolean includeDirs) {
+	protected class TestClass {
+		 int getFileCount(String fileName, final boolean includeDirs) {
+			new Foo().sayHello();
 			return new File(fileName).listFiles().length;
 		}
+		private final int ONE = 1;
+		private int getOne() {
+			return ONE;
+		}
+		private final int TWO = 2;
+		private int getTwo() {
+			return TWO;
+		}
 		
-		static class Foo {
-			
+		class Foo {
+			public int get() {
+				return getTwo();
+			}
+			private void sayHello() {
+				log("Helllo [" + getOne() + "]");
+			}
 		}
 	}
-	
+	public TestClass getNewTestClass() {
+		return new TestClass();
+	}
 	
 	/**
 	 * @param args
 	 */
 	public static void main(String[] args) {
 		log("Instrument Test");
-		TestClass tc = new TestClass();
+		Interceptor interceptor = new Interceptor();
+		TestClass tc = interceptor.getNewTestClass();
+		try {
+			javassist.tools.Dump.main(new String[] {"/home/nwhitehead/hprojects/shorthand/agent/target/classes/com/heliosapm/shorthand/instrumentor/Interceptor$TestClass.class"});
+		} catch (Exception e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		
 		int i = -1;
 		try {
 			i = tc.getFileCount(System.getProperty("user.home"), true);
@@ -86,7 +116,11 @@ public class Interceptor {
 			log("Acquired Instrumentation:" + instr);
 			ClassPool cp = new ClassPool();
 			cp.appendClassPath(new ClassClassPath(tc.getClass()));
+			CtClass fooClass = cp.get(TestClass.Foo.class.getName()); 
+			fooClass.writeFile(JS_DEBUG);
+			log("Foo Name [%s]", fooClass.getName());
 			CtClass target = cp.get(tc.getClass().getName());
+			dumpInner(target);
 			log("Target CtClass:" + target);
 			CtMethod targetMethod = target.getDeclaredMethod("getFileCount", new CtClass[]{cp.get(String.class.getName()), CtClass.booleanType});
 			if(Modifier.isPrivate(targetMethod.getModifiers())) {
@@ -143,7 +177,7 @@ public class Interceptor {
 			//ihanderMethod.setBody("{System.out.println(\"Intercepted!\"); return $1.getFileCount($2, $3);}");
 			ihanderMethod.setBody(b.toString());
 			ihandler.addMethod(ihanderMethod);
-			ihandler.writeFile("c:\\temp\\js");
+			ihandler.writeFile(JS_DEBUG);
 			
 			byte[] ihandlerByteCode = ihandler.toBytecode();
 			
@@ -171,10 +205,10 @@ public class Interceptor {
 			target.setAttribute("_" + invokerName + "_ShorthandInvoker_", ihandlerByteCode);
 
 			
-			target.writeFile("c:\\temp\\js");
+			target.writeFile(JS_DEBUG);
 			final byte[] byteCode = target.toBytecode();
 			final String bname = tc.getClass().getName().replace('.', '/');
-			instr.addTransformer(new ClassFileTransformer(){
+			ClassFileTransformer t = new ClassFileTransformer(){
 				/**
 				 * {@inheritDoc}
 				 * @see java.lang.instrument.ClassFileTransformer#transform(java.lang.ClassLoader, java.lang.String, java.lang.Class, java.security.ProtectionDomain, byte[])
@@ -191,8 +225,63 @@ public class Interceptor {
 						}
 					return classfileBuffer;
 				}
-			}, true);
+			};
+			instr.addTransformer(t, true);
 			instr.retransformClasses(tc.getClass());
+			instr.removeTransformer(t);
+
+			ClassFileTransformer byteCodeSaver = new ClassFileTransformer(){
+				/**
+				 * {@inheritDoc}
+				 * @see java.lang.instrument.ClassFileTransformer#transform(java.lang.ClassLoader, java.lang.String, java.lang.Class, java.security.ProtectionDomain, byte[])
+				 */
+				@Override
+				public byte[] transform(ClassLoader loader, String className,
+						Class<?> classBeingRedefined,
+						ProtectionDomain protectionDomain,
+						byte[] classfileBuffer)
+						throws IllegalClassFormatException {
+					writeClass(className, classfileBuffer);
+					return classfileBuffer;
+				}
+			};
+			
+			
+			
+			
+			for(Method m: TestClass.class.getDeclaredMethods()) {
+				log("Test Class Declared:%s", m.toGenericString());
+			}
+			for(Method m: TestClass.class.getMethods()) {
+				log("Test Class:%s", m.toGenericString());
+			}
+			for(Method m: TestClass.Foo.class.getDeclaredMethods()) {
+				log("Foo Declared:%s", m.toGenericString());
+			}
+			for(Method m: TestClass.Foo.class.getMethods()) {
+				log("Foo:%s", m.toGenericString());
+			}
+			
+			instr.addTransformer(byteCodeSaver, true);
+			instr.retransformClasses(tc.getClass());
+			instr.retransformClasses(TestClass.Foo.class);
+			instr.removeTransformer(byteCodeSaver);
+			
+			CtClass aclazz = cp.makeClass("A");
+			CtClass fooClass2 = cp.getAndRename(TestClass.Foo.class.getName(), "Foo2");
+			CtMethod acc = fooClass2.getDeclaredMethod("access$0");
+			FramePrinter fPrinter = new FramePrinter(System.out);
+			fPrinter.print(acc);
+			
+			//cp.
+			CtMethod aMethod = CtNewMethod.copy(acc, fooClass2, null);
+			aMethod.setModifiers(aMethod.getModifiers() | Modifier.PUBLIC);
+			aMethod.setName("foo");
+			log("Accessor:%s", aMethod.getSignature());
+			//aclazz.addMethod(aMethod);
+			//aclazz.writeFile(JS_DEBUG);
+			fooClass2.writeFile(JS_DEBUG);
+			
 		} catch (Exception e) {
 			e.printStackTrace(System.err);
 		}
@@ -247,8 +336,50 @@ public class Interceptor {
 		
 	}
 	
-	public static void log(Object msg) {
-		System.out.println(msg);
+//	public static InnerClassesAttribute getInnerClassAttr(String name, CtClass clazz) {
+//		
+//	}
+	
+	public static void writeClass(String name, byte[] byteCode) {
+		FileOutputStream fos = null;
+		try {
+			File f = new File(JS_DEBUG + File.separator + name + ".class");
+			f.delete();
+			log("Writing class file [%s]", f.getAbsolutePath());
+			fos = new FileOutputStream(f);
+			fos.write(byteCode);
+			fos.flush();
+			fos.close();
+			fos = null;
+			log("File exists:%s", f.exists());
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		} finally {
+			if(fos!=null) try { fos.close(); } catch (Exception x) {}
+		}
+	}
+	
+	public static void dumpInner(CtClass ctClass) {
+//		List<AttributeInfo> attrsList = ctClass.getClassFile().getAttributes();
+//		for(AttributeInfo info: attrsList) {
+//			log("%s\n=====================  (%s)", info.getName(), info.length());
+//			for(int i = 0; i < info.length()-2; i++) {
+//				if(info instanceof InnerClassesAttribute) {
+//					log("Class Name:[%s]", ((InnerClassesAttribute)info).innerClass(i));
+//					log("Name:[%s]", ((InnerClassesAttribute)info).innerName(i));
+//				}
+//			}
+//			
+//		}
+	}
+	
+	/**
+	 * Simple out formatted logger
+	 * @param fmt The format of the message
+	 * @param args The message arguments
+	 */
+	public static void log(String fmt, Object...args) {
+		System.out.println(String.format(fmt, args));
 	}
 
 }

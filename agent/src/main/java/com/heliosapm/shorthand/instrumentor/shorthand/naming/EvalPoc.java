@@ -64,10 +64,10 @@ public class EvalPoc {
 			log("Replacement:[%s]", Arrays.toString(replacement));
 			
 
-			replacement = Extractors.RETURN.getStringReplacement("${return}", Foo.class, method);
-			log("Return Replacement:[%s]", Arrays.toString(replacement));			
-			replacement = Extractors.RETURN.getStringReplacement("${return:$_.toUpperCase()}", Foo.class, method);
-			log("Return Replacement:[%s]", Arrays.toString(replacement));			
+//			replacement = Extractors.RETURN.getStringReplacement("${return}", Foo.class, method);
+//			log("Return Replacement:[%s]", Arrays.toString(replacement));			
+//			replacement = Extractors.RETURN.getStringReplacement("${return:$_.toUpperCase()}", Foo.class, method);
+//			log("Return Replacement:[%s]", Arrays.toString(replacement));			
 
 			
 			replacement = Extractors.JAVA.getStringReplacement("${java:$_ + $1}", Foo.class, method);

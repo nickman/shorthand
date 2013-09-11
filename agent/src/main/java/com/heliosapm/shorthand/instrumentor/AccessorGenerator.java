@@ -93,12 +93,12 @@ public class AccessorGenerator {
     public static void main(String[] args) throws Exception {
         AccessorGenerator generator = new AccessorGenerator();
 
-        Map<String, PropertyAccessor> accessorsByName = generator.createAccessors(PurchaseOrder.class);
+//        Map<String, PropertyAccessor> accessorsByName = generator.createAccessors(PurchaseOrder.class);
+//
+//        PurchaseOrder purchaseOrder = new PurchaseOrder("foo", new Customer());
 
-        PurchaseOrder purchaseOrder = new PurchaseOrder("foo", new Customer());
-
-        accessorsByName.get("name").set(purchaseOrder, "bar");
-        String name = (String) accessorsByName.get("name").get(purchaseOrder);
-        System.out.println(name);
+//        accessorsByName.get("name").set(purchaseOrder, "bar");
+//        String name = (String) accessorsByName.get("name").get(purchaseOrder);
+//        System.out.println(name);
     }
 }
