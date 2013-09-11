@@ -219,7 +219,7 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 			try {
 				Thread.currentThread().join(TimeUnit.MILLISECONDS.convert(t, unit));
 				return true;
-			} catch (InterruptedException e) {
+			} catch (Throwable e) {
 				return false;
 				//throw new RuntimeException("INTERRUPTED WHILE WAITING");
 			}
