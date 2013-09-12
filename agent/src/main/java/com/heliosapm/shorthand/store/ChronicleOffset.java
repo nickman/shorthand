@@ -353,25 +353,26 @@ public enum ChronicleOffset {
 			ex.writeInt(metricName.getBytes().length);	// the number of bytes in the metric name
 			ex.writeInt(dataIndexCount);				// the number of data indexes
 			ex.write(metricName.getBytes());			// the metric name bytes
-			int dataPos = ex.position();
+			final int dataPos = ex.position();
 			for(int i = 0; i < dataIndexCount; i++) {	// the data index place holders
 				ex.writeLong(-1L);
-			}
-			ex.finish();
+			}		
+			final int endPos = ex.position();
 			long nameIndex = ex.index();
 			long[][] defaultValues = collectors[0].getDefaultValues(bitMask);
 			int dvIndex = 0;
 			ex.position(dataPos);
 			for(ICollector<?> collector: collectors) {
-				long key = -1;
-				if(collector.isEnabled(bitMask)) {
-					key = ChronicleDataOffset.writeNewDataIndex(nameIndex, collector.ordinal(), defaultValues[dvIndex], dataEx);
+				long key = ChronicleDataOffset.writeNewDataIndex(nameIndex, collector.ordinal(), defaultValues[dvIndex], dataEx);
+				if(collector.isEnabled(bitMask)) {					 
 					dvIndex++;
 				} else {
 					key = collector.ordinal() * -1L;
 				}
 				ex.writeLong(key);
 			}
+			ex.position(endPos);
+			ex.finish();
 			return nameIndex;
 		} finally {
 			if(closeEx) ex.close();

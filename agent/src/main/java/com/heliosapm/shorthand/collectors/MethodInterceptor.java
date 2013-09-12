@@ -467,7 +467,7 @@ public enum MethodInterceptor implements ICollector<MethodInterceptor>, IntBitMa
 //			}
 		} else {			
 			if(collectedValues[openCloseIndex]!=0) {
-				System.err.println("Unclosed snap " + Arrays.toString(collectedValues));
+				//System.err.println("Unclosed snap " + Arrays.toString(collectedValues));
 			}
 			long offset = address;
 //			long[] state = new long[3];

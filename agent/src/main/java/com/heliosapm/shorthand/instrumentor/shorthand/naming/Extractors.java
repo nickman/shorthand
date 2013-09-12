@@ -39,6 +39,7 @@ import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.CtMethod;
 
+import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandStaticInterceptor;
 import com.heliosapm.shorthand.util.JSExpressionEvaluator;
 import com.heliosapm.shorthand.util.StringHelper;
 
@@ -145,7 +146,7 @@ public class Extractors {
 			String codePoint = matcher.group(1);
 			String extract = null;
 			if(matchedPattern.equals("${this}") || matchedPattern.equals("${this:}") ) {
-				extract = "($0==null ? \"\" : $0.toString())";
+				extract = "$0";
 			} else {
 				extract = codePoint;
 			}
@@ -167,6 +168,7 @@ public class Extractors {
 		cPool.appendClassPath(new ClassClassPath(clazz));
 		try {
 			ctClass = cPool.get(clazz.getName());
+			cPool.importPackage(ShorthandStaticInterceptor.class.getPackage().getName());
 			CtMethod ctMethod = ctClass.getMethod(member.getName(), StringHelper.getMemberDescriptor(member));
 			ctClass.removeMethod(ctMethod);
 			ctMethod.insertAfter(codePoint);
@@ -193,7 +195,6 @@ public class Extractors {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Matcher matcher = MetricNamingToken.$ARG.pattern.matcher(expr);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $ARG expression [" + expression + "]");
-			String matchedPattern = matcher.group(0);
 			String matchedIndex = matcher.group(1);
 			String codePoint = matcher.group(2);
 			int index = -1;
@@ -204,7 +205,7 @@ public class Extractors {
 				}
 				Class<?>[] paramTypes = null;
 				if(member instanceof Constructor) {
-					paramTypes = ((Constructor)member).getParameterTypes(); 
+					paramTypes = ((Constructor<?>)member).getParameterTypes(); 
 				} else {
 					paramTypes = ((Method)member).getParameterTypes();
 				}
@@ -213,14 +214,13 @@ public class Extractors {
 				if(argType.isPrimitive()) {
 					extract = String.format("(\"\" + $%s)", index);
 				} else {
-					extract = String.format("($%s==null ? \"\" : $%s.toString())", index, index );
+					extract = String.format("ShorthandStaticInterceptor.nvl($%s)", index, index );
 				}
 				
 				
 			} else {
 				extract = codePoint;
-			}
-			log("Extract:[%s]", extract);
+			}			
 			validateCodePoint("$ARG", clazz, member, extract + ";");
 			return toArray("%s", extract);			
 		}

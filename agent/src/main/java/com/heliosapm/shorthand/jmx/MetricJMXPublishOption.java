@@ -181,7 +181,7 @@ public enum MetricJMXPublishOption {
 		 * @see com.heliosapm.shorthand.jmx.MetricJMXPublishOption.MetricJMXPublisher#publish(java.lang.String, long)
 		 */
 		@Override
-		public void publish(String metricName, long nameIndex) {
+		public synchronized void publish(String metricName, long nameIndex) {
 			ObjectName on = JMXHelper.isObjectName(metricName) ? JMXHelper.objectName(metricName) :
 				JMXHelper.objectName("shorthand.metrics:name=%s", ObjectName.quote(metricName));
 			PublishedMetric pm = MetricMBeanBuilder.getInstance().getPublishedMetricInstance(
@@ -189,6 +189,9 @@ public enum MetricJMXPublishOption {
 					(int)ChronicleOffset.BitMask.get(nameIndex), 
 					nameIndex);
 			JMXHelper.registerMBean(pm, on);
+//			if(!JMXHelper.isRegistered(on)) {
+//				JMXHelper.registerMBean(pm, on);
+//			}
 		}
 		
 		/**

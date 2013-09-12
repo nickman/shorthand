@@ -51,6 +51,12 @@ public class ShorthandProperties {
 	public static final String CHRONICLE_DIR_PROP = "shorthand.store.chronicle.dir";
 	/** The default shorthand chronicle directory */
 	public static final String DEFAULT_CHRONICLE_DIR =  String.format("%s%sshorthand%s%s", System.getProperty("java.io.tmpdir"), File.separator, File.separator, PID);
+
+	/** System property name to specify if chronicle should use unsafe excerpts */
+	public static final String CHRONICLE_UNSAFE_PROP = "shorthand.store.chronicle.unsafe";
+    /** The default chronicle unsafe excerpt setting */
+    public static final boolean DEFAULT_CHRONICLE_UNSAFE = false;
+
 	
     /** The system prop name to indicate if mem-spaces should be padded to the next largest pow(2) */
     public static final String USE_POW2_ALLOC_PROP = "shorthand.memspace.padcache";

@@ -24,10 +24,12 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand;
 
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.cliffc.high_scale_lib.Counter;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
+import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 
 import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
@@ -56,8 +58,56 @@ public class ShorthandStaticInterceptor {
 	 * @param dataMapper The data mapper supplied by child instance
 	 * @param collectedValues The values collected being passed as a snapshot
 	 */
-	protected static void snap(String metricName, IDataMapper<?> dataMapper, long...collectedValues) {
+	protected static void snap(String metricName, IDataMapper<?> dataMapper, long[] collectedValues) {
 		accumulator.snap(metricName, dataMapper, collectedValues);
+		System.err.println(String.format("====[%s] >> %s <<", metricName, Arrays.toString(collectedValues)));
+	}
+	
+	  /**
+	 * @param valueStack
+	 * @param dataMapper
+	 */
+	protected static final void methodEnter(NonBlockingHashMapLong<long[]> valueStack, IDataMapper dataMapper) {
+	        long al[] = dataMapper.methodEnter();
+	        valueStack.put(Thread.currentThread().getId(), al);
+	    }
+
+	    /**
+	     * @param metricName
+	     * @param valueStack
+	     * @param dataMapper
+	     */
+	    protected static final void methodExit(String metricName, NonBlockingHashMapLong<long[]> valueStack, IDataMapper dataMapper) {
+	        ShorthandStaticInterceptor.snap(metricName, dataMapper, valueStack.get(Thread.currentThread().getId()));
+	    }
+
+	    /**
+	     * @param metricName
+	     * @param valueStack
+	     * @param dataMapper
+	     */
+	    protected static final void methodError(String metricName, NonBlockingHashMapLong<long[]> valueStack, IDataMapper dataMapper) {
+	        ShorthandStaticInterceptor.snap(metricName, dataMapper, valueStack.get(Thread.currentThread().getId()));
+	    }
+	
+	
+	/**
+	 * Evaluates the passed object and returns a string which will be  zero length string if the passed object is null
+	 * @param obj The object to evaluate
+	 * @return the string value
+	 */
+	protected static String nvl(Object obj) {
+		return (obj==null ? "" : obj.toString());
+	}
+	
+	/**
+	 * Evaluates the passed object and returns a string which will be the default value if null
+	 * @param obj The object to evaluate
+	 * @param defaultValue The default value which will evaluate to a zero length string if null
+	 * @return the string value
+	 */
+	protected static String nvl(Object obj, CharSequence defaultValue) {
+		return (obj==null ? nvl(defaultValue) : obj.toString());
 	}
 	
 	
@@ -75,4 +125,6 @@ public class ShorthandStaticInterceptor {
      * public static void methodError(long[])
      *  
 	 */
+	
+	
 }

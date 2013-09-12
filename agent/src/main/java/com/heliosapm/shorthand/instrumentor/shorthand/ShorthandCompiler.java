@@ -8,13 +8,14 @@ import java.io.File;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.lang.instrument.Instrumentation;
+import java.lang.management.ManagementFactory;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.security.ProtectionDomain;
-import java.util.Arrays;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -26,12 +27,16 @@ import javassist.ClassClassPath;
 import javassist.ClassPool;
 import javassist.CtBehavior;
 import javassist.CtClass;
+import javassist.CtConstructor;
 import javassist.CtField;
 import javassist.CtMethod;
 import javassist.Modifier;
 import javassist.bytecode.Descriptor;
 import javassist.expr.ExprEditor;
 import javassist.expr.Handler;
+
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
+import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -43,7 +48,6 @@ import com.heliosapm.shorthand.datamapper.IDataMapper;
 import com.heliosapm.shorthand.instrumentor.shorthand.naming.MetricNameCompiler;
 import com.heliosapm.shorthand.instrumentor.shorthand.naming.MetricNameProvider;
 import com.heliosapm.shorthand.util.StringHelper;
-import com.heliosapm.shorthand.util.javassist.CodeBuilder;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
 
@@ -63,9 +67,6 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 	
 	/** The Javassist Debug Directory */
 	public static final String JS_DEBUG = System.getProperty("java.io.tmpdir") + File.separator + "js";
-
-	
-	private CodeBuilder cb;
 
 	/** A cache of interceptors keyed by class name */
 	protected final Cache<String, ShorthandStaticInterceptor> interceptorCache = CacheBuilder.newBuilder().weakValues().removalListener(this).build();
@@ -99,9 +100,9 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 	}
 	
 	/** A serial number for assigning to instrumentor classes */
-	protected static final AtomicLong INSTRUMENTOR_SERIAL = new AtomicLong();
+	protected static final AtomicLong INSTRUMENTOR_SERIAL = new AtomicLong(0);
 	/** A serial number for assigning to instrumentor class methods */
-	protected static final AtomicLong INSTRUMENTORMETHOD_SERIAL = new AtomicLong();
+	protected static final AtomicLong INSTRUMENTOR_METHOD_SERIAL = new AtomicLong(0);
 	
 	/**
 	 * Compiles the passed script
@@ -117,68 +118,132 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 				final long classSerial = INSTRUMENTOR_SERIAL.incrementAndGet();
 				final ClassLoader classLoader = targetClass.getClassLoader();
 				final String instumentorKey = targetClass.getName() + "/" + (classLoader==null ? "system" : classLoader.toString());
-				final String instumentorClassName = String.format("%s$__Instrumentor__%s", targetClass.getName(), classSerial);
+				final String instumentorClassName = String.format("%s__ShorthandInstrumentor_%s_%s_%s", targetClass.getName(), enumIndex, bitMask, classSerial);
 				final CtClass ctInstrumentClass = classPool.makeClass(instumentorClassName, staticInterceptorCtClass);
 				final CtClass ctTargetClass = classPool.get(targetClass.getName());
-				CtField dataMapperField = new CtField(iDataMapperCtClass,  "dataMapper", ctInstrumentClass);
-				dataMapperField.setModifiers(dataMapperField.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC);
-				ctInstrumentClass.addField(dataMapperField, CtField.Initializer.byExpr(String.format("DataMapperBuilder.getInstance().getIDataMapper(%s, %s)", enumIndex, bitMask))); 
+				final String targetClassInternalForm = targetClass.getName().replace('.', '/');
+				// ===============================================================================================
+				//		Generate static instrumentor fields
+				// ===============================================================================================
+				// The data mapper
+				CtField ctField = new CtField(iDataMapperCtClass,  "dataMapper", ctInstrumentClass);
+				ctField.setModifiers(ctField.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC);
+				ctInstrumentClass.addField(ctField, CtField.Initializer.byExpr(String.format("DataMapperBuilder.getInstance().getIDataMapper(%s, %s)", enumIndex, bitMask))); 
+				
+//				// ===============================================================================================
+//				//		Generate static instrumentor methods
+//				// ===============================================================================================
+//				
+//				final CtMethod methodEnter = new CtMethod(longArrClass, "methodEnter", new CtClass[]{nonBlockingHashMapLongCtClass}, ctInstrumentClass);
+//				final CtMethod methodExit = new CtMethod(CtClass.voidType, "methodExit", new CtClass[]{stringCtClass, nonBlockingHashMapLongCtClass}, ctInstrumentClass);
+//				final CtMethod methodError = new CtMethod(CtClass.voidType, "methodError", new CtClass[]{stringCtClass, nonBlockingHashMapLongCtClass}, ctInstrumentClass);
+//				
+//
+//				final CodeBuilder methodEnterSource = new CodeBuilder("{");
+//				final CodeBuilder methodExitSource = new CodeBuilder("{");
+//				final CodeBuilder methodErrorSource = new CodeBuilder("{");
+//				
+//				methodEnterSource.appendFmt("long[] v = dataMapper.methodEnter(); $1.put(Thread.currentThread().getId(), v); return v;}");
+//				methodExitSource.appendFmt("snap($1, dataMapper, (long[])$2.remove(Thread.currentThread().getId()));}");
+//				methodErrorSource.appendFmt("snap($1, dataMapper, (long[])$2.remove(Thread.currentThread().getId()));}");
+//				
+//				
+//				methodEnter.setBody(methodEnterSource.toString());
+//				methodExit.setBody(methodExitSource.toString());
+//				methodError.setBody(methodErrorSource.toString());
+//				
+//				methodEnter.setModifiers((methodEnter.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC) & ~Modifier.ABSTRACT & ~Modifier.PUBLIC);
+//				methodExit.setModifiers((methodExit.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC) & ~Modifier.ABSTRACT & ~Modifier.PUBLIC);
+//				methodError.setModifiers((methodError.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC) & ~Modifier.ABSTRACT & ~Modifier.PUBLIC);
+//				
+//				ctInstrumentClass.addMethod(methodEnter);
+//				ctInstrumentClass.addMethod(methodExit);
+//				ctInstrumentClass.addMethod(methodError);
+//				
+//				// ===============================================================================================
+				
 				for(Member member: entry.getValue()) {
 					final String signatureString = StringHelper.getMemberDescriptor(member);
+					final long methodSerial = INSTRUMENTOR_METHOD_SERIAL.incrementAndGet();
 					final CtBehavior targetBehavior;
 					if(member instanceof Field) {
 						loge("Shorthand compiler does not support field access interception yet");
 						continue;
 					} else if(member instanceof Constructor) {
 						targetBehavior = ctTargetClass.getConstructor(signatureString);
+						ctTargetClass.removeConstructor((CtConstructor)targetBehavior);
 					} else {
 						targetBehavior = ctTargetClass.getMethod(member.getName(), signatureString);
+						ctTargetClass.removeMethod((CtMethod)targetBehavior);
 					}
 					log("Instumenting [%s.%s(%s)]", targetClass.getName(), targetBehavior.getName(), signatureString);
 					// ===============================================================================================
 					//		Metric Naming
 					// ===============================================================================================					
 					String[] naming = MetricNameCompiler.getMetricNameCodePoints(targetClass, member, script.getMetricNameTemplate());
-					log("Naming Code Points: %s", Arrays.toString(naming));
-					// ===============================================================================================
-					//		Generate static instrumentor methods and fields
-					// ===============================================================================================
-					
-					final CtMethod methodEnter = new CtMethod(longArrClass, "methodEnter", new CtClass[]{}, ctInstrumentClass);
-					final CtMethod methodExit = new CtMethod(CtClass.voidType, "methodExit", new CtClass[]{stringCtClass, longArrClass}, ctInstrumentClass);
-					final CtMethod methodError = new CtMethod(CtClass.voidType, "methodError", new CtClass[]{stringCtClass, longArrClass}, ctInstrumentClass);
-					
-					ctInstrumentClass.addMethod(methodEnter);
-					ctInstrumentClass.addMethod(methodExit);
-					ctInstrumentClass.addMethod(methodError);
 
-					final CodeBuilder methodEnterSource = new CodeBuilder();
-					final CodeBuilder methodExitSource = new CodeBuilder();
-					final CodeBuilder methodErrorSource = new CodeBuilder();
 					
-					
-					methodEnter.setBody("{return null;}");
-					methodExit.setBody("{}");
-					methodError.setBody("{}");
-					
-					methodEnter.setModifiers((methodEnter.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC) & ~Modifier.ABSTRACT & ~Modifier.PUBLIC);
-					methodExit.setModifiers((methodExit.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC) & ~Modifier.ABSTRACT & ~Modifier.PUBLIC);
-					methodError.setModifiers((methodError.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC) & ~Modifier.ABSTRACT & ~Modifier.PUBLIC);
+					// ===============================================================================================
+					//		Localized static instrumentor fields
+					// ===============================================================================================
+					// The collected values stack
+					final String valueStackFieldName = "valueStack_" + methodSerial;
+					ctField = new CtField(nonBlockingHashMapLongCtClass,  valueStackFieldName , ctInstrumentClass);
+					ctField.setModifiers(ctField.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC);
+					ctInstrumentClass.addField(ctField, CtField.Initializer.byNew(nonBlockingHashMapLongCtClass));
 
-					targetBehavior.addLocalVariable("values", longArrClass);					
-					targetBehavior.insertBefore(String.format("values = %s.methodEnter();", instumentorClassName));
+
+					// ===============================================================================================
+					//		Instrument target method
+					// ===============================================================================================
+										
+					targetBehavior.insertBefore(String.format("ShorthandStaticInterceptor.methodEnter(%s.%s, %s.dataMapper);", instumentorClassName, valueStackFieldName, instumentorClassName));
 					if(naming.length==1) {
-						targetBehavior.insertAfter(String.format("%s.methodExit(\"%s\", values);", instumentorClassName, naming[0]));
-						targetBehavior.addCatch(String.format("%s.methodError(\"%s\", null); UnsafeAdapter.throwException($e); throw new RuntimeException();", instumentorClassName, naming[0]),  throwableCtClass, "$e");
+						targetBehavior.insertAfter(String.format("ShorthandStaticInterceptor.methodExit(\"%s\", %s.%s, %s.dataMapper);", naming[0], instumentorClassName, valueStackFieldName, instumentorClassName));
+						targetBehavior.addCatch(String.format("ShorthandStaticInterceptor.methodError(\"%s\", %s.%s, %s.dataMapper); UnsafeAdapter.throwException($e); throw new RuntimeException();", naming[0], instumentorClassName, valueStackFieldName, instumentorClassName),  throwableCtClass, "$e");
 					} else {
-						targetBehavior.insertAfter(String.format("%s.methodExit(String.format(\"%s\", new Object[]{%s}), values);", instumentorClassName, naming[0], naming[1]));
-						targetBehavior.addCatch(String.format("%s.methodError(String.format(\"%s\", new Object[]{%s}), null); UnsafeAdapter.throwException($e); throw new RuntimeException();", instumentorClassName, naming[0], naming[1]),  throwableCtClass, "$e");
+						targetBehavior.insertAfter(String.format("ShorthandStaticInterceptor.methodExit(String.format(\"%s\", new Object[]{%s}), %s.%s, %s.dataMapper);", naming[0], naming[1], instumentorClassName, valueStackFieldName, instumentorClassName));
+						targetBehavior.addCatch(String.format("$e.printStackTrace(System.err); ShorthandStaticInterceptor.methodError(String.format(\"%s\", new Object[]{%s}), %s.%s, %s.dataMapper); UnsafeAdapter.throwException($e); throw new RuntimeException();", naming[0], naming[1], instumentorClassName, valueStackFieldName, instumentorClassName),  throwableCtClass, "$e");
+//						targetBehavior.insertAfter(String.format("ShorthandStaticInterceptor.snap(String.format(\"%s\", new Object[]{%s}), %s.dataMapper, values);", naming[0], naming[1], instumentorClassName, valueStackFieldName));
+//						targetBehavior.addCatch(String.format("ShorthandStaticInterceptor.snap(String.format(\"%s\", new Object[]{%s}), %s.dataMapper, (long[])%s.%s.get()); UnsafeAdapter.throwException($e); throw new RuntimeException();", naming[0], naming[1], instumentorClassName, instumentorClassName, valueStackFieldName), throwableCtClass, "$e");
+						
 					}
 					
+					if(member instanceof Constructor) {						
+						ctTargetClass.addConstructor((CtConstructor)targetBehavior);
+					} else {						
+						ctTargetClass.addMethod((CtMethod)targetBehavior);
+						
+					}
 					
 				}
 				ctInstrumentClass.writeFile(JS_DEBUG);
 				ctTargetClass.writeFile(JS_DEBUG);
+				final byte[] ctInstrumentBytes = ctInstrumentClass.toBytecode();
+				final byte[] ctTargetBytes = ctTargetClass.toBytecode();
+				ClassFileTransformer cft = new ClassFileTransformer() {
+					/**
+					 * {@inheritDoc}
+					 * @see java.lang.instrument.ClassFileTransformer#transform(java.lang.ClassLoader, java.lang.String, java.lang.Class, java.security.ProtectionDomain, byte[])
+					 */
+					@Override
+					public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classfileBuffer) throws IllegalClassFormatException {
+						if(!targetClassInternalForm.equals(className)) return classfileBuffer;
+						try {
+							defineClassMethod.invoke(classLoader, instumentorClassName, ctInstrumentBytes, 0, ctInstrumentBytes.length, protectionDomain);
+							return ctTargetBytes;
+						} catch (Exception ex) {
+							ex.printStackTrace(System.err);
+							return classfileBuffer;
+						}						
+					}
+				};
+				instrumentation.addTransformer(cft, true);
+				try {
+					instrumentation.retransformClasses(targetClass);
+				} finally {
+					instrumentation.removeTransformer(cft);
+				}				
 			}
 			
 		} catch (Exception ex) {
@@ -259,6 +324,8 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 	
 	public static void main(String[] args) {
 		log("ShorthandCompiler");
+		ManagementFactory.getThreadMXBean().setThreadContentionMonitoringEnabled(true);
+		ManagementFactory.getThreadMXBean().setThreadCpuTimeEnabled(true);
 		ShorthandCompiler compiler = ShorthandCompiler.getInstance();
 		try {
 //			compiler.wrap(TestClass.class.getDeclaredMethod("awaitTermination", long.class, TimeUnit.class));
@@ -267,12 +334,20 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 //			tep.awaitTermination(10, null);
 			ShorthandScript script = ShorthandScript.parse(TestClass.class.getName() + " awaitTermination MethodInterceptor[4095] '${class}/${method}/${arg[1]}'");
 			compiler.compile(script);
+			while(true) {
+			//for(int i = 0; i < 100000; i++) {
+				TestClass tep = new TestClass();
+				tep.awaitTermination(10, TimeUnit.MILLISECONDS);
+				Thread.sleep(3000);
+			}
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		}
 			
 	}
 
+	/** The instrumentation instance */
+	protected final Instrumentation instrumentation;
 	/** The compiler's classpool */
 	protected final ClassPool classPool = new ClassPool(true);
 	/** The data mapper ct-class */
@@ -289,9 +364,21 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 	protected final CtClass throwableCtClass;
 	/** The long[] ct-class */
 	protected final CtClass longArrClass;
+	/** The thread local ct-class */
+	protected final CtClass threadLocalCtClass;
+	/** The non-blocking hashmap long ct-class */
+	protected final CtClass nonBlockingHashMapLongCtClass;
+	/** The non-blocking hashmap ct-class */
+	protected final CtClass nonBlockingHashMapCtClass;
+	
+	/** The {@link ClassLoader#} define class method */
+	protected final Method defineClassMethod;
 	
 	private ShorthandCompiler() {
 		try {
+			defineClassMethod = ClassLoader.class.getDeclaredMethod("defineClass", String.class, byte[].class, int.class, int.class, ProtectionDomain.class);
+			defineClassMethod.setAccessible(true);
+			instrumentation = LocalAgentInstaller.getInstrumentation();
 			iDataMapperCtClass = classPool.get(IDataMapper.class.getName());
 			atomicBooleanCtClass = classPool.get(AtomicBoolean.class.getName());
 			stringCtClass = classPool.get(String.class.getName());
@@ -299,10 +386,17 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 			staticInterceptorCtClass = classPool.get(ShorthandStaticInterceptor.class.getName());
 			throwableCtClass = classPool.get(Throwable.class.getName());
 			longArrClass = classPool.get(long[].class.getName());
+			threadLocalCtClass = classPool.get(ThreadLocal.class.getName());
+			nonBlockingHashMapLongCtClass = classPool.get(NonBlockingHashMapLong.class.getName());
+			nonBlockingHashMapCtClass = classPool.get(NonBlockingHashMap.class.getName());
+			
+			
 			classPool.appendClassPath(new ClassClassPath(UnsafeAdapter.class));
 			classPool.importPackage("com.heliosapm.shorthand.util.unsafe");
 			classPool.importPackage("java.util");
+			classPool.importPackage(NonBlockingHashMap.class.getPackage().getName());
 			classPool.importPackage(DataMapperBuilder.class.getPackage().getName());
+			classPool.importPackage(ShorthandStaticInterceptor.class.getPackage().getName());
 		} catch (Exception ex) {
 			throw new RuntimeException(ex);
 		}
@@ -310,9 +404,16 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 	
 	
 	public static class TestClass {
+		private static final Random R = new Random(System.currentTimeMillis());
+		private static long nextWait() {
+			return Math.abs(R.nextInt(100));
+		}
+		public void foo() {
+			awaitTermination(100, TimeUnit.NANOSECONDS);
+		}
 		public boolean awaitTermination(long t, TimeUnit unit) {
 			try {
-				Thread.currentThread().join(TimeUnit.MILLISECONDS.convert(t, unit));
+				Thread.sleep(nextWait());
 				return true;
 			} catch (Throwable e) {
 				//return false;

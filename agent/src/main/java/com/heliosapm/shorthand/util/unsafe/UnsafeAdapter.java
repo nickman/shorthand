@@ -84,6 +84,15 @@ public class UnsafeAdapter {
     
 	/** The total native memory allocation */
 	private static final AtomicLong totalMemoryAllocated;
+	
+	/**
+	 * Simple out formatted logger
+	 * @param fmt The format of the message
+	 * @param args The message arguments
+	 */
+	public static void log(String fmt, Object...args) {
+		System.out.println(String.format(fmt, args));
+	}
     
     private UnsafeAdapter() {
     	
@@ -244,10 +253,19 @@ public class UnsafeAdapter {
             BYTE_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
             int copyMemCount = 0;
             int setMemCount = 0;
+            log("\n\t=======================================================\n\tUnsafe Method Analysis\n\t=======================================================");
             for(Method method: Unsafe.class.getDeclaredMethods()) {
-            	if("copyMemory".equals(method.getName())) copyMemCount++;
-            	if("setMemory".equals(method.getName())) setMemCount++;
+            	if("copyMemory".equals(method.getName())) {
+            		copyMemCount++;
+            		log(method.toGenericString());
+            		
+            	}
+            	if("setMemory".equals(method.getName())) {
+            		setMemCount++;
+            		log(method.toGenericString());
+            	}
             }
+            log("\n\t=======================================================\n");
             FIVE_COPY = copyMemCount>1;
             FOUR_SET = setMemCount>1;
         	trackMem = ConfigurationHelper.getBooleanSystemThenEnvProperty(TRACK_MEM_PROP, TRACK_MEM_DEFAULT);   
@@ -829,7 +847,7 @@ public class UnsafeAdapter {
 	 */
 	public static long[] getLongArray(long address, int size) {
 		long[] arr = new long[size];
-		UNSAFE.copyMemory(null, address, arr, LONG_ARRAY_OFFSET, size << 3);
+		copyMemory(null, address, arr, LONG_ARRAY_OFFSET, size << 3);
 		return arr;
 	}
 	
@@ -840,7 +858,7 @@ public class UnsafeAdapter {
 	 */
 	public static void putLongArray(long address, long[] values) {
 		if(values==null || values.length==0) return;
-		UNSAFE.copyMemory(values, LONG_ARRAY_OFFSET, null, address, values.length << 3);
+		copyMemory(values, LONG_ARRAY_OFFSET, null, address, values.length << 3);
 	}
 	
 	/**
@@ -850,7 +868,7 @@ public class UnsafeAdapter {
 	 */
 	public static void putIntArray(long address, int[] values) {
 		if(values==null || values.length==0) return;
-		UNSAFE.copyMemory(values, INT_ARRAY_OFFSET, null, address, values.length << 2);
+		copyMemory(values, INT_ARRAY_OFFSET, null, address, values.length << 2);
 	}	
 	
 	/**
@@ -861,7 +879,7 @@ public class UnsafeAdapter {
 	 */
 	public static int[] getIntArray(long address, int size) {
 		int[] arr = new int[size];
-		UNSAFE.copyMemory(null, address, arr, INT_ARRAY_OFFSET, size << 2);
+		copyMemory(null, address, arr, INT_ARRAY_OFFSET, size << 2);
 		return arr;
 	}
 	

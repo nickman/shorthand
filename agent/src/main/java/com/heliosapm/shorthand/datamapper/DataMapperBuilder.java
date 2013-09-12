@@ -267,7 +267,7 @@ public class DataMapperBuilder<T extends Enum<T> & ICollector<T>> {
 						clazz.addMethod(methodException);
 						
 						// long[] methodEnter(int bitMask)
-						methodEnter.setBody(new StringBuilder("{ return ").append(enumCollectorType.getSimpleName()).append(".methodEnter($1); }").toString());
+						methodEnter.setBody(new StringBuilder("{ return ").append(enumCollectorType.getSimpleName()).append(".methodEnter(getBitMask()); }").toString());
 						// long[] methodExit(long[] values) 
 						methodExit.setBody(new StringBuilder("{ return ").append(enumCollectorType.getSimpleName()).append(".methodExit($1); }").toString());
 						// long[] methodExit(long[] values)

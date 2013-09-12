@@ -378,6 +378,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * @param dataDirectory the name of the directory to persist in
 	 */
 	protected ChronicleStore(String dataDirectory) {
+		
+		boolean useUnsafe = ConfigurationHelper.getBooleanSystemThenEnvProperty(ShorthandProperties.CHRONICLE_UNSAFE_PROP, ShorthandProperties.DEFAULT_CHRONICLE_UNSAFE);
+		
 		dataDir = new File(dataDirectory);
 		if(!dataDir.exists()) {
 			dataDir.mkdirs();
@@ -394,7 +397,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		log("Metric JMX Publication Option: [%s]", jmxPublishOption.name());
 		try {
 			enumIndex = getIntChronicle(ENUM_INDEX);
-			enumIndex.useUnsafe(true);				
+			enumIndex.useUnsafe(useUnsafe);				
 			writeZeroRec(enumIndex);
 			log(printChronicleDetails(enumIndex));
 			enumIndexEx = enumIndex.createExcerpt();
@@ -402,13 +405,13 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			nameIndex = getChronicle(NAME_INDEX);
 			nameIndex.multiThreaded(true);
 			
-			nameIndex.useUnsafe(true);			
+			nameIndex.useUnsafe(useUnsafe);			
 			writeZeroRec(nameIndex);
 			log(printChronicleDetails(nameIndex));			
 			nameIndexEx = nameIndex.createExcerpt();
 			tier1Data = getChronicle(TIER_1_DATA);
 			tier1Data.multiThreaded(true);
-			tier1Data.useUnsafe(true);
+			tier1Data.useUnsafe(useUnsafe);
 			writeZeroRec(tier1Data);
 			log(printChronicleDetails(tier1Data));			
 			notificationBroadcasterSupport = new NotificationBroadcasterSupport(notificationProcessors, NOTIFS); 
