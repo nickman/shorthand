@@ -8,22 +8,27 @@ import java.io.File;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.security.ProtectionDomain;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javassist.CannotCompileException;
 import javassist.ClassClassPath;
 import javassist.ClassPool;
+import javassist.CtBehavior;
 import javassist.CtClass;
+import javassist.CtField;
 import javassist.CtMethod;
+import javassist.Modifier;
 import javassist.bytecode.Descriptor;
 import javassist.expr.ExprEditor;
 import javassist.expr.Handler;
@@ -33,8 +38,11 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
+import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
+import com.heliosapm.shorthand.instrumentor.shorthand.naming.MetricNameCompiler;
 import com.heliosapm.shorthand.instrumentor.shorthand.naming.MetricNameProvider;
+import com.heliosapm.shorthand.util.StringHelper;
 import com.heliosapm.shorthand.util.javassist.CodeBuilder;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 
@@ -90,28 +98,108 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 		log("Removed ShorthandStaticInterceptor [%s]. Cause: [%s]", notification.getKey(), notification.getCause().name());
 	}
 	
+	/** A serial number for assigning to instrumentor classes */
+	protected static final AtomicLong INSTRUMENTOR_SERIAL = new AtomicLong();
+	/** A serial number for assigning to instrumentor class methods */
+	protected static final AtomicLong INSTRUMENTORMETHOD_SERIAL = new AtomicLong();
+	
 	/**
 	 * Compiles the passed script
 	 * @param script The script to compile
 	 */
 	public void compile(ShorthandScript script) {
-		for(Map.Entry<Class<?>, Set<Member>> entry: script.getTargetMembers().entrySet()) {
-			/* No Op */
+		try {
+			final int enumIndex = script.getEnumIndex();
+			final int bitMask = script.getBitMask();
+			final IDataMapper dataMapper = DataMapperBuilder.getInstance().getIDataMapper(enumIndex, bitMask);
+			for(Map.Entry<Class<?>, Set<Member>> entry: script.getTargetMembers().entrySet()) {
+				Class<?> targetClass = entry.getKey();
+				final long classSerial = INSTRUMENTOR_SERIAL.incrementAndGet();
+				final ClassLoader classLoader = targetClass.getClassLoader();
+				final String instumentorKey = targetClass.getName() + "/" + (classLoader==null ? "system" : classLoader.toString());
+				final String instumentorClassName = String.format("%s$__Instrumentor__%s", targetClass.getName(), classSerial);
+				final CtClass ctInstrumentClass = classPool.makeClass(instumentorClassName, staticInterceptorCtClass);
+				final CtClass ctTargetClass = classPool.get(targetClass.getName());
+				CtField dataMapperField = new CtField(iDataMapperCtClass,  "dataMapper", ctInstrumentClass);
+				dataMapperField.setModifiers(dataMapperField.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC);
+				ctInstrumentClass.addField(dataMapperField, CtField.Initializer.byExpr(String.format("DataMapperBuilder.getInstance().getIDataMapper(%s, %s)", enumIndex, bitMask))); 
+				for(Member member: entry.getValue()) {
+					final String signatureString = StringHelper.getMemberDescriptor(member);
+					final CtBehavior targetBehavior;
+					if(member instanceof Field) {
+						loge("Shorthand compiler does not support field access interception yet");
+						continue;
+					} else if(member instanceof Constructor) {
+						targetBehavior = ctTargetClass.getConstructor(signatureString);
+					} else {
+						targetBehavior = ctTargetClass.getMethod(member.getName(), signatureString);
+					}
+					log("Instumenting [%s.%s(%s)]", targetClass.getName(), targetBehavior.getName(), signatureString);
+					// ===============================================================================================
+					//		Metric Naming
+					// ===============================================================================================					
+					String[] naming = MetricNameCompiler.getMetricNameCodePoints(targetClass, member, script.getMetricNameTemplate());
+					log("Naming Code Points: %s", Arrays.toString(naming));
+					// ===============================================================================================
+					//		Generate static instrumentor methods and fields
+					// ===============================================================================================
+					
+					final CtMethod methodEnter = new CtMethod(longArrClass, "methodEnter", new CtClass[]{}, ctInstrumentClass);
+					final CtMethod methodExit = new CtMethod(CtClass.voidType, "methodExit", new CtClass[]{stringCtClass, longArrClass}, ctInstrumentClass);
+					final CtMethod methodError = new CtMethod(CtClass.voidType, "methodError", new CtClass[]{stringCtClass, longArrClass}, ctInstrumentClass);
+					
+					ctInstrumentClass.addMethod(methodEnter);
+					ctInstrumentClass.addMethod(methodExit);
+					ctInstrumentClass.addMethod(methodError);
+
+					final CodeBuilder methodEnterSource = new CodeBuilder();
+					final CodeBuilder methodExitSource = new CodeBuilder();
+					final CodeBuilder methodErrorSource = new CodeBuilder();
+					
+					
+					methodEnter.setBody("{return null;}");
+					methodExit.setBody("{}");
+					methodError.setBody("{}");
+					
+					methodEnter.setModifiers((methodEnter.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC) & ~Modifier.ABSTRACT & ~Modifier.PUBLIC);
+					methodExit.setModifiers((methodExit.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC) & ~Modifier.ABSTRACT & ~Modifier.PUBLIC);
+					methodError.setModifiers((methodError.getModifiers() | Modifier.FINAL | Modifier.PROTECTED | Modifier.STATIC) & ~Modifier.ABSTRACT & ~Modifier.PUBLIC);
+
+					targetBehavior.addLocalVariable("values", longArrClass);					
+					targetBehavior.insertBefore(String.format("values = %s.methodEnter();", instumentorClassName));
+					if(naming.length==1) {
+						targetBehavior.insertAfter(String.format("%s.methodExit(\"%s\", values);", instumentorClassName, naming[0]));
+						targetBehavior.addCatch(String.format("%s.methodError(\"%s\", null); UnsafeAdapter.throwException($e); throw new RuntimeException();", instumentorClassName, naming[0]),  throwableCtClass, "$e");
+					} else {
+						targetBehavior.insertAfter(String.format("%s.methodExit(String.format(\"%s\", new Object[]{%s}), values);", instumentorClassName, naming[0], naming[1]));
+						targetBehavior.addCatch(String.format("%s.methodError(String.format(\"%s\", new Object[]{%s}), null); UnsafeAdapter.throwException($e); throw new RuntimeException();", instumentorClassName, naming[0], naming[1]),  throwableCtClass, "$e");
+					}
+					
+					
+				}
+				ctInstrumentClass.writeFile(JS_DEBUG);
+				ctTargetClass.writeFile(JS_DEBUG);
+			}
+			
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
 		}
 	}
 	
-	protected Handler getLastThrowableHandler(CtMethod ctMethod) {
+	/**
+	 * Retrieves the last catch or finally block in the passed method
+	 * @param ctMethod The method to scan
+	 * @param finallyBlock true for a finally block, false for a catch block
+	 * @return the last hanlder or none if one was not found
+	 */
+	protected Handler getLastHandler(CtMethod ctMethod, final boolean finallyBlock) {
 		final AtomicReference<Handler> handler = new AtomicReference<Handler>(null);
 		try {
 			ctMethod.instrument(new ExprEditor(){
-				/**
-				 * {@inheritDoc}
-				 * @see javassist.expr.ExprEditor#edit(javassist.expr.Handler)
-				 */
 				@Override
 				public void edit(Handler h) throws CannotCompileException {
 					try {
-						if(!h.isFinally() && h.getType().equals(throwableCtClass)) {
+						if(h.isFinally()==finallyBlock && h.getType().equals(throwableCtClass)) {
 							handler.set(h);
 						}
 					} catch (Exception ex) {}
@@ -126,6 +214,8 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 	
 	public void wrap(Method method) {
 		log("Wrapping [%s]", method.toGenericString());
+		Member member = method;
+		log("Signature [%s]", StringHelper.getMemberDescriptor(member));
 		try {
 			Class<?> clazz = method.getDeclaringClass();
 			CtClass ctClazz = classPool.get(clazz.getName());
@@ -135,8 +225,8 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 			}
 			log("Instrumenting [%s]", Descriptor.ofParameters(ctParams));
 			CtMethod ctMethod = ctClazz.getDeclaredMethod(method.getName(), ctParams);
-			Handler handler = getLastThrowableHandler(ctMethod);
-			log("Last Throwable Handler [%s]", handler);
+			Handler lastThrowable = getLastHandler(ctMethod, false);
+			log("Last Throwable Handler [%s]", lastThrowable);
 			
 			ctMethod.insertBefore("System.out.println(\"MethodEnter[\" + Arrays.toString($args) + \"]\");");
 			ctMethod.insertAfter("System.out.println(\"MethodExit[\" + Arrays.toString($args) + \"]\");");
@@ -171,10 +261,12 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 		log("ShorthandCompiler");
 		ShorthandCompiler compiler = ShorthandCompiler.getInstance();
 		try {
-			compiler.wrap(TestClass.class.getDeclaredMethod("awaitTermination", long.class, TimeUnit.class));
-			TestClass tep = new TestClass();
-			tep.awaitTermination(10, TimeUnit.MILLISECONDS);
-			tep.awaitTermination(10, null);
+//			compiler.wrap(TestClass.class.getDeclaredMethod("awaitTermination", long.class, TimeUnit.class));
+//			TestClass tep = new TestClass();
+//			tep.awaitTermination(10, TimeUnit.MILLISECONDS);
+//			tep.awaitTermination(10, null);
+			ShorthandScript script = ShorthandScript.parse(TestClass.class.getName() + " awaitTermination MethodInterceptor[4095] '${class}/${method}/${arg[1]}'");
+			compiler.compile(script);
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		}
@@ -195,6 +287,8 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 	protected final CtClass staticInterceptorCtClass;
 	/** The throwable ct-class */
 	protected final CtClass throwableCtClass;
+	/** The long[] ct-class */
+	protected final CtClass longArrClass;
 	
 	private ShorthandCompiler() {
 		try {
@@ -204,10 +298,11 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 			metricNameProviderCtClass = classPool.get(MetricNameProvider.class.getName());
 			staticInterceptorCtClass = classPool.get(ShorthandStaticInterceptor.class.getName());
 			throwableCtClass = classPool.get(Throwable.class.getName());
-			
+			longArrClass = classPool.get(long[].class.getName());
 			classPool.appendClassPath(new ClassClassPath(UnsafeAdapter.class));
 			classPool.importPackage("com.heliosapm.shorthand.util.unsafe");
 			classPool.importPackage("java.util");
+			classPool.importPackage(DataMapperBuilder.class.getPackage().getName());
 		} catch (Exception ex) {
 			throw new RuntimeException(ex);
 		}
@@ -220,8 +315,8 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 				Thread.currentThread().join(TimeUnit.MILLISECONDS.convert(t, unit));
 				return true;
 			} catch (Throwable e) {
-				return false;
-				//throw new RuntimeException("INTERRUPTED WHILE WAITING");
+				//return false;
+				throw new RuntimeException("INTERRUPTED WHILE WAITING");
 			}
 		}
 	}

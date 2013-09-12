@@ -24,6 +24,7 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,13 +52,6 @@ import com.google.common.cache.RemovalNotification;
  */
 
 public class MetricNameCompiler {
-	// examine template
-	// if there are no runtime tokens, generate a method returning a statically compiled value
-	// otherwise generate a method extracting the runtime tokens
-	
-//	public interface MetricNameProvider {
-//		public String getMetricName();
-//	}
 	
 	private static final AtomicLong classSerial = new AtomicLong();
 			
@@ -89,6 +83,33 @@ public class MetricNameCompiler {
 			.weakKeys().removalListener(classRemovalListener).build();
 	
 	private static final CtClass[] EMPTY_ARR = {};
+	
+	public static String[] getMetricNameCodePoints(Class<?> clazz, Member member, String metricNameExpression) {
+		String[] codePoints = null;
+		StringBuffer b = new StringBuffer();
+		Matcher matcher = MetricNamingToken.ALL_PATTERNS.matcher(metricNameExpression);
+		StringBuilder javassistExpressions = new StringBuilder();
+		while(matcher.find()) {
+			String matchedPattern = matcher.group(0);
+			MetricNamingToken token = MetricNamingToken.matchToken(matcher.group(0));
+			String[] replacers = token.extractor.getStringReplacement(matchedPattern, clazz, member);
+			log("Replacers %s", Arrays.toString(replacers));
+			matcher.appendReplacement(b, replacers[0]);
+			if(token.runtime) {
+				javassistExpressions.append(replacers[1]).append(",");
+			}				
+		}
+		matcher.appendTail(b);
+		if(javassistExpressions.length()>0) {
+			codePoints = new String[2];
+			javassistExpressions.deleteCharAt(javassistExpressions.length()-1);
+			codePoints[1] = javassistExpressions.toString(); 
+		} else {
+			codePoints = new String[1];
+		}
+		codePoints[0] = b.toString();
+		return codePoints;
+	}
 	
 	
 	private static MetricNameProvider compile(Class<?> clazz, Method method, String metricNameExpression) {

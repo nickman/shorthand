@@ -4,9 +4,6 @@
  */
 package com.heliosapm.shorthand.datamapper;
 
-import gnu.trove.map.hash.TIntLongHashMap;
-import gnu.trove.map.hash.TObjectLongHashMap;
-
 import java.util.Map;
 
 import com.heliosapm.shorthand.collectors.ICollector;
@@ -101,10 +98,9 @@ public interface IDataMapper<T extends Enum<T> & ICollector<T>> {
 	
 	/**
 	 * Triggers method entry metric collection
-	 * @param bitMask The enabled metrics bitmask
 	 * @return the collected baseline values
 	 */
-	public long[] methodEnter(int bitMask);
+	public long[] methodEnter();
 	
 	/**
 	 * Triggers method normal exit metric basline resolution

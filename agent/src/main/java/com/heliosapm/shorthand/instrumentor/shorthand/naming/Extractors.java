@@ -26,7 +26,10 @@ package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
 import java.io.File;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -81,19 +84,20 @@ public class Extractors {
 	 * Returns the first annotation instance found on the method where the annotation's class name or simple class name equals the passed name.
 	 * If one is not found, the the class is searched for the same
 	 * @param name The name we're searching for
-	 * @param method The method to inspect
+	 * @param member The method or constructor to inspect
 	 * @return a [possibly null] annotation
 	 */
-	public static Annotation getAnnotation(String name, Method method) {
+	public static Annotation getAnnotation(String name, Member member) {
 		Annotation annotation = null;
-		for(Annotation ann: method.getAnnotations()) {
+		AnnotatedElement annotatedElement = (AnnotatedElement)member;
+		for(Annotation ann: annotatedElement.getAnnotations()) {
 			if(ann.annotationType().getName().equals(name) || ann.annotationType().getSimpleName().equals(name)) {
 				annotation = ann;
 				break;
 			}
 		}
 		if(annotation==null) {
-			for(Annotation ann: method.getDeclaringClass().getAnnotations()) {
+			for(Annotation ann: member.getDeclaringClass().getAnnotations()) {
 				if(ann.annotationType().getName().equals(name) || ann.annotationType().getSimpleName().equals(name)) {
 					annotation = ann;
 					break;
@@ -133,7 +137,7 @@ public class Extractors {
 		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Member member, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Matcher matcher = MetricNamingToken.$THIS.pattern.matcher(expr);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $THIS expression [" + expression + "]");
@@ -145,7 +149,7 @@ public class Extractors {
 			} else {
 				extract = codePoint;
 			}
-			validateCodePoint("$THIS", clazz, method, extract + ";");
+			validateCodePoint("$THIS", clazz, member, extract + ";");
 			return toArray("%s", extract);	
 		}
 	};
@@ -154,23 +158,23 @@ public class Extractors {
 	 * Attempts to compile a snippet to validate a code point
 	 * @param name The extractor name
 	 * @param clazz The class targetted for instrumentation
-	 * @param method The method targetted for instrumentation
+	 * @param member The method or constructor targetted for instrumentation
 	 * @param codePoint The code point
 	 */
-	private static void validateCodePoint(String name, Class<?> clazz, Method method, String codePoint) {
+	private static void validateCodePoint(String name, Class<?> clazz, Member member, String codePoint) {
 		ClassPool cPool = new ClassPool(true);
 		CtClass ctClass = null;
 		cPool.appendClassPath(new ClassClassPath(clazz));
 		try {
 			ctClass = cPool.get(clazz.getName());
-			CtMethod ctMethod = ctClass.getMethod(method.getName(), StringHelper.getMethodDescriptor(method));
+			CtMethod ctMethod = ctClass.getMethod(member.getName(), StringHelper.getMemberDescriptor(member));
 			ctClass.removeMethod(ctMethod);
 			ctMethod.insertAfter(codePoint);
 			ctClass.addMethod(ctMethod);
 			ctClass.writeFile(System.getProperty("java.io.tmpdir") + File.separator + "js");
 			ctClass.toBytecode();
 		} catch (Exception ex) {
-			throw new RuntimeException("Failed to validate " + name + "] codepoint for [" + clazz.getName() + "." + method.getName() + "]. Codepoint was [" + codePoint + "]", ex);
+			throw new RuntimeException("Failed to validate " + name + "] codepoint for [" + clazz.getName() + "." + member.getName() + "]. Codepoint was [" + codePoint + "]", ex);
 		} finally {
 			if(ctClass!=null) ctClass.detach();
 		}
@@ -185,7 +189,7 @@ public class Extractors {
 		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Member member, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Matcher matcher = MetricNamingToken.$ARG.pattern.matcher(expr);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $ARG expression [" + expression + "]");
@@ -198,7 +202,13 @@ public class Extractors {
 				try { index = Integer.parseInt(matchedIndex); } catch (Exception x) {
 					throw new RuntimeException("Invalid $ARG expression [" + expression + "]. Neither a code-point or an index were matched");
 				}
-				Class<?> argType = method.getParameterTypes()[index]; 
+				Class<?>[] paramTypes = null;
+				if(member instanceof Constructor) {
+					paramTypes = ((Constructor)member).getParameterTypes(); 
+				} else {
+					paramTypes = ((Method)member).getParameterTypes();
+				}
+				Class<?> argType = paramTypes[index]; 
 				index++;
 				if(argType.isPrimitive()) {
 					extract = String.format("(\"\" + $%s)", index);
@@ -211,7 +221,7 @@ public class Extractors {
 				extract = codePoint;
 			}
 			log("Extract:[%s]", extract);
-			validateCodePoint("$ARG", clazz, method, extract + ";");
+			validateCodePoint("$ARG", clazz, member, extract + ";");
 			return toArray("%s", extract);			
 		}
 	};
@@ -260,12 +270,12 @@ public class Extractors {
 		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Member member, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Matcher matcher = MetricNamingToken.$JAVA.pattern.matcher(expr);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $JAVAexpression [" + expression + "]");
 			String extract = String.format("(\"\" + (%s))",  matcher.group(1));
-			validateCodePoint("$JAVA", clazz, method, extract + ";");
+			validateCodePoint("$JAVA", clazz, member, extract + ";");
 			return toArray("%s", extract);			
 		}
 	};
@@ -278,7 +288,7 @@ public class Extractors {
 		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Member member, Object...qualifiers) {
 			String expr = WS_CLEANER.matcher(expression.toString().trim()).replaceAll("");
 			Matcher matcher = MetricNamingToken.$ANNOTATION.pattern.matcher(expr);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $ANNOTATION expression [" + expr + "]");
@@ -286,9 +296,9 @@ public class Extractors {
 			String annotationName = matcher.group(2);
 			String postAnnotationCode = matcher.group(3);
 			
-			Annotation ann = getAnnotation(annotationName, method);
+			Annotation ann = getAnnotation(annotationName, member);
 			if(ann==null) {
-				throw new RuntimeException("No annotation named [" + annotationName + "] found on  [" + clazz.getName() + "." + method.getName() + "] for expression [" + expr + "]");
+				throw new RuntimeException("No annotation named [" + annotationName + "] found on  [" + clazz.getName() + "." + member.getName() + "] for expression [" + expr + "]");
 			}
 			
 			if(preAnnotationCode==null) preAnnotationCode=""; else preAnnotationCode = preAnnotationCode.trim();
@@ -315,7 +325,7 @@ public class Extractors {
 		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object... args) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Member member, Object... args) {
 			Matcher matcher = MetricNamingToken.$PACKAGE.pattern.matcher(expression);
 			if(!matcher.matches()) throw new RuntimeException("Unexpected non-macthing $PACKAGE expression [" + expression + "]");
 			String strIndex = matcher.group(1); 
@@ -339,7 +349,7 @@ public class Extractors {
 		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object... args) {
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Member member, Object... args) {
 			return toArray(clazz.getSimpleName());
 		}
 	};
@@ -351,8 +361,8 @@ public class Extractors {
 		 * @see com.heliosapm.shorthand.instrumentor.shorthand.naming.ValueExtractor#getStringReplacement(java.lang.CharSequence, java.lang.Class, java.lang.reflect.Method, java.lang.Object[])
 		 */
 		@Override
-		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object... args) {
-			return toArray(method.getName());
+		public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Member member, Object... args) {
+			return toArray(member.getName());
 		}		
 	};
 	

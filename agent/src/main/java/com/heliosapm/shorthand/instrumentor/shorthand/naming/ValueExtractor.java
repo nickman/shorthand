@@ -24,6 +24,7 @@
  */
 package com.heliosapm.shorthand.instrumentor.shorthand.naming;
 
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 
 /**
@@ -38,9 +39,9 @@ interface ValueExtractor {
 	 * Returns a static metric name part for the passed class and method
 	 * @param expression The token expression
 	 * @param clazz The target class
-	 * @param method The target method
+	 * @param member The target method or constructor
 	 * @param qualifiers Additional reference qualifiers such as indexes
 	 * @return the static metric name part or the "%s" runtime replacement token and the Java expression that will replace it.
 	 */
-	public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Method method, Object...qualifiers);
+	public String[] getStringReplacement(CharSequence expression, Class<?> clazz, Member member, Object...qualifiers);
 }
