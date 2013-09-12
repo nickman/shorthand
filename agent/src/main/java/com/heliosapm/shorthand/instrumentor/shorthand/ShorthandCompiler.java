@@ -5,6 +5,7 @@
 package com.heliosapm.shorthand.instrumentor.shorthand;
 
 import java.io.File;
+import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.lang.instrument.Instrumentation;
@@ -42,6 +43,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
+import com.heliosapm.shorthand.accumulator.MetricSnapshotAccumulator;
 import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
 import com.heliosapm.shorthand.datamapper.DataMapperBuilder;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
@@ -215,8 +217,10 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 						ctTargetClass.addMethod((CtMethod)targetBehavior);
 						
 					}
-					
+										
 				}
+				classPool.get(instrumentation.getClass().getName()).writeFile(JS_DEBUG);
+				MetricSnapshotAccumulator.getInstance();
 				ctInstrumentClass.writeFile(JS_DEBUG);
 				ctTargetClass.writeFile(JS_DEBUG);
 				final byte[] ctInstrumentBytes = ctInstrumentClass.toBytecode();
@@ -238,9 +242,11 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 						}						
 					}
 				};
+				log("Instrumentation reTrans:%s  redef:%s", instrumentation.isRetransformClassesSupported(), instrumentation.isRedefineClassesSupported());
 				instrumentation.addTransformer(cft, true);
 				try {
 					instrumentation.retransformClasses(targetClass);
+					//instrumentation.redefineClasses(new ClassDefinition(targetClass, ctTargetBytes));
 				} finally {
 					instrumentation.removeTransformer(cft);
 				}				
@@ -313,7 +319,7 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 				}
 			};
 			Instrumentation instr = LocalAgentInstaller.getInstrumentation();
-			instr.addTransformer(cft, true);
+			instr.addTransformer(cft, false);
 			instr.retransformClasses(clazz);
 			instr.removeTransformer(cft);
 			log("Transformed class [%s]", clazz.getName());
