@@ -30,15 +30,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.management.ManagementFactory;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
-
-import javax.management.ObjectName;
-
-import com.sun.tools.attach.VirtualMachine;
 
 
 /**
@@ -60,24 +55,24 @@ public class AgentInstaller {
 	 */
 	public static void main(String[] args) {
 		try {
-			// Get this JVM's PID
-			String pid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
-			// Attach (to ourselves)
-		    VirtualMachine vm = VirtualMachine.attach(pid);
-		    // Create an agent jar (since we're in DEV mode)
-	    	String fileName = createAgent();
-	    	// Load the agent into this JVM
-	    	vm.loadAgent(fileName);
-	    	System.out.println("Agent Loaded");
-			ObjectName on = new ObjectName("transformer:service=DemoTransformer");
-			System.out.println("Instrumentation Deployed:" + ManagementFactory.getPlatformMBeanServer().isRegistered(on));
-	    	// Run sayHello in a loop
-			Person person = new Person();
-			for(int i = 0; i < 1000; i++) {
-				person.sayHello(i);
-				person.sayHello("" + (i*-1));
-				Thread.currentThread().join(5000);
-			}
+//			// Get this JVM's PID
+//			String pid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
+//			// Attach (to ourselves)
+//		    VirtualMachine vm = VirtualMachine.attach(pid);
+//		    // Create an agent jar (since we're in DEV mode)
+//	    	String fileName = createAgent();
+//	    	// Load the agent into this JVM
+//	    	vm.loadAgent(fileName);
+//	    	System.out.println("Agent Loaded");
+//			ObjectName on = new ObjectName("transformer:service=DemoTransformer");
+//			System.out.println("Instrumentation Deployed:" + ManagementFactory.getPlatformMBeanServer().isRegistered(on));
+//	    	// Run sayHello in a loop
+//			Person person = new Person();
+//			for(int i = 0; i < 1000; i++) {
+//				person.sayHello(i);
+//				person.sayHello("" + (i*-1));
+//				Thread.currentThread().join(5000);
+//			}
 		} catch (Exception ex) {
 			System.err.println("Agent Installation Failed. Stack trace follows...");
 			ex.printStackTrace(System.err);

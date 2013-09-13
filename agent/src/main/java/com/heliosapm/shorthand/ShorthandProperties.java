@@ -115,5 +115,24 @@ public class ShorthandProperties {
 	/** The name of the attribute in the agent provider that will provide the instrumentation instance if we don't boot with this as the java-agent */
 	public static final String AGENT_PROVIDER_ATTRIBUTE = "shorthand.instrumentation.attribute";
 
+    /** The system property that defines the number of milliseconds the shutdown service will wait for notifications to be sent before completing the shutdown */
+    public static final String AGENT_SHUTDOWN_NOTIFICATION_TIMEOUT_PROP = "shorthand.shutdown.notification.time";    
+    /** The default number of milliseconds the shutdown service will wait for notifications to be sent before completing the shutdown */
+    public static final long DEFAULT_SHUTDOWN_NOTIFICATION_TIMEOUT = 500L;
+    
+    /** The system property that defines the multicast network to broadcast the startup */
+    public static final String AGENT_STARTUP_BROADCAST_NETWORK_PROP = "shorthand.startup.broadcast.network";
+    /** The system property that defines the network interface to multicast on */
+    public static final String AGENT_STARTUP_BROADCAST_NIC_PROP = "shorthand.startup.broadcast.nic";
+    /** The system property that defines the multicast port to broadcast the startup */
+    public static final String AGENT_STARTUP_BROADCAST_PORT_PROP = "shorthand.startup.broadcast.port";
+    
+    /** The default multicast network to broadcast JVM startup */
+    public static final String DEFAULT_STARTUP_BROADCAST_NETWORK = "238.191.64.66";
+    /** The default NIC name to broadcast JVM startup */
+    public static final String DEFAULT_STARTUP_BROADCAST_NIC = "lo";
+    /** The default port to broadcast JVM startup */
+    public static final int DEFAULT_STARTUP_BROADCAST_PORT = 25493;
+    
     
 }
