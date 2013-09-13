@@ -343,7 +343,9 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 			while(true) {
 			//for(int i = 0; i < 100000; i++) {
 				TestClass tep = new TestClass();
-				tep.awaitTermination(10, TimeUnit.MILLISECONDS);
+				try {
+					tep.awaitTermination(10, TimeUnit.MILLISECONDS);
+				} catch (Exception ex) {}
 				Thread.sleep(3000);
 			}
 		} catch (Exception ex) {
@@ -420,6 +422,7 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 		public boolean awaitTermination(long t, TimeUnit unit) {
 			try {
 				Thread.sleep(nextWait());
+				if(nextWait()%5==0) throw new Exception();
 				return true;
 			} catch (Throwable e) {
 				//return false;

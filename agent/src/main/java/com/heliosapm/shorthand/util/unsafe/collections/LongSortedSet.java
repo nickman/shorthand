@@ -111,6 +111,14 @@ public class LongSortedSet {
 		return array.asDoubleArray();
 	}	
 	
+    /**
+     * Returns this array as an array of longs
+     * @return an array of longs
+     */
+	public long[] asLongArray() {
+		return array.getArray();
+	}
+	
 	/**
 	 * Returns true if the passed long value is in the array
 	 * @param value the long value to test for

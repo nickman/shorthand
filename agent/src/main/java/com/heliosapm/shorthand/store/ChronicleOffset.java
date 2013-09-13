@@ -220,7 +220,7 @@ public enum ChronicleOffset {
 			ex.read(bytes);
 			return new String(bytes);
 		} finally {
-			if(closeEx) ex.close();
+			if(closeEx) try { ex.close(); } catch (Exception x) {}
 		}		
 	}
 	
@@ -233,15 +233,7 @@ public enum ChronicleOffset {
 		return getName(index, null);
 	}
 	
-	/**
-	 * Executes a period update against the metric represented in the passed mem-space accessor.
-	 * @param msa The mem-space accessor wrapping the mem-space of the target metric
-	 * @param periodStart The period start time
-	 * @param periodEnd The period end time
-	 */
-	public static void updatePeriod(MemSpaceAccessor<?> msa, long periodStart, long periodEnd) {
-		updatePeriod(msa, periodStart, periodEnd, null);
-	}
+
 	
 	
 	/**
@@ -251,12 +243,7 @@ public enum ChronicleOffset {
 	 * @param periodEnd The period end time
 	 * @param ex The excerpt to write with. If null, will create a new one and close it on completion
 	 */
-	public static void updatePeriod(MemSpaceAccessor<?> msa, long periodStart, long periodEnd, Excerpt ex) {
-		final boolean closeEx = ex==null;
-		Excerpt dataEx = chronicleStore.tier1Data.createExcerpt();
-		if(ex==null) {
-			ex = ChronicleStore.getInstance().nameIndex.createExcerpt();			
-		}
+	public static void updatePeriod(MemSpaceAccessor<?> msa, long periodStart, long periodEnd, Excerpt ex, Excerpt dataEx) {
 		try {
 			ex.index(msa.getNameIndex());
 			ex.position(PeriodStart.offset);
@@ -272,8 +259,6 @@ public enum ChronicleOffset {
 			}			
 			ex.finish();
 		} finally {
-			if(closeEx) ex.close();
-			dataEx.close();
 		}
 		
 	}

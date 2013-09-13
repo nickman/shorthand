@@ -80,7 +80,7 @@ public class ShorthandProperties {
 	/** The system property that defines how active metrics should be published. The value supplied should be an enum member name from {@link MetricJMXPublishOption} */
 	public static final String PUBLISH_JMX_PROP = "shorthand.metrics.publish";
 	/** The system property that defines the shorthand stale period in ms. which is the elapsed time in which a metric is considered stale with no activity */
-	public static final String DEFAULT_PUBLISH_JMX = MetricJMXPublishOption.DATA.name();
+	public static final String DEFAULT_PUBLISH_JMX = MetricJMXPublishOption.NONE.name();
 	
 	/** The system property that defines a comma separated package list where enum collector classes are located */
 	public static final String ENUM_COLLECTOR_PACKAGES_PROP = "shorthand.metrics.publish";

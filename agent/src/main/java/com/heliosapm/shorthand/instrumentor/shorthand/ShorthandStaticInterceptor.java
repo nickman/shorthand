@@ -67,9 +67,8 @@ public class ShorthandStaticInterceptor {
 	 * @param valueStack
 	 * @param dataMapper
 	 */
-	protected static final void methodEnter(NonBlockingHashMapLong<long[]> valueStack, IDataMapper dataMapper) {
-	        long al[] = dataMapper.methodEnter();
-	        valueStack.put(Thread.currentThread().getId(), al);
+	protected static final void methodEnter(NonBlockingHashMapLong<long[]> valueStack, IDataMapper<?> dataMapper) {	        
+	        valueStack.put(Thread.currentThread().getId(), dataMapper.methodEnter());
 	    }
 
 	    /**
@@ -77,8 +76,8 @@ public class ShorthandStaticInterceptor {
 	     * @param valueStack
 	     * @param dataMapper
 	     */
-	    protected static final void methodExit(String metricName, NonBlockingHashMapLong<long[]> valueStack, IDataMapper dataMapper) {
-	        ShorthandStaticInterceptor.snap(metricName, dataMapper, valueStack.get(Thread.currentThread().getId()));
+	    protected static final void methodExit(String metricName, NonBlockingHashMapLong<long[]> valueStack, IDataMapper<?> dataMapper) {
+	        ShorthandStaticInterceptor.snap(metricName, dataMapper, dataMapper.methodExit(valueStack.get(Thread.currentThread().getId())));
 	    }
 
 	    /**
@@ -86,8 +85,8 @@ public class ShorthandStaticInterceptor {
 	     * @param valueStack
 	     * @param dataMapper
 	     */
-	    protected static final void methodError(String metricName, NonBlockingHashMapLong<long[]> valueStack, IDataMapper dataMapper) {
-	        ShorthandStaticInterceptor.snap(metricName, dataMapper, valueStack.get(Thread.currentThread().getId()));
+	    protected static final void methodError(String metricName, NonBlockingHashMapLong<long[]> valueStack, IDataMapper<?> dataMapper) {
+	    	ShorthandStaticInterceptor.snap(metricName, dataMapper, dataMapper.methodException(valueStack.get(Thread.currentThread().getId())));
 	    }
 	
 	

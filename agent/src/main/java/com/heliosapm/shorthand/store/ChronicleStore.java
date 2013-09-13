@@ -7,6 +7,7 @@ import gnu.trove.map.hash.TObjectIntHashMap;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.nio.ByteOrder;
@@ -104,7 +105,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	/** Serial number factory for notification thread pool thread names */
 	protected final AtomicInteger threadSerial = new AtomicInteger();
 	/** Notification thread pool */
-	protected final ThreadPoolExecutor notificationProcessors = new ThreadPoolExecutor(2, 2, 15000, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(1000, false), this, this); 
+	protected final ThreadPoolExecutor notificationProcessors = new ThreadPoolExecutor(2, 2, 15000, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(1000, false), this, this);
+	
+	/** The name indexing service */
+	protected final ChronicleRegexIndexer nameIndexer;
 	
 	/**
 	 * Acquires the singleton ChronicleStore instance
@@ -116,7 +120,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			synchronized(lock) {
 				if(instance==null) {
 					instance = new ChronicleStore();
-					instance.loadSnapshotNameIndex();
+//					instance.loadSnapshotNameIndex();
 				}
 			}
 		}
@@ -201,6 +205,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	
 	/** The configured jmx mbean publication option */
 	protected final MetricJMXPublishOption jmxPublishOption;
+	
 	
 	
 	/** This store's JMX ObjectName */
@@ -354,7 +359,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * Creates a new ChronicleStore persisting to the default directory
 	 */
 	protected ChronicleStore() {		
-		this(ConfigurationHelper.getSystemThenEnvProperty(ShorthandProperties.CHRONICLE_DIR_PROP, ShorthandProperties.DEFAULT_CHRONICLE_DIR));
+		this(ConfigurationHelper.getSystemThenEnvProperty(ShorthandProperties.CHRONICLE_DIR_PROP, ShorthandProperties.DEFAULT_CHRONICLE_DIR));		
 	}
 	
 	/**
@@ -389,13 +394,19 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			throw new IllegalArgumentException("The directory [" + dataDirectory + "] is not valid");
 		}
 		log("Initializing chronicle store in [%s]", dataDir.getAbsolutePath());
-		com.higherfrequencytrading.chronicle.tools.ChronicleTools.deleteOnExit(dataDir.getAbsolutePath());
+		File lockFile = new File(dataDir.getAbsolutePath() + File.separator + "shorthand.lock");
+		//com.higherfrequencytrading.chronicle.tools.ChronicleTools.deleteOnExit(dataDir.getAbsolutePath());
 		SNAPSHOT_INDEX = new NonBlockingHashMap<String, Long>(1024);
 		UNLOADED_INDEX = new NonBlockingHashMap<String, Long>(1024);
 		padCache = System.getProperty(ShorthandProperties.USE_POW2_ALLOC_PROP, ShorthandProperties.DEFAULT_USE_POW2_ALLOC).toLowerCase().trim().equals("true");
 		jmxPublishOption = MetricJMXPublishOption.forName(System.getProperty(ShorthandProperties.PUBLISH_JMX_PROP, ShorthandProperties.DEFAULT_PUBLISH_JMX));
 		log("Metric JMX Publication Option: [%s]", jmxPublishOption.name());
 		try {
+			if(!lockFile.createNewFile()) {
+				throw new RuntimeException("Failed to create shorthand lock file [" + lockFile.getAbsolutePath() + "]");
+			}
+			new RandomAccessFile(lockFile, "rw").getChannel().lock();
+			new ShorthandChronicleCleaner(dataDir.getParentFile().getAbsolutePath()).start();
 			enumIndex = getIntChronicle(ENUM_INDEX);
 			enumIndex.useUnsafe(useUnsafe);				
 			writeZeroRec(enumIndex);
@@ -422,6 +433,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					
 				}
 			}, null, null);
+			nameIndexer = new ChronicleRegexIndexer(nameIndex, dataDir);
+			nameIndexer.search(".*ca.*");
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			throw new RuntimeException("Failed to initialize name index chronicle", ex);
@@ -576,35 +589,35 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		}
 	}
 
-	/**
-	 * Loads the unloaded name index on startup
-	 */
-	protected void loadSnapshotNameIndex() {
-		log("Loading NameIndex....");
-		long index = 1;
-		while(nameIndexEx.index(index)) {
-			byte deleted = nameIndexEx.readByte(); 
-			if(deleted==0) {  															// check the deleted flag
-				int enumIndex = (int)ChronicleOffset.EnumIndex.get(index, nameIndexEx);	// the enum index
-				String name = ChronicleOffset.getName(index, nameIndexEx);				// the metric name
-				if(!ENUM_CACHE.containsValue(enumIndex)) {
-					loge("Warning: MetricName [%s] had unrecognized enum index [%s]", name, enumIndex);
-					markNameIndexDeleted(nameIndexEx.index());
-				}
-				if(UNLOADED_INDEX.put(name, (index * -1L))!=null) {
-					log("WARNING:  Duplicate name [" + name + "] at index [" + index + "]");
-				} else {
-//					log("Loaded [" + name + "]");
-				}
-			}
-			index++;
-		}
-		if(index>0) {
-			log(String.format("Loaded\n\tNameIndexes: [%s]", index));
-		} else {
-			log("Initialized new name index.");
-		}
-	}
+//	/**
+//	 * Loads the unloaded name index on startup
+//	 */
+//	protected void loadSnapshotNameIndex() {
+//		log("Loading NameIndex....");
+//		long index = 1;
+//		while(nameIndexEx.index(index)) {
+//			byte deleted = nameIndexEx.readByte(); 
+//			if(deleted==0) {  															// check the deleted flag
+//				int enumIndex = (int)ChronicleOffset.EnumIndex.get(index, nameIndexEx);	// the enum index
+//				String name = ChronicleOffset.getName(index, nameIndexEx);				// the metric name
+//				if(!ENUM_CACHE.containsValue(enumIndex)) {
+//					loge("Warning: MetricName [%s] had unrecognized enum index [%s]", name, enumIndex);
+//					markNameIndexDeleted(nameIndexEx.index());
+//				}
+//				if(UNLOADED_INDEX.put(name, (index * -1L))!=null) {
+//					log("WARNING:  Duplicate name [" + name + "] at index [" + index + "]");
+//				} else {
+////					log("Loaded [" + name + "]");
+//				}
+//			}
+//			index++;
+//		}
+//		if(index>0) {
+//			log(String.format("Loaded\n\tNameIndexes: [%s]", index));
+//		} else {
+//			log("Initialized new name index.");
+//		}
+//	}
 
 	/**
 	 * <p>Closes the chronicles on finalization</p>
@@ -631,6 +644,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		long index = ChronicleOffset.writeNewNameIndex(enumIndex, bitMask, metricName);
 		newMetricTimes.insert(System.nanoTime()-start);
 		jmxPublishOption.publish(metricName, index);
+		nameIndexer.submitNewName(metricName, index);
+		newMetricTimes.insert(System.nanoTime()-start);
 		return index;
 	}
 	
@@ -730,7 +745,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	/**
 	 * Returns an indirect address reference of a mem-space allocated for the passed metric name
 	 * @param metricName The metric name
-	 * @param dataMapoer The collector's data-mapper
+	 * @param dataMapper The collector's data-mapper
 	 * @return the address
 	 */
 	protected long getMetricAddress(String metricName, IDataMapper<T> dataMapper) {		
@@ -773,6 +788,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 */
 	@Override
 	public void doSnap(String metricName, IDataMapper<T> dataMapper, long...collectedValues) {
+		globalLockRead();
 		long address = getMetricAddress(metricName, dataMapper);
 		long ref = -1L;
 		try {
@@ -806,12 +822,13 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		
 		long bufferCount = 0;
 		try {
+			globalLockNoYield();
 //			long address = -1L;
 			bufferCount = SNAPSHOT_INDEX.size();
 			log("Processing Period Update for [%s] Store Name Index Values", bufferCount);			
 			MemSpaceAccessor<T> msa = MemSpaceAccessor.get(-1L);
 			// =========================================================================
-			// Phase 1 Flush
+			// Phase 1 Flush (reset active metrics and release)
 			// =========================================================================			
 			final long now = System.currentTimeMillis();
 			final long stalePeriod = PeriodClock.getInstance().stalePeriodMs;
@@ -840,7 +857,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					continue;					
 				}
 				dirtyKeys.add(ref);
+//				log("=== [ Pre-Reset %s", msa.toString());
+//				long resetMsa = msa.copy();
 				UnsafeAdapter.putLong(address + UnsafeAdapter.LONG_SIZE, msa.copy());
+//				log("=== [ Post-Reset %s", MemSpaceAccessor.get(resetMsa));
 				unlock(address);
 			}
 			long stage1Elapsed = System.nanoTime()-startTime;
@@ -857,6 +877,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 				updatePeriod(msa, priorStartTime, priorEndTime);
 				UnsafeAdapter.freeMemory(address);
 			}
+			StringHelper.reportAvgs("Dirty Key Flush", System.nanoTime()-stage2start, dirtyKeys.size());
 			dirtyKeys.clear();
 			totalBuffersFlushed.insert(bufferCount);
 			closedPeriodNotif(priorStartTime, priorEndTime);
@@ -885,8 +906,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 				}
 				long stage3Elapsed = System.nanoTime()-stage3start;
 				staleBufferClearTimes.insert(stage3Elapsed);
-				log(StringHelper.reportTimes("Third Phase Flush Elapsed Time", stage3Elapsed));
-				
+				log(StringHelper.reportTimes("Third Phase Flush Elapsed Time", stage3Elapsed));				
+			} else {
+				log("Skipped Third Phase Flush. No stale metrics.");
 			}
 			long elapsed = System.nanoTime()-startTime;
 			totalFlushTimes.insert(elapsed);
@@ -894,7 +916,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 		} finally {
-			//globalUnlock();
+			globalUnlock();
 			if(dirtyKeys!=null) dirtyKeys.destroy();
 //			if(untouched!=null) untouched.destroy();
 			
@@ -1088,6 +1110,15 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			loops++;
 		}
 		AccumulatorThreadStats.incrementGlobalLockSpins(loops);
+	}
+	
+	/**
+	 * Spins until the global lck is released
+	 */
+	public void globalLockRead() {
+		while(UnsafeAdapter.getLong(globalLockAddress)!=0) {
+			Thread.yield();
+		}
 	}
 	
 	
