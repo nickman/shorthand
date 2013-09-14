@@ -8,6 +8,7 @@ import java.util.Set;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
+import com.higherfrequencytrading.chronicle.Excerpt;
 
 /**
  * <p>Title: IStore</p>
@@ -67,13 +68,6 @@ public interface IStore<T extends Enum<T> & ICollector<T>> {
 	
 
 	
-	/**
-	 * Updates the name index and live tier of the store
-	 * @param memSpaceAccessor The mem space reader for the accumulator name space being flushed
-	 * @param periodStart The start time of the period being flushed in ms.
-	 * @param periodEnd The end time of the period being flushed in ms.
-	 */
-	public void updatePeriod(MemSpaceAccessor<T> memSpaceAccessor, long periodStart, long periodEnd);
 	
 
 	/**

@@ -50,7 +50,7 @@ public class ShorthandProperties {
 	/** System property name to specify the shorthand chronicle directory */
 	public static final String CHRONICLE_DIR_PROP = "shorthand.store.chronicle.dir";
 	/** The default shorthand chronicle directory */
-	public static final String DEFAULT_CHRONICLE_DIR =  String.format("%s%sshorthand%s%s", System.getProperty("java.io.tmpdir"), File.separator, File.separator, PID);
+	public static final String DEFAULT_CHRONICLE_DIR =  String.format("%s%sshorthand%s", System.getProperty("java.io.tmpdir"), File.separator, File.separator);
 
 	/** System property name to specify if chronicle should use unsafe excerpts */
 	public static final String CHRONICLE_UNSAFE_PROP = "shorthand.store.chronicle.unsafe";

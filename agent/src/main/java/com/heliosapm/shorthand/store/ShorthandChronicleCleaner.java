@@ -25,10 +25,11 @@
 package com.heliosapm.shorthand.store;
 
 import java.io.File;
+import java.lang.management.ManagementFactory;
 
 /**
  * <p>Title: ShorthandChronicleCleaner</p>
- * <p>Description: </p> 
+ * <p>Description: Cleans old inactive shorthand chronicle directories</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.store.ShorthandChronicleCleaner</code></p>
@@ -37,6 +38,9 @@ import java.io.File;
 public class ShorthandChronicleCleaner extends Thread {
 	/** The chronicle directory to clean */
 	private final File chronicleDir;
+	
+	/** This JVM's Process ID */
+	public static final String PID = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
 	/**
 	 * Creates a new ShorthandChronicleCleaner
 	 * @param directoryName The chronicle directory to clean
@@ -57,7 +61,8 @@ public class ShorthandChronicleCleaner extends Thread {
 		log("Cleaning Chronicle Dir [" + chronicleDir + "]");
 		for(File pDir: chronicleDir.listFiles()) {
 			if(pDir.isDirectory()) {
-				log("Cleaning Chronicle Dir [" + pDir + "]");
+				log("Cleaning Chronicle Dir [%s] PID: [%s]", pDir, pDir.getName());
+				if(PID.equals(pDir.getName())) continue;
 				File lockFile = new File(pDir.getAbsoluteFile() + File.separator + "shorthand.lock");
 				if(lockFile.exists()) {
 					if(!lockFile.delete()) {

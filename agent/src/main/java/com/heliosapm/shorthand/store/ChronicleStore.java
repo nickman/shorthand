@@ -52,6 +52,8 @@ import com.heliosapm.shorthand.util.ref.RunnableReferenceQueue;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 import com.heliosapm.shorthand.util.unsafe.collections.ConcurrentLongSlidingWindow;
 import com.heliosapm.shorthand.util.unsafe.collections.LongSortedSet;
+import com.heliosapm.shorthand.util.unsafe.collections.UnsafeArrayBuilder;
+import com.heliosapm.shorthand.util.unsafe.collections.UnsafeLongArray;
 import com.higherfrequencytrading.chronicle.Chronicle;
 import com.higherfrequencytrading.chronicle.Excerpt;
 import com.higherfrequencytrading.chronicle.impl.IndexedChronicle;
@@ -359,7 +361,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * Creates a new ChronicleStore persisting to the default directory
 	 */
 	protected ChronicleStore() {		
-		this(ConfigurationHelper.getSystemThenEnvProperty(ShorthandProperties.CHRONICLE_DIR_PROP, ShorthandProperties.DEFAULT_CHRONICLE_DIR));		
+		this(ConfigurationHelper.getSystemThenEnvProperty(ShorthandProperties.CHRONICLE_DIR_PROP, ShorthandProperties.DEFAULT_CHRONICLE_DIR) + File.separator + ShorthandProperties.PID);
+		
 	}
 	
 	/**
@@ -384,7 +387,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 */
 	protected ChronicleStore(String dataDirectory) {
 		
-		boolean useUnsafe = ConfigurationHelper.getBooleanSystemThenEnvProperty(ShorthandProperties.CHRONICLE_UNSAFE_PROP, ShorthandProperties.DEFAULT_CHRONICLE_UNSAFE);
+		boolean useUnsafe = UnsafeAdapter.FIVE_COPY; 
+				//ConfigurationHelper.getBooleanSystemThenEnvProperty(ShorthandProperties.CHRONICLE_UNSAFE_PROP, ShorthandProperties.DEFAULT_CHRONICLE_UNSAFE);
 		
 		dataDir = new File(dataDirectory);
 		if(!dataDir.exists()) {
@@ -406,6 +410,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 				throw new RuntimeException("Failed to create shorthand lock file [" + lockFile.getAbsolutePath() + "]");
 			}
 			new RandomAccessFile(lockFile, "rw").getChannel().lock();
+			log("Lock File: [%s]  Parent: [%s]", lockFile, lockFile.getParentFile().getName());
 			new ShorthandChronicleCleaner(dataDir.getParentFile().getAbsolutePath()).start();
 			enumIndex = getIntChronicle(ENUM_INDEX);
 			enumIndex.useUnsafe(useUnsafe);				
@@ -641,8 +646,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 */
 	protected long newMetricName(String metricName, int enumIndex, int bitMask) {
 		final long start = System.nanoTime();
+		globalLockRead();
 		long index = ChronicleOffset.writeNewNameIndex(enumIndex, bitMask, metricName);
-		newMetricTimes.insert(System.nanoTime()-start);
 		jmxPublishOption.publish(metricName, index);
 		nameIndexer.submitNewName(metricName, index);
 		newMetricTimes.insert(System.nanoTime()-start);
@@ -671,13 +676,15 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	
 	
 	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.store.IStore#updatePeriod(com.heliosapm.shorthand.accumulator.MemSpaceAccessor, long, long)
+	 * Updates the name and data chronicle entries for the metric in the passed accessor
+	 * @param msa The mem-space containing the metric to update
+	 * @param periodStart The period start time stamp
+	 * @param periodEnd The period end time stamp
+	 * @param dataExcerpt The tier 1 data chronicle excerpt
 	 */
-	@Override
-	public void updatePeriod(MemSpaceAccessor<T> msa, long periodStart, long periodEnd) {
-		final long start = System.nanoTime();
-		ChronicleOffset.updatePeriod(msa, periodStart, periodEnd);
+	public void updatePeriod(MemSpaceAccessor<T> msa, long periodStart, long periodEnd, Excerpt dataExcerpt) {
+		final long start = System.nanoTime();		
+		ChronicleOffset.updatePeriod(msa, periodStart, periodEnd, nameIndexEx, dataExcerpt);
 		periodUpdateTimes.insert(System.nanoTime()-start);		
 	}
 	
@@ -818,11 +825,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	@Override
 	public void flush(long priorStartTime, long priorEndTime) {
 		log("Flushing Index Size: [%s]", SNAPSHOT_INDEX.size());
-		LongSortedSet dirtyKeys = null;
+		UnsafeLongArray dirtyKeys = UnsafeArrayBuilder.newBuilder().initialCapacity(SNAPSHOT_INDEX.size()).buildLongArray();
 		
 		long bufferCount = 0;
-		try {
-			globalLockNoYield();
+		try {			
 //			long address = -1L;
 			bufferCount = SNAPSHOT_INDEX.size();
 			log("Processing Period Update for [%s] Store Name Index Values", bufferCount);			
@@ -831,9 +837,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			// Phase 1 Flush (reset active metrics and release)
 			// =========================================================================			
 			final long now = System.currentTimeMillis();
-			final long stalePeriod = PeriodClock.getInstance().stalePeriodMs;
-			dirtyKeys = new LongSortedSet(SNAPSHOT_INDEX.size());
+			final long stalePeriod = PeriodClock.getInstance().stalePeriodMs;			
 			final long startTime = System.nanoTime();
+			globalLockNoYield();
 			for(String metricName: SNAPSHOT_INDEX.keySet()) {
 				long address = SNAPSHOT_INDEX.get(metricName);
 				// =========================================================================
@@ -856,13 +862,14 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					bufferCount--;	
 					continue;					
 				}
-				dirtyKeys.add(ref);
+				dirtyKeys.append(ref);
 //				log("=== [ Pre-Reset %s", msa.toString());
 //				long resetMsa = msa.copy();
 				UnsafeAdapter.putLong(address + UnsafeAdapter.LONG_SIZE, msa.copy());
 //				log("=== [ Post-Reset %s", MemSpaceAccessor.get(resetMsa));
 				unlock(address);
 			}
+			globalUnlock();
 			long stage1Elapsed = System.nanoTime()-startTime;
 			dirtyBufferCopyTimes.insert(stage1Elapsed);			
 			log(StringHelper.reportTimes("First Phase Flush [" + bufferCount + "], Elapsed Time", stage1Elapsed));
@@ -870,20 +877,32 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			// Phase 2 Flush
 			// =========================================================================
 			final long stage2start = System.nanoTime();
+			Excerpt dataExcerpt = tier1Data.createExcerpt();
 			for(int i = 0; i < dirtyKeys.size(); i++) {
 				long address = dirtyKeys.get(i);
-				msa.setAddress(address);
+				msa.setAddress(address);				
 				msa.preFlush();
-				updatePeriod(msa, priorStartTime, priorEndTime);
+				updatePeriod(msa, priorStartTime, priorEndTime, dataExcerpt);
 				UnsafeAdapter.freeMemory(address);
 			}
-			StringHelper.reportAvgs("Dirty Key Flush", System.nanoTime()-stage2start, dirtyKeys.size());
+			dataExcerpt.close();
+			log(StringHelper.reportTimes("Dirty Key Flush", System.nanoTime()-stage2start));
+			
+			long spStart = System.nanoTime();
+			
 			dirtyKeys.clear();
+			dirtyKeys.destroy();
+			
 			totalBuffersFlushed.insert(bufferCount);
 			closedPeriodNotif(priorStartTime, priorEndTime);
 			newMetricNotifs();
+			
+			
+			long spElapsed = System.nanoTime() - spStart;
+			log(StringHelper.reportTimes("===[ Post Dirty Key Flush Elapsed Time", spElapsed));
+			
 			long stage2Elapsed = System.nanoTime()-stage2start;
-			dirtyBufferWriteTimes.insert(stage2Elapsed);			
+			//dirtyBufferWriteTimes.insert(stage2Elapsed);			
 			log(StringHelper.reportTimes("Second Phase Flush Elapsed Time", stage2Elapsed));
 			// =========================================================================
 			// Phase 3 Flush / Purge Stale Mem-Spaces
@@ -1129,8 +1148,8 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	public void globalUnlock() {
 		long id = Thread.currentThread().getId();
 		if(!UnsafeAdapter.compareAndSwapLong(null, globalLockAddress, id, UNLOCKED)) {
-			System.err.println("[" + Thread.currentThread().toString() + "] Yikes! Tried to unlock GLOBAL , but was not locked.");
-			new Throwable().printStackTrace(System.err);
+//			System.err.println("[" + Thread.currentThread().toString() + "] Yikes! Tried to unlock GLOBAL , but was not locked.");
+//			new Throwable().printStackTrace(System.err);
 		}
 	}
 

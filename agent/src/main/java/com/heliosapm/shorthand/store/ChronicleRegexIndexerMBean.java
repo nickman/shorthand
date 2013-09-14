@@ -24,7 +24,7 @@
  */
 package com.heliosapm.shorthand.store;
 
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
 
 import javax.management.ObjectName;
 
@@ -56,6 +56,13 @@ public interface ChronicleRegexIndexerMBean {
 	public long[] search(String namePattern);
 	
 	/**
+	 * Returns the number of metrics matching the passed pattern
+	 * @param namePattern the pattern to count matches of
+	 * @return the number of metrics matching the passed pattern
+	 */
+	public int count(String namePattern);
+	
+	/**
 	 * Returns the number of names submitted for indexing
 	 * @return the number of names submitted for indexing
 	 */
@@ -66,13 +73,35 @@ public interface ChronicleRegexIndexerMBean {
 	 */
 	public long getIndexedNames();
 	
+	/**
+	 * Returns a map of index sizes keyed by the index regex pattern
+	 * @return a map of index sizes keyed by the index regex pattern
+	 */
+	public Map<String, Long> getIndexSizes(); 
+	
+	/**
+	 * Returns the rolling average search time in ns.
+	 * @return the rolling average search time in ns.
+	 */
 	public long getAverageSearchTimeNanos();
 	
+	/**
+	 * Returns the rolling average search time in ms.
+	 * @return the rolling average search time in ms.
+	 */
 	public long getAverageSearchTimeMillis();
 	
 	
+	/**
+	 * Returns the last search time in ns.
+	 * @return the last search time in ns.
+	 */
 	public long getLastSearchTimeNanos();
 	
+	/**
+	 * Returns the last search time in ms.
+	 * @return the last search time in ms.
+	 */
 	public long getLastSearchTimeMillis();
 	
 	

@@ -66,7 +66,12 @@ public enum ChronicleOffset {
 	// 
 	
 	
-	
+	private static void spin(Excerpt ex, long index) {
+		ex.index(index);
+		while(ex.readByte(0)!=0) {
+			Thread.yield();
+		}
+	}
 	
 	private ChronicleOffset(int offset, int size) {
 		this.offset = offset;
@@ -190,7 +195,8 @@ public enum ChronicleOffset {
 			ex = chronicle.createExcerpt();
 		}		
 		try {
-			ex.index(index);
+			spin(ex, index);
+			//ex.index(index);
 			ex.position(NameSize.offset);
 			int nameSize = ex.readInt();
 			int indexCount = ex.readInt();
@@ -213,6 +219,7 @@ public enum ChronicleOffset {
 			ex = chronicle.createExcerpt();
 		}		
 		try {
+			spin(ex, index); 
 			ex.index(index);
 			int size = (int)NameSize.get(index, ex);
 			ex.position(Enabled.offset + Enabled.size);
@@ -233,6 +240,35 @@ public enum ChronicleOffset {
 		return getName(index, null);
 	}
 	
+	/**
+	 * Indicates if the index entry at the passed address is marked as deleted
+	 * @param index The index of the target name index entry
+	 * @return true if deleted, false otherwise
+	 */
+	public static boolean isDeleted(long index) {
+		return isDeleted(index, null);
+	}
+	
+	/**
+	 * Indicates if the index entry at the passed address is marked as deleted
+	 * @param index The index of the target name index entry
+	 * @param ex The excerpt to read from. If null, one will be created and closed
+	 * @return true if deleted, false otherwise
+	 */
+	public static boolean isDeleted(long index, Excerpt ex) {
+		final boolean closeEx = ex==null;
+		if(ex==null) {
+			ex = chronicle.createExcerpt();
+		}		
+		try {
+			spin(ex, index); 
+			ex.index(index);
+			return ex.readByte(1)!=0;
+		} finally {
+			if(closeEx) try { ex.close(); } catch (Exception x) {}
+		}		
+	}
+	
 
 	
 	
@@ -242,10 +278,13 @@ public enum ChronicleOffset {
 	 * @param periodStart The period start time
 	 * @param periodEnd The period end time
 	 * @param ex The excerpt to write with. If null, will create a new one and close it on completion
+	 * @param dataEx The data excerpt
 	 */
 	public static void updatePeriod(MemSpaceAccessor<?> msa, long periodStart, long periodEnd, Excerpt ex, Excerpt dataEx) {
 		try {
 			ex.index(msa.getNameIndex());
+			ex.position(0);
+			if(ex.readByte()!=0) return;
 			ex.position(PeriodStart.offset);
 			ex.writeLong(periodStart);
 			ex.writeLong(periodEnd);
@@ -254,7 +293,7 @@ public enum ChronicleOffset {
 			int dpIndex = 0;
 			for(long dataIndex :  getTier1Indexes(msa.getNameIndex(), ex)) {
 				if(dataIndex<0) continue;
-				ChronicleDataOffset.updateDataIndex(dataIndex, dataPoints[dpIndex]);
+				ChronicleDataOffset.updateDataIndex(dataIndex, dataPoints[dpIndex], dataEx);
 				dpIndex++;
 			}			
 			ex.finish();
@@ -328,7 +367,7 @@ public enum ChronicleOffset {
 			ICollector<?>[] collectors = (ICollector<?>[]) clazz.getEnumConstants();
 			int dataIndexCount = collectors.length;
 			ex.startExcerpt(HEADER_SIZE + metricName.getBytes().length + 1 + (dataIndexCount << 3));
-			ex.writeByte(0);							// the lock
+			ex.writeByte(1);							// the lock
 			ex.writeByte(0);							// the delete indicator
 			ex.writeInt(enumIndex);						// the enum index (i.e. which enum it is)
 			ex.writeInt(bitMask);						// the enabled bitmask			
@@ -355,7 +394,9 @@ public enum ChronicleOffset {
 					key = collector.ordinal() * -1L;
 				}
 				ex.writeLong(key);
-			}
+			}			
+			ex.position(0);
+			ex.writeByte(0);
 			ex.position(endPos);
 			ex.finish();
 			return nameIndex;

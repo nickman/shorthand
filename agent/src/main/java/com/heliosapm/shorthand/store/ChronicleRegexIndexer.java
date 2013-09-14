@@ -28,10 +28,10 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteOrder;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -44,7 +44,8 @@ import com.google.common.cache.CacheBuilder;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
 import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
 import com.heliosapm.shorthand.util.unsafe.collections.ConcurrentLongSlidingWindow;
-import com.heliosapm.shorthand.util.unsafe.collections.LongSortedSet;
+import com.heliosapm.shorthand.util.unsafe.collections.UnsafeArrayBuilder;
+import com.heliosapm.shorthand.util.unsafe.collections.UnsafeLongArray;
 import com.higherfrequencytrading.chronicle.Chronicle;
 import com.higherfrequencytrading.chronicle.Excerpt;
 import com.higherfrequencytrading.chronicle.impl.IndexedChronicle;
@@ -77,22 +78,6 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean  {
 	/** The elapsed times of the last 50 searches */
 	protected final ConcurrentLongSlidingWindow searchTimes = new ConcurrentLongSlidingWindow(50); 
 	
-	public long getAverageSearchTimeNanos() {
-		return searchTimes.avg();
-	}
-	
-	public long getAverageSearchTimeMillis() {
-		return TimeUnit.NANOSECONDS.toMillis(searchTimes.avg());
-	}
-	
-	
-	public long getLastSearchTimeNanos() {
-		return searchTimes.getFirst();
-	}
-	
-	public long getLastSearchTimeMillis() {
-		return TimeUnit.NANOSECONDS.toMillis(searchTimes.getFirst());
-	}
 
 	
 	
@@ -142,6 +127,13 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean  {
 		return regexChronicles.size();
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleRegexIndexerMBean#count(java.lang.String)
+	 */
+	public int count(String namePattern) {
+		return search(namePattern).length;
+	}
 	
 	/**
 	 * {@inheritDoc}
@@ -154,13 +146,17 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean  {
 		Excerpt ex = null;
 		try {
 			Chronicle c = getChronicleIndex(namePattern);
-			LongSortedSet lss = new LongSortedSet();
+			UnsafeLongArray lss = UnsafeArrayBuilder.newBuilder().buildLongArray();
 			ex = c.createExcerpt();
-			while(ex.nextIndex()) {
-				lss.add(ex.readLong());
+			if(ex.index(1)) {
+				while(ex.nextIndex()) {
+					lss.insert(ex.readLong());
+				}
 			}
+			ex.close();
+			ex = null;
 			searchTimes.insert(System.nanoTime()-start);
-			return lss.asLongArray();
+			return lss.getArray();
 		} catch (Exception e) {
 			throw new RuntimeException("Failed to execute search for [" + p + "]", e);
 		} finally {
@@ -209,10 +205,17 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean  {
 					Excerpt ex = c.createExcerpt();
 					Pattern p = Pattern.compile(regex);
 					patternCache.put(regex, p);
+					ex.startExcerpt(regex.getBytes().length + 8);
+					ex.writeInt(regex.getBytes().length);
+					ex.write(regex.getBytes());					
+					ex.finish();
+					log("Creating Regex Chronicle for [%s]", regex);
 					while(nameEx.nextIndex()) {
-						if(p.matcher(ChronicleOffset.getName(nameEx.index())).matches()) {
+						long newIndex = nameEx.index();
+						if(ChronicleOffset.isDeleted(newIndex, nameEx)) continue;
+						if(p.matcher(ChronicleOffset.getName(newIndex)).matches()) {
 							ex.startExcerpt(UnsafeAdapter.LONG_SIZE);
-							ex.writeLong(nameEx.index());
+							ex.writeLong(newIndex);
 							ex.finish();
 							indexedNames.incrementAndGet();
 						}
@@ -261,8 +264,59 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean  {
 		return indexedNames.get();
 	}
 	
+	/**
+	 * Simple out formatted logger
+	 * @param fmt The format of the message
+	 * @param args The message arguments
+	 */
+	public static void log(String fmt, Object...args) {
+		System.out.println(String.format(fmt, args));
+	}	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleRegexIndexerMBean#getAverageSearchTimeNanos()
+	 */
+	public long getAverageSearchTimeNanos() {
+		return searchTimes.avg();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleRegexIndexerMBean#getAverageSearchTimeMillis()
+	 */
+	public long getAverageSearchTimeMillis() {
+		return TimeUnit.NANOSECONDS.toMillis(searchTimes.avg());
+	}
 	
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleRegexIndexerMBean#getLastSearchTimeNanos()
+	 */
+	public long getLastSearchTimeNanos() {
+		return searchTimes.getFirst();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.store.ChronicleRegexIndexerMBean#getLastSearchTimeMillis()
+	 */
+	public long getLastSearchTimeMillis() {
+		return TimeUnit.NANOSECONDS.toMillis(searchTimes.getFirst());
+	}
+	
+	/**
+	 * Returns a map of index sizes keyed by the index regex pattern
+	 * @return a map of index sizes keyed by the index regex pattern
+	 */
+	public Map<String, Long> getIndexSizes() {
+		Map<String, Long> map = new HashMap<String, Long>((int)regexChronicles.size());
+		for(Map.Entry<String, Chronicle> entry: regexChronicles.asMap().entrySet()) {
+			map.put(entry.getKey(), entry.getValue().size()-1);
+		}
+		return map;
+	}
 	
 	
 	

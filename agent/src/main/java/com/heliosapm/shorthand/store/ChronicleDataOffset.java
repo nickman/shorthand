@@ -226,7 +226,12 @@ public enum ChronicleDataOffset {
 			ex = ChronicleStore.getInstance().tier1Data.createExcerpt();
 		}		
 		try {
+			
 			ex.index(index);
+			if(ex.capacity()<HEADER_SIZE) {
+				log("===[ DataIndex Update on Excerpt with capacity: %s", ex.capacity());
+				return;
+			}
 			ex.position(HEADER_SIZE);
 			for(long v: values) {
 				ex.writeLong(v);
