@@ -9,6 +9,7 @@
 	<modules>
 		<module>agent</module>
 		<module>attach</module>
+		<module>caster</module>
 	</modules>
 	<properties>
 		<junit.version>4.8.2</junit.version>
