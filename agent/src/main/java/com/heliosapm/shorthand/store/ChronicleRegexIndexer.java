@@ -29,15 +29,26 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteOrder;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
+
+import javax.management.ListenerNotFoundException;
+import javax.management.MBeanNotificationInfo;
+import javax.management.Notification;
+import javax.management.NotificationBroadcaster;
+import javax.management.NotificationBroadcasterSupport;
+import javax.management.NotificationFilter;
+import javax.management.NotificationListener;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -58,7 +69,7 @@ import com.higherfrequencytrading.chronicle.impl.IndexedChronicle;
  * <p><code>com.heliosapm.shorthand.store.ChronicleRegexIndexer</code></p>
  */
 
-public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean  {
+public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean, NotificationBroadcaster  {
 	/** The pattern caches */
 	protected final Cache<String, Pattern> patternCache = CacheBuilder.newBuilder().build();	
 	/** The chronicle caches */
@@ -67,7 +78,10 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean  {
 	protected final Chronicle nameIndex;
 	/** The current chronicle directory name */
 	protected final File chronicleDir;
+	/** The delegate notification broadcaster */
+	protected final NotificationBroadcasterSupport notificationBroadcaster = new NotificationBroadcasterSupport(); 
 	
+
 	/** Serial number for the regex chronicle files */
 	protected final AtomicLong chronicleSerial = new AtomicLong(0L);
 	/** A counter of metric names submitted */
@@ -318,6 +332,122 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean  {
 		return map;
 	}
 	
+	/** A cache of sets of subscribed notification listeners keyed by the pattern they're subscribed to */
+	protected final Cache<Pattern, Set<NotificationListener>> subscriptions = CacheBuilder.newBuilder().build();
+	
+	public void notifyNewName(final String name, final long index) {
+		Set<NotificationListener> matches = new HashSet<NotificationListener>();
+		for(Pattern p: subscriptions.asMap().keySet()) {
+			if(p.matcher(name).matches()) {
+				matches.addAll(subscriptions.getIfPresent(p));
+			}
+		}
+	}
+	
+	/**
+	 * <p>If the passed handback is a {@link Pattern} or a {@link CharSequence} which is compilable into a {@link Pattern}, the passed listener will
+	 * be subscribed to a notifications regarding new or stale metric names that match the resulting pattern. Otherwise the listener will be notified of all events.</p> 
+	 * {@inheritDoc}
+	 * @see javax.management.NotificationBroadcaster#addNotificationListener(javax.management.NotificationListener, javax.management.NotificationFilter, java.lang.Object)
+	 */
+	public void addNotificationListener(NotificationListener listener, NotificationFilter filter, Object handback) {
+		Pattern p = getPattern(handback);
+		if(p!=null) {
+			try {
+				subscriptions.get(p, new Callable<Set<NotificationListener>>() {
+					@Override
+					public Set<NotificationListener> call() throws Exception {						
+						return new CopyOnWriteArraySet<NotificationListener>();
+					}
+				}).add(listener);
+			} catch (Exception ex) {
+				throw new RuntimeException("Failed to register listener", ex);
+			}
+			return;
+		}
+		notificationBroadcaster.addNotificationListener(listener, filter, handback);
+	}
+	
+	/**
+	 * Tests the passed object to see if it is  pattern
+	 * @param handback The object to test
+	 * @return the pattern or null if one could not be determined
+	 */
+	protected Pattern getPattern(Object handback) {
+		if(handback==null) return null;
+		if(handback instanceof Pattern) return (Pattern)handback;
+		if(handback instanceof CharSequence) {
+			try {
+				return Pattern.compile(handback.toString().trim());
+			} catch (Exception ex) {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see javax.management.NotificationBroadcaster#getNotificationInfo()
+	 */
+	public MBeanNotificationInfo[] getNotificationInfo() {
+		return notificationBroadcaster.getNotificationInfo();
+	}
+
+	/**
+	 * Removes a notification listener
+	 * @param listener The listener to remove
+	 * @param filter The listener's filter
+	 * @param handback The listener's handback
+	 * @throws ListenerNotFoundException thrown if the specified listener cannot be found
+	 */
+	public void removeNotificationListener(NotificationListener listener, NotificationFilter filter, Object handback) throws ListenerNotFoundException {
+		Pattern p = getPattern(handback);
+		if(p!=null) {
+			Set<NotificationListener> listeners = subscriptions.getIfPresent(p);
+			if(listeners!=null) {
+				if(listeners.remove(listener)) {
+					if(listeners.isEmpty()) {
+						subscriptions.invalidate(p);
+					}
+					return;  // unless a listener is found, the built-in removeNotificationListener is called
+				}
+			}
+		}
+		notificationBroadcaster.removeNotificationListener(listener, filter, handback);
+		
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see javax.management.NotificationBroadcaster#removeNotificationListener(javax.management.NotificationListener)
+	 */
+	public void removeNotificationListener(NotificationListener listener) throws ListenerNotFoundException {
+		boolean listenerFound = false;
+		Set<Pattern> removes = new HashSet<Pattern>();
+		for(Map.Entry<Pattern, Set<NotificationListener>> entry: subscriptions.asMap().entrySet()) {
+			if(entry.getValue().remove(listener)) {
+				listenerFound = true;
+				if(entry.getValue().isEmpty()) {
+					removes.add(entry.getKey());
+				}
+			}
+		}
+		if(!removes.isEmpty()) {
+			subscriptions.invalidateAll(removes);
+		}
+		if(!listenerFound) {
+			notificationBroadcaster.removeNotificationListener(listener);
+		}
+	}
+
+	/**
+	 * Broadcasts the passed notification
+	 * @param notification the notification to broadcast
+	 */
+	public void sendNotification(Notification notification) {
+		notificationBroadcaster.sendNotification(notification);
+	}
 	
 	
 }

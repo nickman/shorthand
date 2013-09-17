@@ -387,11 +387,12 @@ public enum ChronicleOffset {
 			int dvIndex = 0;
 			ex.position(dataPos);
 			for(ICollector<?> collector: collectors) {
-				long key = ChronicleDataOffset.writeNewDataIndex(nameIndex, collector.ordinal(), defaultValues[dvIndex], dataEx);
-				if(collector.isEnabled(bitMask)) {					 
+				long key = -1L;
+				if(collector.isEnabled(bitMask)) {
+					key = ChronicleDataOffset.writeNewDataIndex(nameIndex, collector.ordinal(), defaultValues[dvIndex], dataEx);
 					dvIndex++;
 				} else {
-					key = collector.ordinal() * -1L;
+					key = collector.getMask() * -1L;
 				}
 				ex.writeLong(key);
 			}			

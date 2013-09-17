@@ -25,8 +25,12 @@
 package com.heliosapm.statsd;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MulticastSocket;
+import java.net.Socket;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
@@ -53,7 +57,9 @@ private static final Random RNG = new Random();
 
 
 private final InetSocketAddress _address;
-private final DatagramChannel _channel;
+private final Socket _socket;
+private final OutputStream socketOutputStream;
+private final MulticastSocket _msocket;
 
 public StatsdClient(String host, int port) throws UnknownHostException, IOException {
 	this(InetAddress.getByName(host), port);
@@ -62,10 +68,12 @@ public StatsdClient(String host, int port) throws UnknownHostException, IOExcept
 public static void main(String[] args) {
 	log("StatsD client");
 	try {
+		Random random = new Random(System.currentTimeMillis());
 		StatsdClient client = new StatsdClient("239.192.74.66", 25826);
 		log("Connected");
 		for(int i = 0; i < 100; i++) {
 			client.increment("foo.bar.baz");
+			client.gauge("foo.bar.snafu", Math.abs(random.nextInt(400)));
 			Thread.sleep(3000);
 		}
 	} catch (Exception e) {		
@@ -75,9 +83,20 @@ public static void main(String[] args) {
 
 public StatsdClient(InetAddress host, int port) throws IOException {
 	_address = new InetSocketAddress(host, port);
-	_channel = DatagramChannel.open();
-            setBufferSize((short) 1500);
+	if(_address.getAddress().isMulticastAddress()) {
+		_msocket = new MulticastSocket(_address);
+		_socket = null;
+		socketOutputStream = null;
+		_msocket.setSendBufferSize(1500);
+	} else {
+		_msocket = null;
+		_socket = new Socket(_address.getAddress(), _address.getPort());
+		socketOutputStream =  _socket.getOutputStream();
+		_socket.setSendBufferSize(1500);
+	}
+	this.setBufferSize((short)1500);
 }
+	
 
     protected void finalize() {
             flush();
@@ -243,16 +262,19 @@ private synchronized boolean doSend(String stat) {
 
                     // send and reset the buffer 
                     sendBuffer.flip();
-		final int nbSentBytes = _channel.send(sendBuffer, _address);
+                    byte[] arr = sendBuffer.array();
+                    if(_socket!=null) {
+                    	socketOutputStream.write(arr);
+                    	socketOutputStream.flush();
+                    }
+                    else {
+                    	DatagramPacket dPacket = new DatagramPacket(arr, arr.length, _address);
+                    	_msocket.send(dPacket);
+                    }
                     sendBuffer.limit(sendBuffer.capacity());
                     sendBuffer.rewind();
 
-		if (sizeOfBuffer == nbSentBytes) {
 			return true;
-		} else {
-			loge("Could not send entirely stat %s to host %s:%d. Only sent %d bytes out of %d bytes", sendBuffer.toString(), _address.getHostName(), _address.getPort(), nbSentBytes, sizeOfBuffer);
-			return false;
-		}
 
 	} catch (IOException e) {
 		loge(String.format("Could not send stat %s to host %s:%s", e, sendBuffer.toString(), _address.getHostName(), _address.getPort()));

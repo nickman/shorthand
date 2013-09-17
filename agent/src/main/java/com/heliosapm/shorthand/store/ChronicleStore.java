@@ -644,7 +644,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	 * @param bitMask The enabled metric bitmask
 	 * @return the name index
 	 */
-	protected long newMetricName(String metricName, int enumIndex, int bitMask) {
+	protected synchronized long newMetricName(String metricName, int enumIndex, int bitMask) {
 		final long start = System.nanoTime();
 		globalLockRead();
 		long index = ChronicleOffset.writeNewNameIndex(enumIndex, bitMask, metricName);
