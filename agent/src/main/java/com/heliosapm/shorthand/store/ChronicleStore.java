@@ -83,14 +83,10 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	public static final String NOTIF_PERIOD_END = "shorthand.store.period.end";
 	/** JMX notification type for new metric names at period end */
 	public static final String NOTIF_NEW_METRICS = "shorthand.store.period.metrics.new";
-	/** JMX notification type for stale metric names at period end */
-	public static final String NOTIF_STALE_METRICS = "shorthand.store.period.metrics.stale";
 	
 	/** The notification infos for this mbean */
 	private static final MBeanNotificationInfo[] NOTIFS = new MBeanNotificationInfo[]{
-		new MBeanNotificationInfo(new String[]{NOTIF_PERIOD_END}, Notification.class.getName(), "Notification indicating a metric period has ended"),
-		new MBeanNotificationInfo(new String[]{NOTIF_NEW_METRICS}, Notification.class.getName(), "Notification indicating new metrics were created in the prior period"),
-		new MBeanNotificationInfo(new String[]{NOTIF_STALE_METRICS}, Notification.class.getName(), "Notification indicating stale metrics were cleared")
+		new MBeanNotificationInfo(new String[]{NOTIF_PERIOD_END}, Notification.class.getName(), "Notification indicating a metric period has ended")
 	};
 	
 	/** The singleton instance */
@@ -100,8 +96,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 	
 	/** The notification broadcaster delegate */
 	protected final NotificationBroadcasterSupport notificationBroadcasterSupport; 
-	/** A set of metric names that have been added this period */
-	protected final Set<String> addedMetricNames = new CopyOnWriteArraySet<String>();
 	/** Serial number factory for notification sequences */
 	protected final AtomicLong notificationSerial = new AtomicLong();
 	/** Serial number factory for notification thread pool thread names */
@@ -836,8 +830,9 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			// =========================================================================
 			// Phase 1 Flush (reset active metrics and release)
 			// =========================================================================			
-			final long now = System.currentTimeMillis();
-			final long stalePeriod = PeriodClock.getInstance().stalePeriodMs;			
+			final long now = System.currentTimeMillis();			
+			final long stalePeriod = PeriodClock.getInstance().stalePeriodMs;
+			log("Flush Stale Period: [%s]", stalePeriod);
 			final long startTime = System.nanoTime();
 			globalLockNoYield();
 			for(String metricName: SNAPSHOT_INDEX.keySet()) {
@@ -856,6 +851,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 				if(!msa.isTouched()) {
 					if(msa.isStale(now, stalePeriod)) {
 						//log("Pending stale for Metric Ref [%s]", metricName);
+						SNAPSHOT_INDEX.remove(metricName);
 						untouched.put(address, metricName);
 					} 
 					unlock(address);
@@ -895,7 +891,6 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 			
 			totalBuffersFlushed.insert(bufferCount);
 			closedPeriodNotif(priorStartTime, priorEndTime);
-			newMetricNotifs();
 			
 			
 			long spElapsed = System.nanoTime() - spStart;
@@ -914,13 +909,14 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 					String metricName  = untouched.get(address);
 					long ref = lockNoYield(address);
 					msa.setAddress(ref);						
-					long nameIndex = msa.getNameIndex();
+					long _nameIndex = msa.getNameIndex();
 					msa.setAddress(-1L);
 					UnsafeAdapter.freeMemory(ref);
 					UnsafeAdapter.putLong(address + UnsafeAdapter.LONG_SIZE, -1L);
-					UNLOADED_INDEX.put(metricName, nameIndex * -1L);
+					UNLOADED_INDEX.put(metricName, _nameIndex * -1L);
 					unlock(address);
-					jmxPublishOption.unPublish(metricName, nameIndex);
+					jmxPublishOption.unPublish(metricName, _nameIndex); // Move this guy outa-here.
+					nameIndexer.notifyStaleMetric(metricName, _nameIndex);
 					untouched.remove(address);
 				}
 				long stage3Elapsed = System.nanoTime()-stage3start;
@@ -953,18 +949,18 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		sendNotification(n);
 	}
 	
-	/**
-	 * Sends a new metrics JMX notification
-	 */
-	protected void newMetricNotifs() {
-		if(!addedMetricNames.isEmpty()) {
-			Set<String> names = new HashSet<String>(addedMetricNames);
-			addedMetricNames.removeAll(names);
-			Notification n = new Notification(NOTIF_NEW_METRICS, OBJECT_NAME, notificationSerial.incrementAndGet(), System.currentTimeMillis(), "New Metrics [" + names.size() + "]");
-			n.setUserData(names);
-			sendNotification(n);
-		}
-	}
+//	/**
+//	 * Sends a new metrics JMX notification
+//	 */
+//	protected void newMetricNotifs() {
+//		if(!addedMetricNames.isEmpty()) {
+//			Set<String> names = new HashSet<String>(addedMetricNames);
+//			addedMetricNames.removeAll(names);
+//			Notification n = new Notification(NOTIF_NEW_METRICS, OBJECT_NAME, notificationSerial.incrementAndGet(), System.currentTimeMillis(), "New Metrics [" + names.size() + "]");
+//			n.setUserData(names);
+//			sendNotification(n);
+//		}
+//	}
 	
 
 	 

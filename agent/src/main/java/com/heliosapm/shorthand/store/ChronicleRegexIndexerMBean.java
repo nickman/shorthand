@@ -42,6 +42,10 @@ public interface ChronicleRegexIndexerMBean {
 	/** The indexer's JMX ObjectName */
 	public static final ObjectName OBJECT_NAME = JMXHelper.objectName("com.heliosapm.shorthand.store:service=ChronicleIndexService");
 	
+	/** The new metric name notification type */
+	public static final String NOTIF_NEW_METRIC = "shorthand.matching.metric.new";
+	/** The stale metric name notification type */
+	public static final String NOTIF_STALE_METRIC = "shorthand.matching.metric.stale";
 	/**
 	 * Returns the number of indexes
 	 * @return the number of indexes

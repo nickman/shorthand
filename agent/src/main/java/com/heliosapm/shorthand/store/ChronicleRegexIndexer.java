@@ -67,6 +67,9 @@ import com.higherfrequencytrading.chronicle.impl.IndexedChronicle;
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthand.store.ChronicleRegexIndexer</code></p>
+ * TODO: Remove stale metric ids from regex-indexes.
+ * TODO: Add Shorthand property to pre-define indexes to create
+ * TODO: Persist shared index definition file
  */
 
 public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean, NotificationBroadcaster  {
@@ -78,8 +81,7 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean, Notifi
 	protected final Chronicle nameIndex;
 	/** The current chronicle directory name */
 	protected final File chronicleDir;
-	/** The delegate notification broadcaster */
-	protected final NotificationBroadcasterSupport notificationBroadcaster = new NotificationBroadcasterSupport(); 
+	
 	
 
 	/** Serial number for the regex chronicle files */
@@ -92,7 +94,7 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean, Notifi
 	/** The elapsed times of the last 50 searches */
 	protected final ConcurrentLongSlidingWindow searchTimes = new ConcurrentLongSlidingWindow(50); 
 	
-
+	 
 	
 	
 	/** A queue of index pending metric names */
@@ -107,6 +109,15 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean, Notifi
 			return t;
 		}
 	});
+	/** The notification serial number */
+	protected final AtomicLong notificationSerial = new AtomicLong();
+	
+	/** The delegate notification broadcaster */
+	protected final NotificationBroadcasterSupport notificationBroadcaster = new NotificationBroadcasterSupport(threadPool, new MBeanNotificationInfo[] {
+			new MBeanNotificationInfo(new String[]{NOTIF_NEW_METRIC}, Notification.class.getName(), "Notification emitted on a new metric name"),
+			new MBeanNotificationInfo(new String[]{NOTIF_STALE_METRIC}, Notification.class.getName(), "Notification emitted on a stale metric name")
+	}); 
+
 	
 	/** The index writer thread */
 	protected final Thread indexUpdater = new Thread("ChronicleRegexIndexerWriterThread") {
@@ -164,7 +175,7 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean, Notifi
 			ex = c.createExcerpt();
 			if(ex.index(1)) {
 				while(ex.nextIndex()) {
-					lss.insert(ex.readLong());
+					lss.append(ex.readLong());
 				}
 			}
 			ex.close();
@@ -172,6 +183,7 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean, Notifi
 			searchTimes.insert(System.nanoTime()-start);
 			return lss.getArray();
 		} catch (Exception e) {
+			e.printStackTrace(System.err);
 			throw new RuntimeException("Failed to execute search for [" + p + "]", e);
 		} finally {
 			if(ex!=null) try { ex.close(); } catch(Exception e) {/* No Op */}
@@ -335,13 +347,60 @@ public class ChronicleRegexIndexer implements ChronicleRegexIndexerMBean, Notifi
 	/** A cache of sets of subscribed notification listeners keyed by the pattern they're subscribed to */
 	protected final Cache<Pattern, Set<NotificationListener>> subscriptions = CacheBuilder.newBuilder().build();
 	
-	public void notifyNewName(final String name, final long index) {
+	/** The runtime name */
+	public static final String RUNTIME_ID = ManagementFactory.getRuntimeMXBean().getName();
+	/** The source of notiifcations */
+	public static final String NOTIF_SOURCE = RUNTIME_ID + "/" + OBJECT_NAME;
+	
+	/**
+	 * Emmits a metric name notification to subscribers that supplied a matching pattern
+	 * @param notifType The notification type to send
+	 * @param name The new metric name
+	 * @param index The metric index
+	 */
+	public void notify(final String notifType, final String name, final long index) {
 		Set<NotificationListener> matches = new HashSet<NotificationListener>();
+		Map<NotificationListener, Pattern> matchers = new HashMap<NotificationListener, Pattern>();
 		for(Pattern p: subscriptions.asMap().keySet()) {
-			if(p.matcher(name).matches()) {
-				matches.addAll(subscriptions.getIfPresent(p));
-			}
+			try {
+				if(p.matcher(name).matches()) {
+					for(NotificationListener listener: subscriptions.getIfPresent(p)) {
+						if(!matchers.containsKey(listener)) {
+							matchers.put(listener, p);
+						}
+					}
+					matches.addAll(subscriptions.getIfPresent(p));
+				}
+			} catch (Exception x) {/* No Op */}
 		}
+		final String messagePrefix = notifType.equals(NOTIF_NEW_METRIC) ? "New" : "Stale";
+ 		final Notification notif = new Notification(notifType, NOTIF_SOURCE, notificationSerial.incrementAndGet(), System.currentTimeMillis(), String.format("%s Metric [%s:%s]", messagePrefix, name, index));
+		for(final Map.Entry<NotificationListener, Pattern> entry: matchers.entrySet()) {
+			threadPool.execute(new Runnable() {
+				@Override
+				public void run() {					
+					entry.getKey().handleNotification(notif, entry.getValue().toString());
+				}
+			});
+		}
+		sendNotification(notif);
+	}
+	
+	/**
+	 * Emmits a metric name notification to subscribers that supplied a matching pattern
+	 * @param name The new metric name
+	 * @param index The metric index
+	 */
+	public void notifyNewMetric(final String name, final long index) {
+		notify(NOTIF_NEW_METRIC, name, index);
+	}	
+	/**
+	 * Emmits a stale metric name notification to subscribers that supplied a matching pattern
+	 * @param name The metric name that became stale
+	 * @param index The metric index
+	 */
+	public void notifyStaleMetric(final String name, final long index) {
+		notify(NOTIF_STALE_METRIC, name, index);
 	}
 	
 	/**

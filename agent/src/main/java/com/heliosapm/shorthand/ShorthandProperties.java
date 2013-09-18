@@ -46,6 +46,12 @@ public class ShorthandProperties {
 	/** The PID of this JVM */
 	public static final String PID = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
 
+	/** System property to indicate that native memory allocations should be tracked */
+	public static final String TRACK_MEM_PROP = "shorthand.unsafe.trackmem";
+
+	/** The native memory tracking enablement default */
+	public static final boolean TRACK_MEM_DEFAULT = false;
+	
 	
 	/** System property name to specify the shorthand chronicle directory */
 	public static final String CHRONICLE_DIR_PROP = "shorthand.store.chronicle.dir";

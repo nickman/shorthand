@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import sun.misc.Unsafe;
 
+import com.heliosapm.shorthand.ShorthandProperties;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
 import com.heliosapm.shorthand.util.jmx.JMXHelper;
 
@@ -64,11 +65,6 @@ public class UnsafeAdapter {
     /** System property indicating that Unsafe should be used */
     public static final String UNSAFE_MODE_PROP = "shorthand.unsafe";
     
-	/** System property to indicate that native memory allocations should be tracked */
-	public static final String TRACK_MEM_PROP = "shorthand.unsafe.trackmem";
-
-	/** The native memory tracking enablement default */
-	public static final boolean TRACK_MEM_DEFAULT = false;
 	
 	/** The configured native memory tracking enablement  */
 	private static final boolean trackMem;
@@ -268,7 +264,7 @@ public class UnsafeAdapter {
             log("\n\t=======================================================\n");
             FIVE_COPY = copyMemCount>1;
             FOUR_SET = setMemCount>1;
-        	trackMem = ConfigurationHelper.getBooleanSystemThenEnvProperty(TRACK_MEM_PROP, TRACK_MEM_DEFAULT);   
+        	trackMem = ConfigurationHelper.getBooleanSystemThenEnvProperty(ShorthandProperties.TRACK_MEM_PROP, ShorthandProperties.TRACK_MEM_DEFAULT);   
         	if(trackMem) {
         		memoryAllocations = new TLongLongHashMap(1024, 0.75f, 0L, 0L);
         		totalMemoryAllocated = new AtomicLong(0L);
