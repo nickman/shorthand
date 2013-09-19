@@ -148,4 +148,7 @@ public class ShorthandProperties {
     /** The default disable broadcasts */
     public static final boolean DEFAULT_DISABLE_BROADCAST_NETWORK = false;
     
+//    -Dshorthand.broadcast.network=238.191.64.66,127.0.0.1
+//    		-Dshorthand.broadcast.port=25493,25494    
+    
 }

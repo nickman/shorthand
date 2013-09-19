@@ -162,13 +162,15 @@ public class Broadcaster implements Runnable {
 					DatagramPacket dp = new DatagramPacket(packet, packet.length);
 					for(DatagramSocket ds: broadcastSockets) {
 						try {
-							dp.setAddress(((MulticastSocket)ds).getInterface());
-							//dp.setAddress((((InetSocketAddress)ds.getRemoteSocketAddress()).getAddress()));
-							dp.setPort((((InetSocketAddress)ds.getRemoteSocketAddress()).getPort()));
+							log("Interface [%s] Port [%s]", ds.getLocalSocketAddress() , ds.getLocalPort());
+							if(ds instanceof MulticastSocket) {
+								dp.setAddress(((MulticastSocket)ds).getInterface());
+								dp.setPort((((InetSocketAddress)ds.getLocalSocketAddress()).getPort()));
+							}
 							ds.send(dp);
-							log("Sent Broadcast to [%s]", ds.getRemoteSocketAddress());
+							log("Sent Broadcast to [%s]", ds);
 						} catch (Exception ex) {
-							loge("Failed to send broadcast to [%s]", ex, ds.getRemoteSocketAddress());
+							loge("Failed to send broadcast to [%s]", ex, ds);
 						}
 					}
 				}
