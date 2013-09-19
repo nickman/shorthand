@@ -36,9 +36,9 @@ import java.util.Map;
  * <p><code>com.heliosapm.shorthand.broadcast.BroadcastType</code></p>
  */
 
-public enum BroadcastType {
+public enum BroadcastType implements BroadcastPacketWriter {
 	/** Broadcast when a shorthand agent is started */
-	STARTUP;
+	STARTUP(StartupBroadcastPacketWriter.INSTANCE);
 	
 	/** A map of BroadcastTypes keyed by the ordinal */
 	public static final Map<Integer, BroadcastType> ORD2ENUM;
@@ -51,6 +51,12 @@ public enum BroadcastType {
 		}
 		ORD2ENUM = Collections.unmodifiableMap(tmpOrd2Enum);
 	}
+	
+	private BroadcastType(BroadcastPacketWriter packetWriter) {
+		this.packetWriter = packetWriter;
+	}
+	
+	private final BroadcastPacketWriter packetWriter;
 	
 	
 	/**
@@ -83,5 +89,14 @@ public enum BroadcastType {
 		} catch (Exception ex) {
 			throw new IllegalArgumentException("The value [" + key + "] is not a valid BroadcastType name");
 		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.broadcast.BroadcastPacketWriter#buildPacket(java.lang.Object[])
+	 */
+	@Override
+	public byte[] buildPacket(Object... args) {
+		return packetWriter.buildPacket(args);
 	}
 }

@@ -39,6 +39,7 @@ import com.heliosapm.shorthand.ShorthandProperties;
 import com.heliosapm.shorthand.accumulator.AccumulatorThreadStats;
 import com.heliosapm.shorthand.accumulator.MemSpaceAccessor;
 import com.heliosapm.shorthand.accumulator.PeriodClock;
+import com.heliosapm.shorthand.broadcast.StartupBroadcaster;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.ICollector;
 import com.heliosapm.shorthand.datamapper.IDataMapper;
@@ -453,7 +454,7 @@ public class ChronicleStore<T extends Enum<T> & ICollector<T>> implements IStore
 		globalLockAddress = UnsafeAdapter.allocateMemory(UnsafeAdapter.LONG_SIZE);
 		RunnableReferenceQueue.getInstance().buildPhantomReference(this, globalLockAddress);
 		UnsafeAdapter.putLong(globalLockAddress, UNLOCKED);
-		
+		StartupBroadcaster.sendStartupBroadcast();
 		
 	}
 	

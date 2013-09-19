@@ -24,24 +24,38 @@
  */
 package com.heliosapm.shorthand.broadcast;
 
+import java.nio.ByteBuffer;
+
+import com.heliosapm.shorthand.ShorthandProperties;
+import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
+
 /**
- * <p>Title: StartupBroadcaster</p>
- * <p>Description: JVM startup event broadcaster</p> 
+ * <p>Title: StartupBroadcastPacketWriter</p>
+ * <p>Description: Packet writer for the shorthand agent startup broadcast</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.broadcast.StartupBroadcaster</code></p>
+ * <p><code>com.heliosapm.shorthand.broadcast.StartupBroadcastPacketWriter</code></p>
  */
 
-public class StartupBroadcaster {
-
+public class StartupBroadcastPacketWriter implements BroadcastPacketWriter {
+	/** A static re-usable instance */
+	public static final BroadcastPacketWriter INSTANCE = new StartupBroadcastPacketWriter();
 	/**
-	 * Broadcasts a shorthand agent startup event
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.broadcast.BroadcastPacketWriter#buildPacket(java.lang.Object[])
 	 */
-	public static void sendStartupBroadcast() {
-		Broadcaster.getInstance().send(BroadcastType.STARTUP.buildPacket());
-	}
-	
-	private StartupBroadcaster() {		
+	@Override
+	public byte[] buildPacket(Object... args) {
+		/*
+		 * type: 1 (byte)
+		 * pid: 4 (int)
+		 * jmxmp port: 4 (int)
+		 */
+		ByteBuffer buf = ByteBuffer.allocate(9);
+		buf.put((byte)1);
+		buf.putInt(ShorthandProperties.IPID);
+		buf.putInt(8006);
+		return buf.array();
 	}
 
 }

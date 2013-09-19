@@ -45,6 +45,9 @@ public class ShorthandProperties {
 	
 	/** The PID of this JVM */
 	public static final String PID = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
+	/** The PID of this JVM as an int */
+	public static final int IPID = Integer.parseInt(PID);
+	
 
 	/** System property to indicate that native memory allocations should be tracked */
 	public static final String TRACK_MEM_PROP = "shorthand.unsafe.trackmem";
@@ -127,18 +130,22 @@ public class ShorthandProperties {
     public static final long DEFAULT_SHUTDOWN_NOTIFICATION_TIMEOUT = 500L;
     
     /** The system property that defines the multicast network to broadcast the startup */
-    public static final String AGENT_STARTUP_BROADCAST_NETWORK_PROP = "shorthand.startup.broadcast.network";
+    public static final String AGENT_BROADCAST_NETWORK_PROP = "shorthand.broadcast.network";
     /** The system property that defines the network interface to multicast on */
-    public static final String AGENT_STARTUP_BROADCAST_NIC_PROP = "shorthand.startup.broadcast.nic";
+    public static final String AGENT_BROADCAST_NIC_PROP = "shorthand.broadcast.nic";
     /** The system property that defines the multicast port to broadcast the startup */
-    public static final String AGENT_STARTUP_BROADCAST_PORT_PROP = "shorthand.startup.broadcast.port";
+    public static final String AGENT_BROADCAST_PORT_PROP = "shorthand.broadcast.port";
     
     /** The default multicast network to broadcast JVM startup */
-    public static final String DEFAULT_STARTUP_BROADCAST_NETWORK = "238.191.64.66";
+    public static final String DEFAULT_BROADCAST_NETWORK = "238.191.64.66";
     /** The default NIC name to broadcast JVM startup */
-    public static final String DEFAULT_STARTUP_BROADCAST_NIC = "lo";
+    public static final String DEFAULT_BROADCAST_NIC = "lo";
     /** The default port to broadcast JVM startup */
-    public static final int DEFAULT_STARTUP_BROADCAST_PORT = 25493;
+    public static final int DEFAULT_BROADCAST_PORT = 25493;
     
+    /** The system property that disables broadcasts */
+    public static final String DISABLE_BROADCAST_NETWORK_PROP = "shorthand.broadcast.disable";
+    /** The default disable broadcasts */
+    public static final boolean DEFAULT_DISABLE_BROADCAST_NETWORK = false;
     
 }

@@ -4,7 +4,10 @@
  */
 package com.heliosapm.shorthand.util;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
+import java.util.regex.Pattern;
 
 
 /**
@@ -15,7 +18,14 @@ import java.util.Properties;
  * <p><code>org.helios.apmrouter.jmx.ConfigurationHelper</code></p>
  */
 public class ConfigurationHelper {
+	/** Empty String aray const */
+	public static final String[] EMPTY_STR_ARR = {};
+	/** Empty int aray const */
+	public static final int[] EMPTY_INT_ARR = {};
 	
+	/** Comma splitter regex const */
+	public static final Pattern COMMA_SPLITTER = Pattern.compile(",");
+
 	/**
 	 * Merges the passed properties
 	 * @param properties The properties to merge
@@ -75,13 +85,54 @@ public class ConfigurationHelper {
 		if(value==null) {
 			value=defaultValue;
 		}
-//		if(LOG.isDebugEnabled()) {
-//			TempLogger.getTempLogger("SystemEnvProperty", "%m").info(name + ":" + value);
-//		}
 		return value;
-	}	
+	}
 	
-	//public static final Logger SystemEnvPropertyLogger = TempLogger.getTempLogger("SystemEnvProperty", "%m");
+	
+	
+	/**
+	 * Looks up a property and converts to a string array, first in the system properties, then the environment. 
+	 * If not found in either, returns the supplied default.
+	 * @param name The name of the key to look up.
+	 * @param defaultValue The default to return if the name is not found. Expected as a comma separated list of strings
+	 * @param properties An array of properties to search in. If empty or null, will search system properties. The first located match will be returned.
+	 * @return The located value or the default if it was not found.
+	 */
+	public static String[] getSystemThenEnvPropertyArray(String name, String defaultValue, Properties...properties) {
+		String raw = getSystemThenEnvProperty(name, defaultValue, properties);
+		if(raw==null || raw.trim().isEmpty()) return EMPTY_STR_ARR;
+		List<String> values = new ArrayList<String>();
+		for(String s: COMMA_SPLITTER.split(raw.trim())) {
+			if(s.trim().isEmpty()) continue;
+			values.add(s.trim());
+		}
+		return values.toArray(new String[0]);
+	}
+
+	/**
+	 * Looks up a property and converts to an int array, first in the system properties, then the environment. 
+	 * If not found in either, returns the supplied default.
+	 * @param name The name of the key to look up.
+	 * @param defaultValue The default to return if the name is not found. Expected as a comma separated list of strings
+	 * @param properties An array of properties to search in. If empty or null, will search system properties. The first located match will be returned.
+	 * @return The located value or the default if it was not found.
+	 */
+	public static int[] getIntSystemThenEnvPropertyArray(String name, String defaultValue, Properties...properties) {
+		String raw = getSystemThenEnvProperty(name, defaultValue, properties);
+		if(raw==null || raw.trim().isEmpty()) return EMPTY_INT_ARR;
+		List<Integer> values = new ArrayList<Integer>();
+		for(String s: COMMA_SPLITTER.split(raw.trim())) {
+			if(s.trim().isEmpty()) continue;
+			try { values.add(new Integer(s.trim())); } catch (Exception ex) {}
+		}		
+		if(values.isEmpty()) return EMPTY_INT_ARR;
+		int[] ints = new int[values.size()];
+		for(int i = 0; i < values.size(); i++) {
+			ints[i] = values.get(i);
+		}
+		return ints;
+	}
+	
 	
 	/**
 	 * Determines if a name has been defined in the environment or system properties.
