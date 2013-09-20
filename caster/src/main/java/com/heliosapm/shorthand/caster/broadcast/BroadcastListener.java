@@ -22,48 +22,45 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.shorthand.caster.presence;
+package com.heliosapm.shorthand.caster.broadcast;
 
-
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * <p>Title: JMVPresenceService</p>
- * <p>Description: </p> 
+ * <p>Title: BroadcastListener</p>
+ * <p>Description: Listens for broadcasts from shorthand agents</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.caster.presence.JMVPresenceService</code></p>
+ * <p><code>com.heliosapm.shorthand.caster.broadcast.BroadcastListener</code></p>
  */
 
-public class JVMPresenceService {
-	/** The singleton instance */	
-	private static volatile JVMPresenceService instance = null;
+public class BroadcastListener implements ThreadFactory {
+	/** The singleton instance */
+	private static volatile BroadcastListener instance = null;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
 
+	/** Serial number factory for created threads */
+	private final AtomicInteger threadSerial = new AtomicInteger();
+	
 	/**
-	 * Returns the service singleton
-	 * @return the compiler singleton
+	 * Acquires the broadcast-listener singleton
+	 * @return the broadcast-listener singleton
 	 */
-	public static final JVMPresenceService getInstance() {
+	public static BroadcastListener getInstance() {
 		if(instance==null) {
 			synchronized(lock) {
 				if(instance==null) {
-					instance = new JVMPresenceService();
+					instance = new BroadcastListener();
 				}
 			}
 		}
 		return instance;
-	}	
-	
-	public static void main(String[] args) {
-		JVMPresenceService jps = JVMPresenceService.getInstance();
 	}
 	
-	/**
-	 * Creates a new JMVPresenceService
-	 */
-	private JVMPresenceService() {
-		log("\n\t==================\n\tStarting JVMPresenceService\n\t==================");
+	private BroadcastListener() {
+		
 	}
 	
 	/**
@@ -94,6 +91,11 @@ public class JVMPresenceService {
 		System.err.println(String.format(fmt, args));
 		t.printStackTrace(System.err);
 	}
-	
 
+	@Override
+	public Thread newThread(Runnable r) {
+		Thread t = new Thread(r, "BroadcastListenerThread#" + threadSerial.incrementAndGet());
+		t.setDaemon(true);
+		return t;
+	}	
 }

@@ -20,6 +20,7 @@
 		<high-scale-lib.version>1.1.4</high-scale-lib.version>
 		<jmx-optional.version>1.0_01-ea</jmx-optional.version>
 		<gson.version>2.2.4</gson.version>
+		<netty.version>3.5.8.Final</netty.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 	<dependencyManagement><dependencies>
@@ -33,6 +34,16 @@
 			<version>${junit.version}</version>
 			<scope>test</scope>
 		</dependency>
+		
+	      <!-- ==========================================================
+		Netty
+		  ========================================================== -->
+		<dependency>
+		  <groupId>io.netty</groupId>
+		  <artifactId>netty</artifactId>
+		  <version>${netty.version}</version>
+		</dependency>
+		
 		
 	      <!-- ==========================================================
 		JMX Support

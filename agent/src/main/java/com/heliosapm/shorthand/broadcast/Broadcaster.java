@@ -27,9 +27,9 @@ package com.heliosapm.shorthand.broadcast;
 import static com.heliosapm.shorthand.ShorthandProperties.AGENT_BROADCAST_NETWORK_PROP;
 import static com.heliosapm.shorthand.ShorthandProperties.AGENT_BROADCAST_NIC_PROP;
 import static com.heliosapm.shorthand.ShorthandProperties.AGENT_BROADCAST_PORT_PROP;
-import static com.heliosapm.shorthand.ShorthandProperties.DEFAULT_BROADCAST_NETWORK;
-import static com.heliosapm.shorthand.ShorthandProperties.DEFAULT_BROADCAST_NIC;
-import static com.heliosapm.shorthand.ShorthandProperties.DEFAULT_BROADCAST_PORT;
+import static com.heliosapm.shorthand.ShorthandProperties.DEFAULT_AGENT_BROADCAST_NETWORK;
+import static com.heliosapm.shorthand.ShorthandProperties.DEFAULT_AGENT_BROADCAST_NIC;
+import static com.heliosapm.shorthand.ShorthandProperties.DEFAULT_AGENT_BROADCAST_PORT;
 import static com.heliosapm.shorthand.ShorthandProperties.DEFAULT_DISABLE_BROADCAST_NETWORK;
 import static com.heliosapm.shorthand.ShorthandProperties.DISABLE_BROADCAST_NETWORK_PROP;
 
@@ -40,10 +40,10 @@ import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
 import java.net.NetworkInterface;
 import java.util.Arrays;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.heliosapm.shorthand.util.ConfigurationHelper;
 
@@ -63,7 +63,7 @@ public class Broadcaster implements Runnable {
 	
 
 	/** A set of activated broadcast sockets */
-	protected final Set<DatagramSocket> broadcastSockets = new CopyOnWriteArraySet<DatagramSocket>();
+	protected final Map<DatagramSocket, InetSocketAddress> broadcastSockets = new ConcurrentHashMap<DatagramSocket, InetSocketAddress>();
 	/** Indicates if broadcasting is enabled */
 	protected final boolean enabled;
 	/** The network interface name to bind multicast sockets to */
@@ -76,7 +76,7 @@ public class Broadcaster implements Runnable {
 	private Broadcaster() {
 		enabled = !ConfigurationHelper.getBooleanSystemThenEnvProperty(DISABLE_BROADCAST_NETWORK_PROP, DEFAULT_DISABLE_BROADCAST_NETWORK);
 		if(enabled) {
-			nic = ConfigurationHelper.getSystemThenEnvProperty(AGENT_BROADCAST_NIC_PROP, DEFAULT_BROADCAST_NIC);
+			nic = ConfigurationHelper.getSystemThenEnvProperty(AGENT_BROADCAST_NIC_PROP, DEFAULT_AGENT_BROADCAST_NIC);
 			executionQueue = new ArrayBlockingQueue<byte[]>(128, false);
 			executionThread = new Thread(this, "BroadcastExecutionThread");
 			executionThread.setDaemon(true);
@@ -94,8 +94,8 @@ public class Broadcaster implements Runnable {
 	 * Initializes the broadcast sockets 
 	 */
 	private void initSockets() {
-		String[] addresses = ConfigurationHelper.getSystemThenEnvPropertyArray(AGENT_BROADCAST_NETWORK_PROP, DEFAULT_BROADCAST_NETWORK);
-		int[] ports = ConfigurationHelper.getIntSystemThenEnvPropertyArray(AGENT_BROADCAST_PORT_PROP, "" + DEFAULT_BROADCAST_PORT);
+		String[] addresses = ConfigurationHelper.getSystemThenEnvPropertyArray(AGENT_BROADCAST_NETWORK_PROP, DEFAULT_AGENT_BROADCAST_NETWORK);
+		int[] ports = ConfigurationHelper.getIntSystemThenEnvPropertyArray(AGENT_BROADCAST_PORT_PROP, "" + DEFAULT_AGENT_BROADCAST_PORT);
 		if(addresses.length!=ports.length) {
 			throw new RuntimeException("Invalid broadcast configuration. Number of addresses != Number of ports. Addresses:" + Arrays.toString(addresses) + " Ports:" + Arrays.toString(ports));
 		}
@@ -103,16 +103,16 @@ public class Broadcaster implements Runnable {
 			try {
 				InetAddress address = InetAddress.getByName(addresses[i]);
 				if(address.isMulticastAddress()) {
-					MulticastSocket msocket = new MulticastSocket(new InetSocketAddress(ports[i]));
+					MulticastSocket msocket = new MulticastSocket(ports[i]);
 					try {
 						NetworkInterface ni = NetworkInterface.getByName(nic);
 						msocket.setNetworkInterface(ni);
 					} catch (Exception ex) {/* No Op */}
 					msocket.joinGroup(address);
-					broadcastSockets.add(msocket);
+					broadcastSockets.put(msocket, new InetSocketAddress(address, ports[i]));
 				} else {
 					DatagramSocket dsocket = new DatagramSocket(ports[i], address);
-					broadcastSockets.add(dsocket);
+					broadcastSockets.put(dsocket, new InetSocketAddress(address, ports[i]));
 				}
 				log("Connected broadcast socket [%s:%s]", addresses[i], ports[i]);
 			} catch (Exception ex) {
@@ -160,17 +160,15 @@ public class Broadcaster implements Runnable {
 				byte[] packet = executionQueue.take();
 				if(packet!=null) {
 					DatagramPacket dp = new DatagramPacket(packet, packet.length);
-					for(DatagramSocket ds: broadcastSockets) {
+					for(Map.Entry<DatagramSocket, InetSocketAddress> entry: broadcastSockets.entrySet()) {
+						DatagramSocket ds = entry.getKey();
+						InetSocketAddress inet = entry.getValue();
 						try {
-							log("Interface [%s] Port [%s]", ds.getLocalSocketAddress() , ds.getLocalPort());
-							if(ds instanceof MulticastSocket) {
-								dp.setAddress(((MulticastSocket)ds).getInterface());
-								dp.setPort((((InetSocketAddress)ds.getLocalSocketAddress()).getPort()));
-							}
-							ds.send(dp);
-							log("Sent Broadcast to [%s]", ds);
+							log("Interface [%s] Port [%s] Size [%s]", inet.getAddress() , inet.getPort(), packet.length);
+							ds.send(new DatagramPacket(packet, packet.length, entry.getValue().getAddress(), entry.getValue().getPort()));
+							log("Sent Broadcast to [%s]", inet);
 						} catch (Exception ex) {
-							loge("Failed to send broadcast to [%s]", ex, ds);
+							loge("Failed to send broadcast to [%s]", ex, inet);
 						}
 					}
 				}

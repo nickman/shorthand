@@ -38,7 +38,7 @@ import java.util.Map;
 
 public enum BroadcastType implements BroadcastPacketWriter {
 	/** Broadcast when a shorthand agent is started */
-	STARTUP(StartupBroadcastPacketWriter.INSTANCE);
+	STARTUP(StartupBroadcastPacketHandler.INSTANCE);
 	
 	/** A map of BroadcastTypes keyed by the ordinal */
 	public static final Map<Integer, BroadcastType> ORD2ENUM;

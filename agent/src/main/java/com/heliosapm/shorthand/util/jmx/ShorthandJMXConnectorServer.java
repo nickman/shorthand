@@ -31,6 +31,9 @@ import javax.management.remote.JMXConnectorServer;
 import javax.management.remote.JMXConnectorServerFactory;
 import javax.management.remote.JMXServiceURL;
 
+import com.heliosapm.shorthand.ShorthandProperties;
+import com.heliosapm.shorthand.util.ConfigurationHelper;
+
 /**
  * <p>Title: ShorthandJMXConnectorServer</p>
  * <p>Description: JMX Connector Server bootstrap</p> 
@@ -44,7 +47,8 @@ public class ShorthandJMXConnectorServer {
 	private static volatile ShorthandJMXConnectorServer instance = null;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
-
+	/** The port the service is listening on */
+	public final int port;
 	/** Indicates if the connector server is running */
 	private final AtomicBoolean started = new AtomicBoolean(false);
 	/** The server instance */
@@ -66,19 +70,23 @@ public class ShorthandJMXConnectorServer {
 	}
 	
 	private ShorthandJMXConnectorServer() {
+		port = ConfigurationHelper.getIntSystemThenEnvProperty(ShorthandProperties.AGENT_JMXMP_LISTENER_PORT_PROP, ShorthandProperties.DEFAULT_AGENT_JMXMP_LISTENER_PORT);
 		try {
-			JMXServiceURL serviceAddress = new JMXServiceURL("service:jmx:jmxmp://0.0.0.0:8006");
+			
+			String iface = ConfigurationHelper.getSystemThenEnvProperty(ShorthandProperties.AGENT_JMXMP_LISTENER_IFACE_PROP, ShorthandProperties.DEFAULT_AGENT_JMXMP_LISTENER_IFACE);
+			
+			JMXServiceURL serviceAddress = new JMXServiceURL(String.format("service:jmx:jmxmp://%s:%s"), iface, port);
 			server = JMXConnectorServerFactory.newJMXConnectorServer(serviceAddress, null, JMXHelper.getHeliosMBeanServer());
 			String protocol = serviceAddress.getProtocol();
-			int port = serviceAddress.getPort();
 			ObjectName on = JMXHelper.objectName(
 					new StringBuilder(server.getClass().getPackage().getName())
 					.append(":protocol=").append(protocol)
 					.append(",port=").append(port));
 			JMXHelper.getHeliosMBeanServer().registerMBean(server, on);
 			server.start();
-			
-			System.out.println("\n\t===============\n\tJMXServer Started\n\t===============\n");
+			System.setProperty(ShorthandProperties.AGENT_JMXMP_LISTENER_IFACE_PROP, iface);
+			System.setProperty(ShorthandProperties.AGENT_JMXMP_LISTENER_PORT_PROP, "" + port);
+			System.out.println("\n\t===============\n\tJMXServer Started\n\tServiceURL:" + serviceAddress + "\n\t===============\n");
 		} catch (Exception ex) {			
 			System.err.println("Failed to start JMXConnectorServer. Stack Trace Follows:");
 			ex.printStackTrace(System.err);

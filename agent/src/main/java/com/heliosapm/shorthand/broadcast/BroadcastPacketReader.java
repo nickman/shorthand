@@ -24,38 +24,23 @@
  */
 package com.heliosapm.shorthand.broadcast;
 
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 
-import com.heliosapm.shorthand.ShorthandProperties;
-import com.heliosapm.shorthand.util.unsafe.UnsafeAdapter;
-
 /**
- * <p>Title: StartupBroadcastPacketWriter</p>
- * <p>Description: Packet writer for the shorthand agent startup broadcast</p> 
+ * <p>Title: BroadcastPacketReader</p>
+ * <p>Description: A class that knows how to unmarshall a specific typed broadcast packet</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.broadcast.StartupBroadcastPacketWriter</code></p>
+ * <p><code>com.heliosapm.shorthand.broadcast.BroadcastPacketReader</code></p>
+ * @param <T> The type of the object the reader returns
  */
 
-public class StartupBroadcastPacketWriter implements BroadcastPacketWriter {
-	/** A static re-usable instance */
-	public static final BroadcastPacketWriter INSTANCE = new StartupBroadcastPacketWriter();
+public interface BroadcastPacketReader<T> {
 	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.shorthand.broadcast.BroadcastPacketWriter#buildPacket(java.lang.Object[])
+	 * Returns an unmarshalled broadcast packet
+	 * @param broadcast The contents of the received DatagramPacket containing the broadcast 
+	 * @param sourceAddress The address the DatagramPacket was received from
 	 */
-	@Override
-	public byte[] buildPacket(Object... args) {
-		/*
-		 * type: 1 (byte)
-		 * pid: 4 (int)
-		 * jmxmp port: 4 (int)
-		 */
-		ByteBuffer buf = ByteBuffer.allocate(9);
-		buf.put((byte)1);
-		buf.putInt(ShorthandProperties.IPID);
-		buf.putInt(8006);
-		return buf.array();
-	}
-
+	public T unmarshallPacket(ByteBuffer broadcast, InetAddress sourceAddress);
 }

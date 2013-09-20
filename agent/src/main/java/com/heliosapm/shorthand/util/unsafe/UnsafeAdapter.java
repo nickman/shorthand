@@ -264,7 +264,7 @@ public class UnsafeAdapter {
             log("\n\t=======================================================\n");
             FIVE_COPY = copyMemCount>1;
             FOUR_SET = setMemCount>1;
-        	trackMem = ConfigurationHelper.getBooleanSystemThenEnvProperty(ShorthandProperties.TRACK_MEM_PROP, ShorthandProperties.TRACK_MEM_DEFAULT);   
+        	trackMem = ConfigurationHelper.getBooleanSystemThenEnvProperty(ShorthandProperties.TRACK_MEM_PROP, ShorthandProperties.DEFAULT_TRACK_MEM);   
         	if(trackMem) {
         		memoryAllocations = new TLongLongHashMap(1024, 0.75f, 0L, 0L);
         		totalMemoryAllocated = new AtomicLong(0L);

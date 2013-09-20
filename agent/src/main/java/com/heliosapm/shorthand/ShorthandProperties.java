@@ -26,7 +26,11 @@ package com.heliosapm.shorthand;
 
 import java.io.File;
 import java.lang.management.ManagementFactory;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 import com.heliosapm.shorthand.jmx.MetricJMXPublishOption;
@@ -43,6 +47,30 @@ import com.heliosapm.shorthand.util.ConfigurationHelper;
 public class ShorthandProperties {
 	private ShorthandProperties() {}
 	
+	/** A map of key/value pairs of sysprops that should be republished into system props when read */
+	public static final Map<String, Object> PUBLISHED_KEYS;
+	
+	static {
+		Map<String, Object> tmp = new HashMap<String, Object>();
+		for(Field f : ShorthandProperties.class.getDeclaredFields()) {
+			if(f.getName().endsWith("_PROP")) {
+				String valueFieldName = "DEFAULT_" + f.getName().replaceFirst("_PROP$", "");
+				Field valueField = null;
+				try { 
+					valueField = ShorthandProperties.class.getDeclaredField(valueFieldName);
+					tmp.put((String)f.get(null), valueField.get(null));
+					//System.out.println(String.format("Matched [%s] to [%s]", f.getName(), valueFieldName));
+				} catch (Exception x) {
+					//System.out.println("No DEFAULT for [" + f.getName() + "]");
+				}
+				
+			}
+		}
+		PUBLISHED_KEYS = Collections.unmodifiableMap(tmp);
+	}
+	
+	public static void main(String[] args) {}
+	
 	/** The PID of this JVM */
 	public static final String PID = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
 	/** The PID of this JVM as an int */
@@ -53,7 +81,7 @@ public class ShorthandProperties {
 	public static final String TRACK_MEM_PROP = "shorthand.unsafe.trackmem";
 
 	/** The native memory tracking enablement default */
-	public static final boolean TRACK_MEM_DEFAULT = false;
+	public static final boolean DEFAULT_TRACK_MEM = false;
 	
 	
 	/** System property name to specify the shorthand chronicle directory */
@@ -94,7 +122,7 @@ public class ShorthandProperties {
 	/** The system property that defines a comma separated package list where enum collector classes are located */
 	public static final String ENUM_COLLECTOR_PACKAGES_PROP = "shorthand.metrics.publish";
 	/** The base package list where enum collector classes are located */
-	public static final String BASE_ENUM_COLLECTOR_PACKAGE = "com.heliosapm.shorthand.collectors";
+	public static final String DEFAULT_ENUM_COLLECTOR_PACKAGES = "com.heliosapm.shorthand.collectors";
 
 	/**
 	 * Returns the base and configured default package names for enum collector classes
@@ -102,7 +130,7 @@ public class ShorthandProperties {
 	 */
 	public static String[] getEnumCollectorPackages() {
 		Set<String> packages = new LinkedHashSet<String>();
-		packages.add(BASE_ENUM_COLLECTOR_PACKAGE);
+		packages.add(DEFAULT_ENUM_COLLECTOR_PACKAGES);
 		String pConfig = ConfigurationHelper.getSystemThenEnvProperty(ENUM_COLLECTOR_PACKAGES_PROP, null);
 		if(pConfig != null && !pConfig.trim().isEmpty()) {
 			for(String s: pConfig.trim().split(",")) {
@@ -127,7 +155,7 @@ public class ShorthandProperties {
     /** The system property that defines the number of milliseconds the shutdown service will wait for notifications to be sent before completing the shutdown */
     public static final String AGENT_SHUTDOWN_NOTIFICATION_TIMEOUT_PROP = "shorthand.shutdown.notification.time";    
     /** The default number of milliseconds the shutdown service will wait for notifications to be sent before completing the shutdown */
-    public static final long DEFAULT_SHUTDOWN_NOTIFICATION_TIMEOUT = 500L;
+    public static final long DEFAULT_AGENT_SHUTDOWN_NOTIFICATION_TIMEOUT = 500L;
     
     /** The system property that defines the multicast network to broadcast the startup */
     public static final String AGENT_BROADCAST_NETWORK_PROP = "shorthand.broadcast.network";
@@ -137,16 +165,26 @@ public class ShorthandProperties {
     public static final String AGENT_BROADCAST_PORT_PROP = "shorthand.broadcast.port";
     
     /** The default multicast network to broadcast JVM startup */
-    public static final String DEFAULT_BROADCAST_NETWORK = "238.191.64.66";
+    public static final String DEFAULT_AGENT_BROADCAST_NETWORK = "238.191.64.66";
     /** The default NIC name to broadcast JVM startup */
-    public static final String DEFAULT_BROADCAST_NIC = "lo";
+    public static final String DEFAULT_AGENT_BROADCAST_NIC = "lo";
     /** The default port to broadcast JVM startup */
-    public static final int DEFAULT_BROADCAST_PORT = 25493;
+    public static final int DEFAULT_AGENT_BROADCAST_PORT = 25493;
     
     /** The system property that disables broadcasts */
     public static final String DISABLE_BROADCAST_NETWORK_PROP = "shorthand.broadcast.disable";
     /** The default disable broadcasts */
     public static final boolean DEFAULT_DISABLE_BROADCAST_NETWORK = false;
+    
+    /** The system property that defines the port that the JMXMP Connector Server will listen on */
+    public static final String AGENT_JMXMP_LISTENER_PORT_PROP = "shorthand.jmxmp.port";    
+    /** The default port that the JMXMP Connector Server will listen on */
+    public static final int DEFAULT_AGENT_JMXMP_LISTENER_PORT = 8006;
+    /** The system property that defines the interface that the JMXMP Connector Server will bind to */
+    public static final String AGENT_JMXMP_LISTENER_IFACE_PROP = "shorthand.jmxmp.iface";    
+    /** The default interface that the JMXMP Connector Server will bind to */
+    public static final String DEFAULT_AGENT_JMXMP_LISTENER_IFACE = "0.0.0.0";
+    
     
 //    -Dshorthand.broadcast.network=238.191.64.66,127.0.0.1
 //    		-Dshorthand.broadcast.port=25493,25494    

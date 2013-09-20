@@ -71,7 +71,7 @@ public class OrderedShutdownService extends Thread implements OrderedShutdownSer
 	 * @see java.lang.Thread#run()
 	 */
 	public void run() {
-		final long timeout = ConfigurationHelper.getLongSystemThenEnvProperty(ShorthandProperties.AGENT_SHUTDOWN_NOTIFICATION_TIMEOUT_PROP, ShorthandProperties.DEFAULT_SHUTDOWN_NOTIFICATION_TIMEOUT);
+		final long timeout = ConfigurationHelper.getLongSystemThenEnvProperty(ShorthandProperties.AGENT_SHUTDOWN_NOTIFICATION_TIMEOUT_PROP, ShorthandProperties.DEFAULT_AGENT_SHUTDOWN_NOTIFICATION_TIMEOUT);
 		final CountDownLatch latch = new CountDownLatch(1);
 		Thread notifThread = new Thread(new Runnable(){
 			public void run() {
