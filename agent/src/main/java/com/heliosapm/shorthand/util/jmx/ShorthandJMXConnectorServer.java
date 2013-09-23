@@ -75,7 +75,7 @@ public class ShorthandJMXConnectorServer {
 			
 			String iface = ConfigurationHelper.getSystemThenEnvProperty(ShorthandProperties.AGENT_JMXMP_LISTENER_IFACE_PROP, ShorthandProperties.DEFAULT_AGENT_JMXMP_LISTENER_IFACE);
 			
-			JMXServiceURL serviceAddress = new JMXServiceURL(String.format("service:jmx:jmxmp://%s:%s"), iface, port);
+			JMXServiceURL serviceAddress = new JMXServiceURL(String.format("service:jmx:jmxmp://%s:%s", iface, port));
 			server = JMXConnectorServerFactory.newJMXConnectorServer(serviceAddress, null, JMXHelper.getHeliosMBeanServer());
 			String protocol = serviceAddress.getProtocol();
 			ObjectName on = JMXHelper.objectName(

@@ -24,23 +24,14 @@
  */
 package com.heliosapm.shorthand.broadcast;
 
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-
 /**
- * <p>Title: BroadcastPacketReader</p>
- * <p>Description: A class that knows how to unmarshall a specific typed broadcast packet</p> 
+ * <p>Title: BroadcastExecutable</p>
+ * <p>Description: Represents the executable portion of a received broadcast message</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.broadcast.BroadcastPacketReader</code></p>
- * @param <T> The type of the object the reader returns
+ * <p><code>com.heliosapm.shorthand.broadcast.BroadcastExecutable</code></p>
  */
 
-public interface BroadcastPacketReader<T extends BroadcastExecutable> {
-	/**
-	 * Returns an unmarshalled broadcast packet
-	 * @param broadcast The contents of the received DatagramPacket containing the broadcast 
-	 * @param sourceAddress The address the DatagramPacket was received from
-	 */
-	public T unmarshallPacket(ByteBuffer broadcast, InetSocketAddress sourceAddress);
+public interface BroadcastExecutable extends Runnable {
+	
 }

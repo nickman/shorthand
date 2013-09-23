@@ -24,6 +24,8 @@
  */
 package com.heliosapm.shorthand.broadcast;
 
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -36,9 +38,9 @@ import java.util.Map;
  * <p><code>com.heliosapm.shorthand.broadcast.BroadcastType</code></p>
  */
 
-public enum BroadcastType implements BroadcastPacketWriter {
+public enum BroadcastType implements BroadcastPacketWriter, BroadcastPacketReader<BroadcastExecutable> {
 	/** Broadcast when a shorthand agent is started */
-	STARTUP(StartupBroadcastPacketHandler.INSTANCE);
+	STARTUP(StartupBroadcastPacketHandler.INSTANCE, StartupBroadcastPacketHandler.INSTANCE);
 	
 	/** A map of BroadcastTypes keyed by the ordinal */
 	public static final Map<Integer, BroadcastType> ORD2ENUM;
@@ -52,11 +54,14 @@ public enum BroadcastType implements BroadcastPacketWriter {
 		ORD2ENUM = Collections.unmodifiableMap(tmpOrd2Enum);
 	}
 	
-	private BroadcastType(BroadcastPacketWriter packetWriter) {
+	private BroadcastType(BroadcastPacketWriter packetWriter, BroadcastPacketReader<BroadcastExecutable> packetReader) {
 		this.packetWriter = packetWriter;
+		this.packetReader = packetReader;
+		
 	}
 	
 	private final BroadcastPacketWriter packetWriter;
+	private final BroadcastPacketReader<BroadcastExecutable> packetReader;
 	
 	
 	/**
@@ -98,5 +103,11 @@ public enum BroadcastType implements BroadcastPacketWriter {
 	@Override
 	public byte[] buildPacket(Object... args) {
 		return packetWriter.buildPacket(args);
+	}
+
+	@Override
+	public BroadcastExecutable unmarshallPacket(ByteBuffer broadcast, InetSocketAddress sourceAddress) {
+		// TODO Auto-generated method stub
+		return null;
 	}
 }

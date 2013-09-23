@@ -24,6 +24,8 @@
  */
 package com.heliosapm.shorthand.caster;
 
+import com.heliosapm.shorthand.caster.broadcast.BroadcastListener;
+
 /**
  * <p>Title: Boot</p>
  * <p>Description: The bootstap main class for the shorthand agent watcher</p> 
@@ -33,7 +35,16 @@ package com.heliosapm.shorthand.caster;
  */
 
 public class Boot {
-
+	/** The non daemon boot thread */
+	static Thread bootThread = null;
+	/** The boot instance */
+	static Boot boot = null;
+	
+	Boot() {
+		BroadcastListener.getInstance();
+	}
+	
+	
 	/**
 	 * The boot entry point for the shorthand caster.
 	 * With no arguments the default is to auto-attach to any located JVMs running the shorthand agent and watch them.
@@ -43,7 +54,21 @@ public class Boot {
 	 * 
 	 */
 	public static void main(String[] args) {
-		// TODO Auto-generated method stub
+		bootThread = new Thread("ShorthandCasterBootThread") {
+			public void run() {
+				boot = new Boot();
+				try {
+					Thread.currentThread().join();
+				} catch (Exception ex) {}
+			}
+		};
+		bootThread.start();
+		try {
+			bootThread.join();
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+		}
+		
 
 	}
 
