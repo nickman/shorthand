@@ -32,7 +32,7 @@ import javax.management.ObjectName;
 
 /**
  * <p>Title: AgentMain</p>
- * <p>Description: </p> 
+ * <p>Description: The shorthand agent bootstrap class.</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.shorthandexamples.AgentMain</code></p>

@@ -36,21 +36,24 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
-import io.netty.channel.nio.NioEventLoop;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.util.NetUtil;
 import io.netty.util.concurrent.GlobalEventExecutor;
 
 import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.heliosapm.shorthand.ShorthandProperties;
 import com.heliosapm.shorthand.util.ConfigurationHelper;
 
 /**
@@ -112,6 +115,17 @@ public class BroadcastListener implements ThreadFactory {
         });
         router = new BroadcastListenerRouter(taskThreadPool);
         boundChannels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+        NetworkInterface nic = null;
+        try {
+        	nic = NetworkInterface.getByName(ConfigurationHelper.getSystemThenEnvProperty(ShorthandProperties.AGENT_BROADCAST_NIC_PROP, ShorthandProperties.DEFAULT_AGENT_BROADCAST_NIC));
+        } catch (Exception ex) {
+        	try {
+				nic = NetworkInterface.getByIndex(0);
+			} catch (SocketException e) {
+				e.printStackTrace();
+				throw new RuntimeException(e);
+			}
+        }
 		String[] addresses = ConfigurationHelper.getSystemThenEnvPropertyArray(AGENT_BROADCAST_NETWORK_PROP, DEFAULT_AGENT_BROADCAST_NETWORK);
 		int[] ports = ConfigurationHelper.getIntSystemThenEnvPropertyArray(AGENT_BROADCAST_PORT_PROP, "" + DEFAULT_AGENT_BROADCAST_PORT);
 		if(addresses.length!=ports.length) {
@@ -119,7 +133,7 @@ public class BroadcastListener implements ThreadFactory {
 		}
 		for(int i = 0; i < addresses.length; i++) {
 			try {
-				startListener(new InetSocketAddress(addresses[i], ports[i]));
+				startListener(new InetSocketAddress(addresses[i], ports[i]), nic);
 			} catch (Exception ex) { 
 				loge("Failed to start listener on [%s:%s]", ex, addresses[i], ports[i]);
 			}
@@ -130,22 +144,48 @@ public class BroadcastListener implements ThreadFactory {
 	/**
 	 * Starts a listener on the passed socket address
 	 * @param isa The socket address to listen on
+	 * @param nic The network interface to listen on
 	 */
-	public void startListener(InetSocketAddress isa) {
-		bootstrap.group(group)
-        .channel(NioDatagramChannel.class)        
-        .option(ChannelOption.SO_BROADCAST, true)
-        .handler(new ChannelInitializer<Channel>() {
-            @Override
-            protected void initChannel(Channel channel) throws Exception {
-                ChannelPipeline pipeline = channel.pipeline();
-                pipeline.addLast(new LoggingHandler(BroadcastListener.class, LogLevel.DEBUG));
-                pipeline.addLast(router);
-            }
-        }).localAddress(isa);
+	public void startListener(InetSocketAddress isa, NetworkInterface nic) {
+		Channel channel = null;
+		if(isa.getAddress().isMulticastAddress()) {
+			channel  = bootstrap.group(group)
+			        .channel(NioDatagramChannel.class)        
+//			        .option(ChannelOption.SO_BROADCAST, true)
+			        .option(ChannelOption.IP_MULTICAST_ADDR, isa.getAddress())
+			        .option(ChannelOption.SO_REUSEADDR, true)
+			        .option(ChannelOption.IP_MULTICAST_IF, NetUtil.LOOPBACK_IF)
+			        .handler(new ChannelInitializer<Channel>() {
+			            @Override
+			            protected void initChannel(Channel channel) throws Exception {
+			                ChannelPipeline pipeline = channel.pipeline();
+			                pipeline.addLast(new LoggingHandler(BroadcastListener.class, LogLevel.DEBUG));
+			                pipeline.addLast(router);
+			            }
+			        }).localAddress(isa)
+			        .bind(isa.getPort())
+			        .syncUninterruptibly()
+			        .channel();
+				((NioDatagramChannel)channel).joinGroup(isa, NetUtil.LOOPBACK_IF).syncUninterruptibly();
+			        
+			        //.bind(isa.getPort()).syncUninterruptibly().channel();
+			log("Bound to Multicast [%s]", isa);
+		} else {
+			channel  = bootstrap.group(group)
+	        .channel(NioDatagramChannel.class)        
+	        .option(ChannelOption.SO_BROADCAST, true)
+	        .handler(new ChannelInitializer<Channel>() {
+	            @Override
+	            protected void initChannel(Channel channel) throws Exception {
+	                ChannelPipeline pipeline = channel.pipeline();
+	                pipeline.addLast(new LoggingHandler(BroadcastListener.class, LogLevel.DEBUG));
+	                pipeline.addLast(router);
+	            }
+	        }).localAddress(isa).bind(isa).syncUninterruptibly().channel();
+			log("Bound to Broadcast UDP [%s]", isa);
+		}
+		boundChannels.add(channel);
 		
-		NioDatagramChannel channel = (NioDatagramChannel)bootstrap.bind(isa.getPort()).syncUninterruptibly().channel();
-		channel.joinGroup(isa.getAddress());
 		
 		
         

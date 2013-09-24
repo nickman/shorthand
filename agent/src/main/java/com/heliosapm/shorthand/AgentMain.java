@@ -22,62 +22,40 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.shorthand.util.net;
+package com.heliosapm.shorthand;
 
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.URL;
-import java.net.URLConnection;
-import java.util.Arrays;
-import java.util.Random;
+import java.lang.instrument.Instrumentation;
 
-
+import com.heliosapm.shorthand.util.version.VersionHelper;
 
 /**
- * <p>Title: MemBuffTest</p>
- * <p>Description: </p> 
+ * <p>Title: AgentMain</p>
+ * <p>Description: The shorthand agent bootstrap class.</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthand.util.net.MemBuffTest</code></p>
+ * <p><code>com.heliosapm.shorthand.AgentMain</code></p>
  */
 
-public class MemBuffTest {
+public class AgentMain {
 
-	/**
-	 * Creates a new MemBuffTest
-	 */
-	public MemBuffTest() {
-		// TODO Auto-generated constructor stub
+	public static void main(String[] args) {
+		log(VersionHelper.getVersionBanner(AgentMain.class));
+	}
+	
+	public static void premain(String agentArgs, Instrumentation inst) {
+		log("[%s] Premain: Args:[%s]  Instrumentation:[%s]", VersionHelper.getVersionBanner(AgentMain.class), agentArgs, inst);
 	}
 
-	/**
-	 * @param args
-	 */
-	public static void main(String[] args) {
-		log("Mem URL Test");
-		URL.setURLStreamHandlerFactory(new MemoryURLStreamHandlerFactory());
-		Random r = new Random(System.currentTimeMillis());
-		try {
-			URL url = new URL("mem://localhost/foo");
-			URLConnection conn = url.openConnection();
-			OutputStream os = conn.getOutputStream();
-			byte[] bytes = new byte[8000];
-			byte[] obytes = new byte[8000];
-			r.nextBytes(bytes);
-			os.write(bytes);
-			InputStream is = url.openStream();
-			int readBytes = is.read(obytes);
-			log("Read %s bytes", readBytes);
-			log("Arrays Are Equal:%s", Arrays.equals(bytes, obytes));
-			os.close();
-			is.close();
-			conn = null;
-			url = null;
-			Thread.currentThread().join();
-		} catch (Exception ex) {
-			ex.printStackTrace(System.err);
-		}
+	public static void premain(String agentArgs) {
+		log("[%s] Premain: Args:[%s]", VersionHelper.getVersionBanner(AgentMain.class), agentArgs);
+	}
 
+	public static void agentmain(String agentArgs, Instrumentation inst) {
+		log("[%s] Agentmain: Args:[%s]  Instrumentation:[%s]", VersionHelper.getVersionBanner(AgentMain.class), agentArgs, inst);
+	}
+
+	public static void agentmain(String agentArgs) {
+		log("[%s] Agentmain: Args:[%s]", VersionHelper.getVersionBanner(AgentMain.class), agentArgs);
 	}
 	
 	/**
