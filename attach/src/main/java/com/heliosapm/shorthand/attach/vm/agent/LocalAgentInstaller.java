@@ -59,6 +59,8 @@ import com.heliosapm.shorthand.attach.vm.VirtualMachineBootstrap;
 public class LocalAgentInstaller  {
 	/** The created agent jar file name */
 	protected static final AtomicReference<String> agentJar = new AtomicReference<String>(null); 
+	/** The shorthand agent class name */
+	public static final String SHORTHAND_AGENT_NAME = "com.heliosapm.shorthand.AgentMain";
 	
 	/**
 	 * Simple example of the install commands executed.
@@ -81,6 +83,21 @@ public class LocalAgentInstaller  {
 		return getInstrumentation(500);
 	}
 	
+	
+	/**
+	 * Checks the shorthand agent instance to see if it has already loaded the instrumentation.
+	 * If so, returns it.
+	 * @return the instrumentation if found, otherwise null
+	 */
+	private static Instrumentation getAgentInstalledInstrumentation() {
+		try {
+			Class<?> locatorClass = Class.forName(SHORTHAND_AGENT_NAME);
+			return (Instrumentation) locatorClass.getDeclaredMethod("getInstrumentation").invoke(null);
+		} catch (Exception ex) {
+			return null;
+		}
+	}
+	
 	/**
 	 * Installs the local agent and returns the Instrumentation.
 	 * @param timeout The time to wait for the MBean to deploy
@@ -88,6 +105,8 @@ public class LocalAgentInstaller  {
 	 */
 	public synchronized static Instrumentation getInstrumentation(long timeout) {
 		Instrumentation instr = null;
+		instr = getAgentInstalledInstrumentation();
+		if(instr!=null) return instr;
 		try {
 			instr = (Instrumentation)ManagementFactory.getPlatformMBeanServer().getAttribute(AgentInstrumentation.AGENT_INSTR_ON, "Instrumentation");
 			if(instr!=null) {
