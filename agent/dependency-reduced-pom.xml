@@ -73,28 +73,7 @@
               <goal>shade</goal>
             </goals>
             <configuration>
-              <relocations>
-                <relocation>
-                  <pattern>org.</pattern>
-                  <shadedPattern>${repackage.base}.org.</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.</pattern>
-                  <shadedPattern>${repackage.base}.com.</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>javax.</pattern>
-                  <shadedPattern>${repackage.base}.javax.</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>javassist.</pattern>
-                  <shadedPattern>${repackage.base}.javassist.</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>gnu.</pattern>
-                  <shadedPattern>${repackage.base}.gnu.</shadedPattern>
-                </relocation>
-              </relocations>
+              <relocations />
               <artifactSet>
                 <excludes>
                   <exclude>org.slf4j:*</exclude>

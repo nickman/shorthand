@@ -32,6 +32,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -236,8 +237,7 @@ public class ShorthandScript  {
 	
 	//==============================================================================================
 	
-
-
+	private static final Map<String, String> EMPTY_CL_MAP = Collections.unmodifiableMap(new HashMap<String, String>(0));
 
 	/**
 	 * Returns a parsed ShorthandScript instance for the passed source
@@ -245,17 +245,38 @@ public class ShorthandScript  {
 	 * @return a parsed ShorthandScript instance 
 	 */
 	public static ShorthandScript parse(CharSequence source) {
-		if(source==null || source.toString().trim().isEmpty()) throw new ShorthandParseFailureException("The passed source was null or empty", "<null>");
-		return new ShorthandScript(source.toString().trim());
+		return parse(source, EMPTY_CL_MAP);
 	}
 
+
+	/**
+	 * Returns a parsed ShorthandScript instance for the passed source
+	 * @param source The source to parse
+	 * @param classLoaders A map of classloader names keyed by the type the classloader is for (i.e. <b>target</b> or <b>collector</b>)
+	 * @return a parsed ShorthandScript instance 
+	 */
+	public static ShorthandScript parse(CharSequence source, Map<String, String> classLoaders) {
+		if(source==null || source.toString().trim().isEmpty()) throw new ShorthandParseFailureException("The passed source was null or empty", "<null>");
+		return new ShorthandScript(source.toString().trim(), classLoaders);
+	}
+
+	
+	/** The processor supplied classloader pre-defs */
+	protected final Map<String, String> classLoaders;
+	
+	/** The predef classloader key for target classes */
+	public static final String PREDEF_CL_TARGET = "target";
+	/** The predef classloader key for instrumentation classes */
+	public static final String PREDEF_CL_INSTR = "collector";
+	
 	
 	/**
 	 * Creates a new ShorthandScript
 	 * @param source The source to parse
-	 * @param classLoader An optional classloader
+	 * @param classLoaders A map of classloader names keyed by the type the classloader is for (i.e. <b>target</b> or <b>collector</b>)
 	 */
-	private ShorthandScript(String source) {
+	private ShorthandScript(String source, Map<String, String> classLoaders) {
+		this.classLoaders = classLoaders;
 		String whiteSpaceCleanedSource = WH_CLEANER.matcher(source).replaceAll(" ");
 		Matcher matcher = SH_PATTERN.matcher(whiteSpaceCleanedSource);
 		if(!matcher.matches()) {
@@ -289,6 +310,7 @@ public class ShorthandScript  {
 		ClassLoader classLoader = null;
 		if(parsedClassLoader!=null && !parsedClassLoader.trim().isEmpty()) {
 			classLoader = classLoaderFrom(parsedClassLoader.trim());
+		} else if(classLoaders.containsKey(PREDEF_CL_INSTR)) {
 		} else {
 			classLoader = Thread.currentThread().getContextClassLoader();
 		}
@@ -550,6 +572,8 @@ public class ShorthandScript  {
 		ClassLoader classLoader = null;
 		if(parsedClassLoader!=null && !parsedClassLoader.trim().isEmpty()) {
 			classLoader = classLoaderFrom(parsedClassLoader.trim());
+		} else if(this.classLoaders.containsKey(PREDEF_CL_TARGET)) {
+			classLoader = classLoaderFrom(classLoaders.get(PREDEF_CL_TARGET));
 		} else {
 			classLoader = Thread.currentThread().getContextClassLoader();
 		}

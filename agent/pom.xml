@@ -145,7 +145,8 @@
 	              <goal>shade</goal>
 	            </goals>
 	            <configuration>
-		           <relocations>		           
+		           <relocations>
+		           		<!-- 		           
 		                <relocation>
 		                    <pattern>org.</pattern>
 		                    <shadedPattern>${repackage.base}.org.</shadedPattern>
@@ -166,6 +167,7 @@
 		                    <pattern>gnu.</pattern>
 		                    <shadedPattern>${repackage.base}.gnu.</shadedPattern>
 		                </relocation>
+		                -->
 		            </relocations>
 	              <artifactSet>
 	                <excludes>
