@@ -44,6 +44,7 @@ import com.google.gson.annotations.Since;
 import com.heliosapm.shorthand.collectors.EnumCollectors;
 import com.heliosapm.shorthand.collectors.MethodInterceptor;
 import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScript;
+import com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean;
 import com.heliosapm.shorthand.testclasses.annotated.TypeOnlyAnnotated;
 import com.heliosapm.shorthand.testclasses.annotations.FunShorthandTypeAndMethodAnnotation;
 import com.heliosapm.shorthand.testclasses.dynamic.DynamicClassCompiler;
@@ -83,7 +84,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 	 * @throws Exception thrown on any error
 	 */
 	@Ignore
-	protected ShorthandScript test(String shorthand, Class<?> targetClass, boolean targetClassAnnotation,
+	protected ShorthandScriptMBean test(String shorthand, Class<?> targetClass, boolean targetClassAnnotation,
 			boolean targetClassInterface, boolean inherritanceEnabled,
 			String methodName, Pattern methodNameExpression,
 			String methodSignature, Pattern methodSignatureExpression,
@@ -91,7 +92,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 			int enumIndex, int bitMask,
 			String methodTemplate, boolean allowReentrant,
 			boolean disableOnTrigger, boolean startDisabled, boolean batchTransform, boolean residentTransformer) throws Exception {
-		final ShorthandScript script = ShorthandScript.parse(shorthand);
+		final ShorthandScriptMBean script = ShorthandScript.parse(shorthand);
 		
 		Assert.assertEquals("Unexpected target class", targetClass, script.getTargetClass());
 		Assert.assertEquals("Unexpected target class annot flag", targetClassAnnotation, script.isTargetClassAnnotation());
@@ -149,7 +150,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 	 * @throws Exception thrown on any error
 	 */
 	@Ignore
-	protected ShorthandScript test(String shorthand, String targetClassName, boolean targetClassAnnotation,
+	protected ShorthandScriptMBean test(String shorthand, String targetClassName, boolean targetClassAnnotation,
 			boolean targetClassInterface, boolean inherritanceEnabled,
 			String methodName, Pattern methodNameExpression,
 			String methodSignature, Pattern methodSignatureExpression,
@@ -157,7 +158,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 			int enumIndex, int bitMask,
 			String methodTemplate, boolean allowReentrant,
 			boolean disableOnTrigger, boolean startDisabled, boolean batchTransform, boolean residentTransformer) throws Exception {
-		final ShorthandScript script = ShorthandScript.parse(shorthand);
+		final ShorthandScriptMBean script = ShorthandScript.parse(shorthand);
 		
 		Assert.assertEquals("Unexpected target class name", targetClassName, script.getTargetClass().getName());
 		Assert.assertEquals("Unexpected target class annot flag", targetClassAnnotation, script.isTargetClassAnnotation());
@@ -319,7 +320,7 @@ public class ShorthandSimpleScriptTestCase extends BaseTest {
 	 */
 	@Test
 	public void testLocateOnAnnotatedWildcardMethod() throws Exception {
-		ShorthandScript script = test("@com.heliosapm.shorthand.testclasses.annotations.FunShorthandTypeAndMethodAnnotation * MethodInterceptor[*] 'fun/fun/fun'",
+		ShorthandScriptMBean script = test("@com.heliosapm.shorthand.testclasses.annotations.FunShorthandTypeAndMethodAnnotation * MethodInterceptor[*] 'fun/fun/fun'",
 				FunShorthandTypeAndMethodAnnotation.class, true,		// target class, target class annot
 				false, false,  											// target class iface, target class inherritance
 				null, MA, 												// methodName, methodName pattern

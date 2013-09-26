@@ -24,8 +24,13 @@
  */
 package com.heliosapm.shorthand;
 
+import java.io.File;
 import java.lang.instrument.Instrumentation;
 
+import org.w3c.dom.Node;
+
+import com.heliosapm.shorthand.util.URLHelper;
+import com.heliosapm.shorthand.util.XMLHelper;
 import com.heliosapm.shorthand.util.version.VersionHelper;
 
 /**
@@ -41,6 +46,7 @@ import com.heliosapm.shorthand.util.version.VersionHelper;
  *  <li>Agent Installer</li>
  *  <li>Includes for XML and properties</li>
  *  <li>Set system props</li>
+ *  <li>shorthand script hot dir</li>
  *  <li>Embedded Shorthand / ref to text file / ref to URL</li>
  *  <li>Implement predefs for shorthand compiler</li>
  *  <li>Load agent jar into boot classpath</li>
@@ -79,6 +85,18 @@ public class AgentMain {
 	public static void premain(String agentArgs, Instrumentation inst) {
 		log("[%s] Premain: Args:[%s]  Instrumentation:[%s]", VersionHelper.getVersionBanner(AgentMain.class), agentArgs, inst);
 		INST = inst;
+		Node rootNode = null;
+		if(URLHelper.isValidURL(agentArgs)) {
+			rootNode = XMLHelper.parseXML(URLHelper.toURL(agentArgs)).getDocumentElement();
+		} else {
+			File f = new File(agentArgs);
+			if(f.canRead()) {
+				rootNode = XMLHelper.parseXML(new File(agentArgs)).getDocumentElement();
+			}
+		}
+		if(rootNode==null) {
+			loge("Failed to read config from [%s]", agentArgs);
+		}
 	}
 
 	/**
