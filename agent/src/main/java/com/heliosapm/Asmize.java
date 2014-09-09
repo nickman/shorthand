@@ -2,7 +2,7 @@
  * Helios, OpenSource Monitoring
  * Brought to you by the Helios Development Group
  *
- * Copyright 2007, Helios Development Group and individual contributors
+ * Copyright 2014, Helios Development Group and individual contributors
  * as indicated by the @author tags. See the copyright.txt file in the
  * distribution for a full listing of individual contributors.
  *
@@ -24,47 +24,29 @@
  */
 package com.heliosapm;
 
-import java.util.Random;
-
 /**
- * <p>Title: TestPojo</p>
+ * <p>Title: Asmize</p>
  * <p>Description: </p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.TestPojo</code></p>
+ * <p><code>com.heliosapm.Asmize</code></p>
  */
 
-public class TestPojo {
-	final Random r = new Random(System.currentTimeMillis());
+public class Asmize {
+
 	/**
-	 * Creates a new TestPojo
+	 * Creates a new Asmize
 	 */
-	public TestPojo() {
+	public Asmize() {
+		// TODO Auto-generated constructor stub
+	}
+
+	/**
+	 * @param args
+	 */
+	public static void main(String[] args) {
 		
+
 	}
-	
-	int nextPosInt() {
-		return Math.abs(r.nextInt(100));
-	}
-	
-	public void bar() {
-		
-	}
-	
-	public void foo() {
-		bar();
-		try {
-			Thread.sleep(nextPosInt());
-		} catch (Exception ex) {
-			throw new RuntimeException(ex);
-		}
-		if(Math.abs(r.nextInt(10))==3) {
-			throw new RuntimeException("Wicked 3");
-		}
-		System.out.println("foo called");
-	}
-	
-	
-	
 
 }

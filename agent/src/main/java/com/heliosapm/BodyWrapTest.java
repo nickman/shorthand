@@ -28,12 +28,14 @@ import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.lang.instrument.Instrumentation;
 import java.security.ProtectionDomain;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
 import javassist.ByteArrayClassPath;
 import javassist.ClassPool;
 import javassist.CtClass;
+import javassist.CtField;
 import javassist.CtMethod;
 import javassist.CtNewMethod;
 import javassist.LoaderClassPath;
@@ -54,18 +56,20 @@ public class BodyWrapTest {
 	ClassPool cp = new ClassPool();
 	
 	public static final String WRAPPED = 
-		"final long startTime = System.currentTimeMillis();" + 
+		"{final long startTime = System.currentTimeMillis();" + 
 		"try {" + 
-		"$_ = $proceed($$);" +
+//		"$_ = $proceed($$);" +
+//		"$_ =  new %s().%s($$); " + 
+		" System.out.println(\"Hello World\"); " +
 		"} catch(Throwable t) {" +
 		"System.err.println(\"Err\"); " +
 		"throw new RuntimeException(\"Ouch!\");" + 
 		"} finally {" + 
 		"System.out.println(\"Elapsed:\" + System.currentTimeMillis()-startTime); " +
-		"}";
+		"}}";
 		
 	public static final String PROCEED = 
-			"$_ = $proceed($$);";
+			"return ;";
 			
 		
 	
@@ -99,22 +103,78 @@ public class BodyWrapTest {
 	public void instrument(final String className, final String methodName, final Class<?>...signature) {
 		try {
 			cp.appendClassPath(new LoaderClassPath(PojoCaller.class.getClassLoader()));
-			CtClass ctclass = ct(TestPojo.class);
-			CtMethod ctm = ctclass.getDeclaredMethod("bar");
+			CtClass targetClass = ct(TestPojo.class);
+			CtMethod m = targetClass.getDeclaredMethod("foo");
+			final String aname = "" + System.nanoTime();
+			CtClass annonClass = cp.makeClass(aname);
+			CtMethod renamed = CtNewMethod.copy(m, annonClass, null);
+			renamed.setName("_a" + m.getName());
+			annonClass.addMethod(renamed);
+			byte[] anonbytecode = annonClass.toBytecode();
+			
+			
+			ClassPool cpx = new ClassPool();
+			cpx.appendSystemPath();
+			
+			
 //			CtClass anon = cp.makeClass(TestPojo.class.getName() + "$DelegateFoo");
 //			anon.addMethod(CtNewMethod.copy(ctm, "delegateFoo", ctclass, null));
-			byte[] anonbytecode = ctclass.toBytecode();
+//			byte[] anonbytecode = targetClass.toBytecode();
 			Class<?> aclazz = UnsafeAdapter.defineAnonymousClass(TestPojo.class, anonbytecode, null);
-			log("Anon Class:" + aclazz.getName());
+			
+			
+			
+			
+			
 			byte[] bcode = getByteCode(TestPojo.class);
-			ClassPool cpx = new ClassPool();
 			cpx.appendClassPath(new ByteArrayClassPath(TestPojo.class.getName(), bcode));
-			ctclass = cpx.get(TestPojo.class.getName());
-			ctclass.writeFile("/tmp/shorthand");
+			CtClass newTargetClass = cpx.get(TestPojo.class.getName());
+			log("================ ClassPool ================");
+			newTargetClass.getClassFile().getConstPool().print();
+			log("===========================================");
+			
 			bcode = getByteCode(aclazz);
 			cpx.appendClassPath(new ByteArrayClassPath(aclazz.getName(), bcode));
-			ctclass = cpx.get(aclazz.getName());
-			ctclass.writeFile("/tmp/shorthand");
+			CtClass anonclass = cpx.get(aclazz.getName());
+			targetClass = cpx.get(TestPojo.class.getName());
+			CtMethod ctm = targetClass.getDeclaredMethod("foo");
+			targetClass.removeMethod(ctm);
+			
+//			log("Renaming [%s]", TestPojo.class.getName() + "$" + aclazz.getSimpleName().split("/")[1]);
+//			anonclass.replaceClassName(aclazz.getName(), TestPojo.class.getName() + "$" + aclazz.getSimpleName().split("/")[1]);
+//			anonclass.setName(TestPojo.class.getName() + "$" + aclazz.getSimpleName().split("/")[1]);
+//			anonclass.writeFile("c:\\temp\\shorthand");
+			targetClass.defrost();
+//			ctm.setBody(String.format(WRAPPED,  aclazz.getSimpleName().split("/")[1], "foo"));
+			//ctm.setBody(PROCEED);
+			
+			
+			//ctm.addLocalVariable("ma", ct("sun.reflect.MethodAccesssor"));
+			
+//			b.append("\n\tSystem.out.println(\"Hello World\");");
+//			b.append("\n\tsun.invoke.anon.AnonymousClassLoader cl = new sun.invoke.anon.AnonymousClassLoader(com.heliosapm.TestPojo.class);");
+//			b.append("\n\tClass c = cl.loadClass(bytecode);");
+			StringBuilder b = new StringBuilder();
+			b.append("{\n\t_afoo($args);\n}");
+			
+//			b.append("{\n\tClass c2 = Class.forName(\"").append("com.heliosapm.TestPojo._cls").append(aclazz.getSimpleName().split("/")[1]).append("\");");
+//			b.append("\n\tObject delegate = c2.newInstance();");
+//			b.append("\n\tjava.lang.reflect.Method delegateMethod = c2.getDeclaredMethod(\"foo\", new Class[0]);");
+//			b.append("\n\tdelegateMethod.invoke(delegate, $args);}");
+			
+//			b.append("\n\tsun.reflect.ReflectionFactory.getReflectionFactory().newMethodAccessor(delegateMethod).invoke(delegate, $args);");
+//			b.append("\n\tdelegate.foo($$);");
+			log("CODE:\n%s\n", b);
+			
+			
+			
+			 
+//			ctm.insertBefore(b.toString());
+			ctm.setBody(b.toString());
+			targetClass.addMethod(ctm);
+			targetClass.writeFile("c:\\temp\\shorthand");
+			
+			
 			
 			
 //			
@@ -123,34 +183,32 @@ public class BodyWrapTest {
 //			
 //			
 //			
-//			final Set<String> edited = new HashSet<String>();
-//			edited.add(TestPojo.class.getName().replace('.', '/'));
-//			final byte[] bytecode = ctclass.toBytecode();
-//			final ClassLoader[] cl = new ClassLoader[1];
-//			final ClassFileTransformer cft = new ClassFileTransformer() {
-//				@Override
-//				public byte[] transform(ClassLoader loader, String className,
-//						Class<?> classBeingRedefined,
-//						ProtectionDomain protectionDomain,
-//						byte[] classfileBuffer)
-//						throws IllegalClassFormatException {
-//					if(edited.contains(className)) {
-//						cl[0] = loader;
-//						log("Transforming [%s]", className);
-//						return bytecode;
-//					}
-//					return classfileBuffer;					
-//				}
-//			};
-//			instr.addTransformer(cft, true);
-//			instr.retransformClasses(TestPojo.class);
-//			instr.removeTransformer(cft);
-//			ClassPool cpx = new ClassPool();
-//			cpx.appendClassPath(new ByteArrayClassPath(ctclass.getName(), bytecode));
-//			ctclass = cpx.get(TestPojo.class.getName());
-//			ctclass.writeFile("/tmp/shorthand");
-//			ctclass = cp.get(PojoCaller.class.getName());
-//			ctclass.writeFile("/tmp/shorthand");
+			final Set<String> edited = new HashSet<String>();
+			edited.add(TestPojo.class.getName().replace('.', '/'));
+			final byte[] bytecode = targetClass.toBytecode();
+			final ClassLoader[] cl = new ClassLoader[1];
+			final ClassFileTransformer cft = new ClassFileTransformer() {
+				@Override
+				public byte[] transform(ClassLoader loader, String className,
+						Class<?> classBeingRedefined,
+						ProtectionDomain protectionDomain,
+						byte[] classfileBuffer)
+						throws IllegalClassFormatException {
+					if(edited.contains(className)) {
+						cl[0] = loader;
+						log("Transforming [%s]", className);
+						return bytecode;
+					}
+					return classfileBuffer;					
+				}
+			};
+			instr.addTransformer(cft, true);
+			instr.retransformClasses(TestPojo.class);
+			instr.removeTransformer(cft);
+//			ClassPool cpx2 = new ClassPool();
+//			cpx2.appendClassPath(new ByteArrayClassPath(targetClass.getName(), bytecode));
+//			targetClass = cpx.get(TestPojo.class.getName());
+//			targetClass.writeFile("/tmp/shorthand");
 		} catch (Exception ex) {
 			log("Instrumentation failed. Stack trace follows:");
 			ex.printStackTrace(System.err);
