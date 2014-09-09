@@ -63,7 +63,7 @@ public class BroadcastListenerRouter extends MessageToMessageDecoder<DatagramPac
 	protected void decode(ChannelHandlerContext ctx, DatagramPacket msg, List<Object> out) throws Exception {
 		ByteBuf data = msg.content();
 		byte msgType = data.readByte();
-		BroadcastType bt = BroadcastType.ORD2ENUM.get(msgType);
+		BroadcastType bt = BroadcastType.ORD2ENUM.get((int)msgType);
 		log("Processing Broadcast [%s]", bt.name());
 		BroadcastExecutable exec = bt.unmarshallPacket(data.nioBuffer(), msg.sender());
 		taskThreadPool.execute(exec);

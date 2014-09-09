@@ -32,6 +32,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -71,7 +72,7 @@ import com.heliosapm.shorthand.util.jmx.JMXHelper;
 	</pre></h4>
  */
 
-public class ShorthandScript  {
+public class ShorthandScript implements ShorthandScriptMBean  {
 	/** The shorthand expression parser */
 	protected static final Pattern SH_PATTERN = Pattern.compile(
 	        		"(@)?" +                         	// The class annotation indicator
@@ -236,26 +237,47 @@ public class ShorthandScript  {
 	
 	//==============================================================================================
 	
-
-
+	/** Empty vars map const */
+	protected static final Map<String, String> EMPTY_CL_MAP = Collections.unmodifiableMap(new HashMap<String, String>(0));
 
 	/**
 	 * Returns a parsed ShorthandScript instance for the passed source
 	 * @param source The source to parse
 	 * @return a parsed ShorthandScript instance 
 	 */
-	public static ShorthandScript parse(CharSequence source) {
-		if(source==null || source.toString().trim().isEmpty()) throw new ShorthandParseFailureException("The passed source was null or empty", "<null>");
-		return new ShorthandScript(source.toString().trim());
+	public static ShorthandScriptMBean parse(CharSequence source) {
+		return parse(source, EMPTY_CL_MAP);
 	}
 
+
+	/**
+	 * Returns a parsed ShorthandScript instance for the passed source
+	 * @param source The source to parse
+	 * @param classLoaders A map of classloader names keyed by the type the classloader is for (i.e. <b>target</b> or <b>collector</b>)
+	 * @return a parsed ShorthandScript instance 
+	 */
+	public static ShorthandScript parse(CharSequence source, Map<String, String> classLoaders) {
+		if(source==null || source.toString().trim().isEmpty()) throw new ShorthandParseFailureException("The passed source was null or empty", "<null>");
+		return new ShorthandScript(source.toString().trim(), classLoaders);
+	}
+
+	
+	/** The processor supplied classloader pre-defs */
+	protected final Map<String, String> classLoaders;
+	
+	/** The predef classloader key for target classes */
+	public static final String PREDEF_CL_TARGET = "target";
+	/** The predef classloader key for instrumentation classes */
+	public static final String PREDEF_CL_INSTR = "collector";
+	
 	
 	/**
 	 * Creates a new ShorthandScript
 	 * @param source The source to parse
-	 * @param classLoader An optional classloader
+	 * @param classLoaders A map of classloader names keyed by the type the classloader is for (i.e. <b>target</b> or <b>collector</b>)
 	 */
-	private ShorthandScript(String source) {
+	private ShorthandScript(String source, Map<String, String> classLoaders) {
+		this.classLoaders = classLoaders;
 		String whiteSpaceCleanedSource = WH_CLEANER.matcher(source).replaceAll(" ");
 		Matcher matcher = SH_PATTERN.matcher(whiteSpaceCleanedSource);
 		if(!matcher.matches()) {
@@ -289,6 +311,8 @@ public class ShorthandScript  {
 		ClassLoader classLoader = null;
 		if(parsedClassLoader!=null && !parsedClassLoader.trim().isEmpty()) {
 			classLoader = classLoaderFrom(parsedClassLoader.trim());
+		} else if(classLoaders.containsKey(PREDEF_CL_INSTR)) {
+			classLoader = classLoaderFrom(classLoaders.get(PREDEF_CL_INSTR));
 		} else {
 			classLoader = Thread.currentThread().getContextClassLoader();
 		}
@@ -322,9 +346,10 @@ public class ShorthandScript  {
 	}
 	
 	/**
-	 * Returns a map of sets of members (methods and constructors) targetted for instrumentation, keyed by the classes they are declared in.
-	 * @return a map of sets of members keyed by the declaring class
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getTargetMembers()
 	 */
+	@Override
 	public Map<Class<?>, Set<Member>> getTargetMembers() {
 		Set<Class<?>> targetClasses = getTargetClasses();
 		Map<Class<?>, Set<Member>> targetMembers = new HashMap<Class<?>, Set<Member>>(targetClasses.size());
@@ -382,9 +407,10 @@ public class ShorthandScript  {
 	
 
 	/**
-	 * Locates the targetted classes and returns them in a set
-	 * @return a set of target classes
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getTargetClasses()
 	 */
+	@Override
 	public Set<Class<?>> getTargetClasses() {
 		ConfigurationBuilder cb = new ConfigurationBuilder()
 			.addClassLoader(targetClassLoader)
@@ -449,7 +475,6 @@ public class ShorthandScript  {
 			methodSignature = null;
 			methodSignatureExpression = MATCH_ALL;
 		}
-
 	}
 	
 	/**
@@ -531,8 +556,6 @@ public class ShorthandScript  {
 			this.methodName = null;
 			this.methodNameExpression = MATCH_ALL;
 		}
-		
-		
 	}
 	
 	
@@ -550,6 +573,8 @@ public class ShorthandScript  {
 		ClassLoader classLoader = null;
 		if(parsedClassLoader!=null && !parsedClassLoader.trim().isEmpty()) {
 			classLoader = classLoaderFrom(parsedClassLoader.trim());
+		} else if(this.classLoaders.containsKey(PREDEF_CL_TARGET)) {
+			classLoader = classLoaderFrom(classLoaders.get(PREDEF_CL_TARGET));
 		} else {
 			classLoader = Thread.currentThread().getContextClassLoader();
 		}
@@ -692,105 +717,118 @@ public class ShorthandScript  {
 
 
 	/**
-	 * Returns the 
-	 * @return the targetClass
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getTargetClass()
 	 */
+	@Override
 	public Class<?> getTargetClass() {
 		return targetClass;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the targetClassIsAnnotation
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#isTargetClassAnnotation()
 	 */
+	@Override
 	public boolean isTargetClassAnnotation() {
 		return targetClassAnnotation;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the inherritanceEnabled
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#isInherritanceEnabled()
 	 */
+	@Override
 	public boolean isInherritanceEnabled() {
 		return inherritanceEnabled;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the methodName
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getMethodName()
 	 */
+	@Override
 	public String getMethodName() {
 		return methodName;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the methodNameExpression
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getMethodNameExpression()
 	 */
+	@Override
 	public Pattern getMethodNameExpression() {
 		return methodNameExpression;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the methodSignature
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getMethodSignature()
 	 */
+	@Override
 	public String getMethodSignature() {
 		return methodSignature;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the methodSignatureExpression
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getMethodSignatureExpression()
 	 */
+	@Override
 	public Pattern getMethodSignatureExpression() {
 		return methodSignatureExpression;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the targetMethodIsAnnotation
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#isTargetMethodAnnotation()
 	 */
+	@Override
 	public boolean isTargetMethodAnnotation() {
 		return targetMethodAnnotation;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the methodInvocationOption
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getMethodInvocationOption()
 	 */
+	@Override
 	public int getMethodInvocationOption() {
 		return methodInvocationOption;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the methodAttribute
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getMethodAttribute()
 	 */
+	@Override
 	public int getMethodAttribute() {
 		return methodAttribute;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the enumIndex
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getEnumIndex()
 	 */
+	@Override
 	public int getEnumIndex() {
 		return enumIndex;
 	}
 
 	/**
-	 * Returns the 
-	 * @return the bitMask
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getBitMask()
 	 */
+	@Override
 	public int getBitMask() {
 		return bitMask;
 	}
 
 	/**
-	 * Returns the template to build the metric name from
-	 * @return the methodTemplate
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getMetricNameTemplate()
 	 */
+	@Override
 	public String getMetricNameTemplate() {
 		return metricNameTemplate;
 	}
@@ -825,84 +863,94 @@ public class ShorthandScript  {
 	}
 
 	/**
-	 * Returns the 
-	 * @return the targetClassInterface
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#isTargetClassInterface()
 	 */
+	@Override
 	public boolean isTargetClassInterface() {
 		return targetClassInterface;
 	}
 
 	/**
-	 * Indicates if the instrumentation injected into this method will remain active during reentrant calls
-	 * @return true if the instrumentation remains active, false otherwise
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#isAllowReentrant()
 	 */
+	@Override
 	public boolean isAllowReentrant() {
 		return allowReentrant;
 	}
 	
 	/**
-	 * Indicates if the instrumentation should batch transform (see {@link InvocationOption#TRANSFORMER_BATCH}) 
-	 * @return true for batch transform, false otherwise
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#isBatchTransform()
 	 */
+	@Override
 	public boolean isBatchTransform() {
 		return batchTransform;
 	}
 
 
 	/**
-	 * Indicates if the instrumentation's classfile transformer should stay resident (see {@link InvocationOption#TRANSFORMER_RESIDENT})
-	 * @return true for resident, false otherwise
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#isResidentTransformer()
 	 */
+	@Override
 	public boolean isResidentTransformer() {
 		return residentTransformer;
 	}
 	
 
 	/**
-	 * Indicates if all intrumentation should be disabled for the current thread until this method exits
-	 * @return true to disable instrumentation for the current thread until this method exits, false otherwise
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#isDisableOnTrigger()
 	 */
+	@Override
 	public boolean isDisableOnTrigger() {
 		return disableOnTrigger;
 	}
 
 	/**
-	 * Indicates if the instrumentation for this method shold start disabled 
-	 * @return true if the instrumentation for this method shold start disabled
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#isStartDisabled()
 	 */
+	@Override
 	public boolean isStartDisabled() {
 		return startDisabled;
 	}
 
 	/**
-	 * Returns the target class classloader
-	 * @return the target class classloader
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getTargetClassLoader()
 	 */
+	@Override
 	public ClassLoader getTargetClassLoader() {
 		return targetClassLoader;
 	}
 
 	/**
-	 * Returns the method level annotation classloader
-	 * @return the method level annotation classloader
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getMethodAnnotationClassLoader()
 	 */
+	@Override
 	public ClassLoader getMethodAnnotationClassLoader() {
 		return methodAnnotationClassLoader;
 	}
 
 	/**
-	 * Returns the enum collector class classloader
-	 * @return the enum collector class classloader
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getEnumCollectorClassLoader()
 	 */
+	@Override
 	public ClassLoader getEnumCollectorClassLoader() {
 		return enumCollectorClassLoader;
 	}
 
 
 	/**
-	 * Returns the target method level annotation class
-	 * @return the target method level annotation class
+	 * {@inheritDoc}
+	 * @see com.heliosapm.shorthand.instrumentor.shorthand.ShorthandScriptMBean#getMethodAnnotation()
 	 */
+	@Override
 	public Class<? extends Annotation> getMethodAnnotation() {
 		return methodAnnotationClass;
 	}

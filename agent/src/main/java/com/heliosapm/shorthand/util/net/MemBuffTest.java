@@ -31,7 +31,7 @@ import java.net.URLConnection;
 import java.util.Arrays;
 import java.util.Random;
 
-import org.junit.Assert;
+
 
 /**
  * <p>Title: MemBuffTest</p>
@@ -68,7 +68,6 @@ public class MemBuffTest {
 			InputStream is = url.openStream();
 			int readBytes = is.read(obytes);
 			log("Read %s bytes", readBytes);
-			Assert.assertArrayEquals(bytes, bytes);
 			log("Arrays Are Equal:%s", Arrays.equals(bytes, obytes));
 			os.close();
 			is.close();

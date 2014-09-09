@@ -54,7 +54,7 @@ public class StartupBroadcastPacketHandler implements BroadcastPacketWriter, Bro
 		 * jmxmp port: 4 (int)
 		 */
 		ByteBuffer buf = ByteBuffer.allocate(9);
-		buf.put((byte)1);
+		buf.put((byte)BroadcastType.STARTUP.ordinal());
 		buf.putInt(ShorthandProperties.IPID);
 		buf.putInt(ShorthandJMXConnectorServer.getInstance().port);
 		return buf.array();

@@ -1,0 +1,8 @@
+rule org.* heliosapm.*
+rule com.google.* heliosapm.com.google.**
+rule com.higherfrequencytrading.** heliosapm.com.higherfrequencytrading.*
+rule com.sun.** heliosapm.com.sun.*
+rule javax.* heliosapm.*
+rule javassist.* heliosapm.*
+rule gnu.* heliosapm.*
+keep com.heliosapm.*

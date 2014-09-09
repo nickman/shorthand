@@ -11,6 +11,10 @@
     <name>shorthand-agent</name>
     <packaging>jar</packaging>
     <description>The shorthand agent and instrumentor</description>
+    
+    <properties>
+    	<repackage.base>heliosapm</repackage.base>
+    </properties>
 
     <dependencies>
       
@@ -22,13 +26,14 @@
 	  <groupId>com.heliosapm.shorthand</groupId>
 	  <artifactId>attach</artifactId>
 	  <version>${project.version}</version>
+	  <exclusions>
+	  	<exclusion>
+	  		<groupId>com.heliosapm.shorthand</groupId>
+	  		<artifactId>agent</artifactId>
+	  	</exclusion>
+	  </exclusions>
 	</dependency>
 	
-	<dependency>
-	  <groupId>org.hyperic</groupId>
-	  <artifactId>jcollectd</artifactId>
-	  <version>1.1-SNAPSHOT</version>
-	</dependency>
 	
 	<dependency>
 	  <groupId>org.reflections</groupId>
@@ -123,8 +128,76 @@
                     <show>public</show>
                     <nohelp>true</nohelp>
                 </configuration>
-            </plugin>              
-        	
+            </plugin>      
+            <!-- 
+            	================================================
+            		Shaded Jar for all deps jar
+            	================================================
+			-->
+			<plugin>
+			  <groupId>org.apache.maven.plugins</groupId>
+			  <artifactId>maven-shade-plugin</artifactId>
+				<version>2.1</version>
+	        <executions>
+	          <execution>
+	            <phase>package</phase>
+	            <goals>
+	              <goal>shade</goal>
+	            </goals>
+	            <configuration>
+		           <relocations>
+		           		<!-- 		           
+		                <relocation>
+		                    <pattern>org.</pattern>
+		                    <shadedPattern>${repackage.base}.org.</shadedPattern>
+		                </relocation>
+		                <relocation>
+		                    <pattern>com.</pattern>
+		                    <shadedPattern>${repackage.base}.com.</shadedPattern>
+		                </relocation>
+		                <relocation>
+		                    <pattern>javax.</pattern>
+		                    <shadedPattern>${repackage.base}.javax.</shadedPattern>
+		                </relocation>
+		                <relocation>
+		                    <pattern>javassist.</pattern>
+		                    <shadedPattern>${repackage.base}.javassist.</shadedPattern>
+		                </relocation>
+		                <relocation>
+		                    <pattern>gnu.</pattern>
+		                    <shadedPattern>${repackage.base}.gnu.</shadedPattern>
+		                </relocation>
+		                -->
+		            </relocations>
+	              <artifactSet>
+	                <excludes>
+	                  <exclude>org.slf4j:*</exclude>
+	                  <exclude>ch.qos.logback:*</exclude>
+	                </excludes>
+	              </artifactSet>
+	              
+					<mainClass>heliosapm.com.heliosapm.shorthand.AgentMain</mainClass>
+				    <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+				    <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+					<includePluginDependencies>false</includePluginDependencies>
+				<transformers>
+	                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">	                	                	
+	                  <manifestEntries>
+	                  		<Main-Class>heliosapm.com.heliosapm.shorthand.AgentMain</Main-Class>
+			 				<Premain-Class>heliosapm.com.heliosapm.shorthand.AgentMain</Premain-Class>
+			            	<Agent-Class>heliosapm.com.heliosapm.shorthand.AgentMain</Agent-Class>
+			            	<Can-Redefine-Classes>true</Can-Redefine-Classes>
+			            	<Can-Retransform-Classes>true</Can-Retransform-Classes>
+			            	<Can-Set-Native-Method-Prefix>true</Can-Set-Native-Method-Prefix>
+			            	<Module-Name>Agent</Module-Name>
+			            	<Build-Date>${maven.build.timestamp}</Build-Date>
+	                  </manifestEntries>	                  
+	                </transformer>
+	              </transformers>
+	            </configuration>
+	          </execution>
+	        </executions>
+	      </plugin>
         </plugins>
     </build>
 </project>

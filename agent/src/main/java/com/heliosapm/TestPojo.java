@@ -22,40 +22,47 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.shorthandexamples;
+package com.heliosapm;
 
-import java.lang.instrument.Instrumentation;
-import java.lang.management.ManagementFactory;
-
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
+import java.util.Random;
 
 /**
- * <p>Title: AgentMain</p>
- * <p>Description: The shorthand agent bootstrap class.</p> 
+ * <p>Title: TestPojo</p>
+ * <p>Description: </p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.shorthandexamples.AgentMain</code></p>
+ * <p><code>com.heliosapm.TestPojo</code></p>
  */
 
-public class AgentMain {
-	
+public class TestPojo {
+	final Random r = new Random(System.currentTimeMillis());
 	/**
-	 * Installs the transformation service
-	 * @param agentArgs None supported
-	 * @param inst The instrumentation instance
-	 * @throws Exception thrown on any error
+	 * Creates a new TestPojo
 	 */
-	public static void agentmain (String agentArgs, Instrumentation inst) throws Exception {
-		System.out.println("Installing AgentMain...");
-		TransformerService ts = new TransformerService(inst);
-		ObjectName on = new ObjectName("transformer:service=DemoTransformer");
-		// Could be a different MBeanServer. If so, pass a JMX Default Domain Name in agentArgs
-		MBeanServer server = ManagementFactory.getPlatformMBeanServer();
-		server.registerMBean(ts, on);
-		// Set this property so the installer knows we're already here
-		System.setProperty("demo.agent.installed", "true");		
-		System.out.println("AgentMain Installed");
+	public TestPojo() {
+		
 	}
+	
+	int nextPosInt() {
+		return Math.abs(r.nextInt(100));
+	}
+	
+	public void bar() {
+		
+	}
+	
+	public void foo() {
+		bar();
+		try {
+			Thread.sleep(nextPosInt());
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}
+		if(Math.abs(r.nextInt(10))==3) {
+			throw new RuntimeException("Wicked 3");
+		}
+	}
+	
+	
 
 }

@@ -110,7 +110,7 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 	 * Compiles the passed script
 	 * @param script The script to compile
 	 */
-	public void compile(ShorthandScript script) {
+	public void compile(ShorthandScriptMBean script) {
 		try {
 			final int enumIndex = script.getEnumIndex();
 			final int bitMask = script.getBitMask();
@@ -234,6 +234,8 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 					public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classfileBuffer) throws IllegalClassFormatException {
 						if(!targetClassInternalForm.equals(className)) return classfileBuffer;
 						try {
+							// Need to classload the instrumentor class
+							// prior to returning the target class byte code
 							defineClassMethod.invoke(classLoader, instumentorClassName, ctInstrumentBytes, 0, ctInstrumentBytes.length, protectionDomain);
 							return ctTargetBytes;
 						} catch (Exception ex) {
@@ -338,7 +340,7 @@ public class ShorthandCompiler implements RemovalListener<String, ShorthandStati
 //			TestClass tep = new TestClass();
 //			tep.awaitTermination(10, TimeUnit.MILLISECONDS);
 //			tep.awaitTermination(10, null);
-			ShorthandScript script = ShorthandScript.parse(TestClass.class.getName() + " awaitTermination MethodInterceptor[4095] '${class}/${method}/${arg[1]}'");
+			ShorthandScriptMBean script = ShorthandScript.parse(TestClass.class.getName() + " awaitTermination MethodInterceptor[4095] '${class}/${method}/${arg[1]}'");
 			compiler.compile(script);
 			while(true) {
 			//for(int i = 0; i < 100000; i++) {
