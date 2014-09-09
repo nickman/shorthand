@@ -124,7 +124,6 @@ public class BroadcastListener implements ThreadFactory {
 				loge("Failed to start listener on [%s:%s]", ex, addresses[i], ports[i]);
 			}
 		}
-		
 	}
 	
 	/**
@@ -132,6 +131,31 @@ public class BroadcastListener implements ThreadFactory {
 	 * @param isa The socket address to listen on
 	 */
 	public void startListener(InetSocketAddress isa) {
+		if(isa.getAddress().isMulticastAddress()) {
+			startMulticastListener(isa);
+		} else {
+			Channel channel = bootstrap.group(group)
+			        .channel(NioDatagramChannel.class)        
+			        .option(ChannelOption.SO_BROADCAST, true)
+			        .handler(new ChannelInitializer<Channel>() {
+			            @Override
+			            protected void initChannel(Channel channel) throws Exception {
+			                ChannelPipeline pipeline = channel.pipeline();
+			                pipeline.addLast(new LoggingHandler(BroadcastListener.class, LogLevel.DEBUG));
+			                pipeline.addLast(router);
+			            }
+			        }).localAddress(isa).bind().syncUninterruptibly().channel();
+			boundChannels.add(channel);
+			log("Started Broadcast Listener on [%s]", isa);
+ 		}
+	}
+	
+	
+	/**
+	 * Starts a listener on the passed socket address
+	 * @param isa The socket address to listen on
+	 */
+	protected void startMulticastListener(InetSocketAddress isa) {
 		bootstrap.group(group)
         .channel(NioDatagramChannel.class)        
         .option(ChannelOption.SO_BROADCAST, true)
