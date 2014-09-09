@@ -56,7 +56,7 @@ import javassist.LoaderClassPath;
  * </ol></p>
  */
 
-public class AbstractResidentTransformer implements ClassFileTransformer {
+public abstract class AbstractResidentTransformer implements ClassFileTransformer {
 	/** The classpool used to inspect candidate classes without classloading them (which we can't) */
 	protected final ClassPool cp = new ClassPool();
 	
@@ -64,6 +64,7 @@ public class AbstractResidentTransformer implements ClassFileTransformer {
 	protected final List<ClassPath> installedClassPaths = new ArrayList<ClassPath>();
 	/** The binary name of the class being examined */
 	protected String bClassName = null;
+	
 	/**
 	 * {@inheritDoc}
 	 * @see java.lang.instrument.ClassFileTransformer#transform(java.lang.ClassLoader, java.lang.String, java.lang.Class, java.security.ProtectionDomain, byte[])
@@ -74,15 +75,33 @@ public class AbstractResidentTransformer implements ClassFileTransformer {
 			throws IllegalClassFormatException {
 		bClassName = className.replace('/', '.');
 		try {
-			
+			return doTransform(loader, classBeingRedefined, protectionDomain, classfileBuffer);
 		} finally {
 			cleanAll();
-		}
-		
-		return null;
+		}		
 	}
 	
+	/**
+	 * Determines if the passed class meta represents a class that should be transofmed and if so, transforms it and returns the new byte code.
+	 * @param loader The classloader
+	 * @param classBeingRedefined The class being redefined
+	 * @param protectionDomain The protection domain
+	 * @param classfileBuffer the byte code of the class
+	 * @return the transformed class if the class meta is filtered in, null otherwise
+	 */
+	protected abstract byte[] doTransform(ClassLoader loader, Class<?> classBeingRedefined,
+			ProtectionDomain protectionDomain, byte[] classfileBuffer);
 	
+	/**
+	 * Determines if there is an absolute class name match
+	 * @param targetClassName the classname to match against
+	 * @return true for a match, false otherwise
+	 */
+	protected boolean ifClassNameMatch(String targetClassName) {
+		return bClassName.equals(targetClassName);
+	}
+	
+	//protected boolean 
 	/**
 	 * Installs the candidate class into the javassist classpool so it can be analyzed
 	 * @param loader The classloader the candidate class is being loaded in

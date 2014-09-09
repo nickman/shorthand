@@ -237,7 +237,8 @@ public class ShorthandScript implements ShorthandScriptMBean  {
 	
 	//==============================================================================================
 	
-	private static final Map<String, String> EMPTY_CL_MAP = Collections.unmodifiableMap(new HashMap<String, String>(0));
+	/** Empty vars map const */
+	protected static final Map<String, String> EMPTY_CL_MAP = Collections.unmodifiableMap(new HashMap<String, String>(0));
 
 	/**
 	 * Returns a parsed ShorthandScript instance for the passed source
@@ -474,7 +475,6 @@ public class ShorthandScript implements ShorthandScriptMBean  {
 			methodSignature = null;
 			methodSignatureExpression = MATCH_ALL;
 		}
-
 	}
 	
 	/**
@@ -556,8 +556,6 @@ public class ShorthandScript implements ShorthandScriptMBean  {
 			this.methodName = null;
 			this.methodNameExpression = MATCH_ALL;
 		}
-		
-		
 	}
 	
 	
