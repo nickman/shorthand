@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.tree.AnnotationNode;
 
 /**
  * <p>Title: MethodInstrumentor</p>
@@ -79,12 +80,18 @@ public class MethodInstrumentor extends MethodVisitor {
 		// if method matches, do yer stuff here.
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see org.objectweb.asm.MethodVisitor#visitAnnotation(java.lang.String, boolean)
-	 */
-	@Override
-	public AnnotationVisitor visitAnnotation(String desc, boolean visible) {	
+	public AnnotationVisitor visitAnnotation(final String desc, final boolean visible) {
+		return new AnnotationNode(api, desc) {
+			@Override public void visitEnd() {
+				// put your annotation transformation code here
+				accept(mv.visitAnnotation(desc, visible));
+				log("AnnViz Accepted");
+			}
+		};
+	}
+	
+
+	public AnnotationVisitor visitAnnotationX(String desc, boolean visible) {	
 		log("ANNOTATION: [%s], visible: [%s]", desc, visible);
 		annViz.def = new AnnotationDef(desc);		
 		//mv.visitAnnotation(desc, visible);
@@ -249,6 +256,7 @@ public class MethodInstrumentor extends MethodVisitor {
 				arrValues = null;				
 			}
 			nest.decrementAndGet();
+			
 			super.visitEnd();
 			
 		}
