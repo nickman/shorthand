@@ -43,6 +43,18 @@
 	  <groupId>org.javassist</groupId>
 	  <artifactId>javassist</artifactId>
 	</dependency>
+	
+	<dependency>
+	  <groupId>org.ow2.asm</groupId>
+	  <artifactId>asm</artifactId>
+	  <version>4.2</version>
+	</dependency>
+	<dependency>
+	  <groupId>org.ow2.asm</groupId>
+	  <artifactId>asm-util</artifactId>
+	  <version>4.2</version>
+	</dependency>
+	
 	<dependency>
 	  <groupId>net.sf.trove4j</groupId>
 	  <artifactId>trove4j</artifactId>
