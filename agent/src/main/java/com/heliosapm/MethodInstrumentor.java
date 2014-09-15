@@ -114,41 +114,6 @@ public class MethodInstrumentor extends MethodVisitor {
 	
 
 	
-	public class AnnotationDef {
-		final String annotationName;
-		final Map<String, Object> values = new HashMap<String, Object>();
-		final Map<String, Object[]> arrays = new HashMap<String, Object[]>();
-		public AnnotationDef(final String annotationName) {
-			this.annotationName = annotationName;
-//			log("Created annotation: [%s]", this.annotationName);
-		}
-		public void addValue(final String name, final Object value) {
-			values.put(name, value);
-//			log("Added value: name:[%s], value:[%s], type:[%s]", name, value, value.getClass().getName());
-		}
-		public void addArray(final String name, final List<Object> values) {
-			arrays.put(name, values.toArray());
-//			log("Added Array: name:[%s], values:%s, type:[%s]", name, values, values.get(0).getClass().getName());
-		}
-		public String toString() {
-			StringBuilder b = new StringBuilder("AnnotationDef: [");
-			b.append("\n\tType: ").append(annotationName);
-			b.append("\n\tValues: ");
-			for(Map.Entry<String, Object> ve: values.entrySet()) {
-				b.append("\n\t\t").append(ve.getKey()).append(":").append(ve.getValue()).append(" [").append(ve.getValue().getClass().getName()).append("]");
-			}
-			b.append("\n\tArrays: ");
-			for(Map.Entry<String, Object[]> ve: arrays.entrySet()) {
-				b.append("\n\t\t").append(ve.getKey()).append("[");
-				for(Object o: ve.getValue()) {
-					b.append("\n\t\t\t").append(o).append(" [").append(o.getClass().getName()).append("]");
-				}
-				b.append("\n\t\t]");
-			}						
-			return b.append("\n]").toString();
-		}
-		
-	}
 	
 	protected class InstrumentedAnnotationClassVisitor extends ClassVisitor {
 

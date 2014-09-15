@@ -114,6 +114,7 @@ public class ClassIntrumentor extends ClassVisitor {
 	}
 
 	
+	
 	/**
 	 * Retrieves the byte code for the passed class
 	 * @param instr The instrumentation instance
