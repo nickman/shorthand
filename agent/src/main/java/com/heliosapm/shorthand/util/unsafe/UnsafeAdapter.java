@@ -544,17 +544,17 @@ public class UnsafeAdapter {
 		return UNSAFE.defineClass(arg0, arg1, arg2, arg3, arg4, arg5);
 	}
 
-	/**
-	 * @param arg0
-	 * @param arg1
-	 * @param arg2
-	 * @param arg3
-	 * @return
-	 * @see sun.misc.Unsafe#defineClass(java.lang.String, byte[], int, int)
-	 */
-	public static Class<?> defineClass(String arg0, byte[] arg1, int arg2, int arg3) {
-		return UNSAFE.defineClass(arg0, arg1, arg2, arg3);
-	}
+//	/**
+//	 * @param arg0
+//	 * @param arg1
+//	 * @param arg2
+//	 * @param arg3
+//	 * @return
+//	 * @see sun.misc.Unsafe#defineClass(java.lang.String, byte[], int, int)
+//	 */
+//	public static Class<?> defineClass(String arg0, byte[] arg1, int arg2, int arg3) {
+//		return UNSAFE.defineClass(arg0, arg1, arg2, arg3);
+//	}
 
 	/**
 	 * @param arg0

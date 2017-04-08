@@ -99,6 +99,28 @@ public class AnnotationDef {
 		}						
 		return b.append("\n]").toString();
 	}
+
+
+
+	/**
+	 * Adds a value to the annotation definition
+	 * @param name The value name
+	 * @param value The value
+	 */
+	public void addValue(final String name, final Object value) {
+		values.put(name, value);		
+	}
+
+
+
+	/**
+	 * Adds an array value to the annotation definition
+	 * @param name The value name
+	 * @param value The value
+	 */
+	public void addArray(final String currentArr, final List<Object> arrValues) {
+		arrays.put(currentArr, arrValues.toArray());		
+	}
 	
 }
 

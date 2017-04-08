@@ -93,7 +93,7 @@ public class MethodInstrumentor extends MethodVisitor {
 
 	public AnnotationVisitor visitAnnotationX(String desc, boolean visible) {	
 		log("ANNOTATION: [%s], visible: [%s]", desc, visible);
-		annViz.def = new AnnotationDef(desc);		
+		annViz.def = new AnnotationDef(new AnnotationNode(desc));		
 		//mv.visitAnnotation(desc, visible);
 //		new InstrumentedAnnotationClassVisitor(api).visitAnnotation(desc, visible);
 		if(!annotations.isEmpty()) {
@@ -160,7 +160,7 @@ public class MethodInstrumentor extends MethodVisitor {
 			log("ANNOT-VISIT: name: [%s], value: [%s]", name, value);
 			if(name==null && arrValues != null) {
 				arrValues.add(value);
-			} else {
+			} else {				
 				def.addValue(name, value);
 			}
 			super.visit(name, value);
